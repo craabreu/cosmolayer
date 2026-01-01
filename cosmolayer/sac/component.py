@@ -59,6 +59,11 @@ class Component:
     ...    component.get_sigma_profile(),
     ... )
     True
+    >>> distribution = component.get_segment_type_distribution()
+    >>> len(distribution)
+    153
+    >>> np.isclose(distribution.sum(), 1.0)
+    True
     """
 
     def __init__(  # noqa: PLR0913
@@ -269,3 +274,24 @@ class Component:
             except KeyError as e:
                 raise ValueError(f"Invalid hydrogen bonding type: {hb_type}") from e
         return np.sum(list(self._sigma_profiles.values()), axis=0)
+
+    def get_segment_type_distribution(self, merged: bool = False) -> np.ndarray:
+        """Get the normalized distribution of segment types in the molecule.
+
+        Parameters
+        ----------
+        merged : bool, optional
+            Whether to merge the hydrogen bonding types into a single profile.
+            Default is False.
+
+        Returns
+        -------
+        np.ndarray
+            Normalized distribution of segment types (sum = 1.0).
+            If merged=True: shape is (num_points,) - total sigma profile normalized.
+            If merged=False: shape is (3*num_points,) - concatenated profiles.
+        """
+        profiles = list(self._sigma_profiles.values())
+        if merged:
+            return np.sum(profiles, axis=0) / self._area
+        return np.concatenate(profiles) / self._area
