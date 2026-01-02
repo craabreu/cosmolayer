@@ -79,21 +79,15 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
 
     Plotting the interaction matrix:
 
-    >>> fig, ax = plt.subplots(figsize=(8, 6))  # doctest: +SKIP
-    >>> im = ax.imshow(matrix, cmap="Spectral")  # doctest: +SKIP
-    >>> fig.colorbar(im, ax=ax, label="ΔW/(RT)")  # doctest: +SKIP
-    >>> fig.tight_layout()  # doctest: +SKIP
-
     .. plot::
         :context: close-figs
 
         >>> from cosmolayer.sac import create_cosmo_sac_2002_matrix
         >>> from matplotlib import pyplot as plt
-        >>> T = 298.15  # K
-        >>> matrix = create_cosmo_sac_2002_matrix(T)
+        >>> matrix = create_cosmo_sac_2002_matrix(298.15)
         >>> fig, ax = plt.subplots(figsize=(8, 6))
         >>> im = ax.imshow(matrix, cmap="Spectral")
-        >>> cbar = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
+        >>> _ = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
         >>> fig.tight_layout()
     """
 
@@ -169,21 +163,15 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
 
     Plotting the interaction matrix:
 
-    >>> fig, ax = plt.subplots(figsize=(8, 6))  # doctest: +SKIP
-    >>> im = ax.imshow(delta_w_a + delta_w_b, cmap="Spectral")  # doctest: +SKIP
-    >>> fig.colorbar(im, ax=ax, label="ΔW/(RT)")  # doctest: +SKIP
-    >>> fig.tight_layout()  # doctest: +SKIP
-
     .. plot::
         :context: close-figs
 
         >>> from cosmolayer.sac import create_cosmo_sac_2010_matrices
         >>> from matplotlib import pyplot as plt
-        >>> T = 298.15  # K
-        >>> delta_w_a, delta_w_b = create_cosmo_sac_2010_matrices(T)
+        >>> delta_w_a, delta_w_b = create_cosmo_sac_2010_matrices(298.15)
         >>> fig, ax = plt.subplots(figsize=(8, 6))
         >>> im = ax.imshow(delta_w_a + delta_w_b, cmap="Spectral")
-        >>> cbar = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
+        >>> _ = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
         >>> fig.tight_layout()
     """
     RT = GAS_CONSTANT * temperature

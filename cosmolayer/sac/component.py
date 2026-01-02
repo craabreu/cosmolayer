@@ -72,36 +72,22 @@ class Component:
 
     Plotting the sigma profiles:
 
-    >>> from matplotlib import pyplot as plt  # doctest: +SKIP
-    >>> fig, ax = plt.subplots(figsize=(8, 4))  # doctest: +SKIP
-    >>> grid = component.get_sigma_grid()
-    >>> for s in ["NHB", "OH", "OT"]:
-    ...     ax.plot(grid, sigma_profiles[s], label=s)  # doctest: +SKIP
-    >>> ax.plot(grid, sigma_profile, label="Overall")  # doctest: +SKIP
-    >>> ax.set_xlabel("Charge density (e/Å²)")  # doctest: +SKIP
-    >>> ax.set_ylabel("Surface area contribution (Å²)")  # doctest: +SKIP
-    >>> ax.legend()  # doctest: +SKIP
-    >>> fig.tight_layout()  # doctest: +SKIP
-
     .. plot::
         :context: close-figs
 
         >>> from importlib.resources import files
         >>> from cosmolayer.sac import Component
         >>> from matplotlib import pyplot as plt
-        >>> component = Component(files("cosmolayer.data") / "C=C(N)O.cosmo")
-        >>> sigma_profile = component.get_sigma_profile()
-        >>> sigma_profiles = {
-        ...     s: component.get_sigma_profile(s) for s in ["NHB", "OH", "OT"]
-        ... }
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> component = Component(path)
         >>> fig, ax = plt.subplots(figsize=(8, 4))
         >>> grid = component.get_sigma_grid()
         >>> for s in ["NHB", "OH", "OT"]:
-        ...     ax.plot(grid, sigma_profiles[s], label=s)
-        >>> ax.plot(grid, sigma_profile, label="Overall")
-        >>> ax.set_xlabel("Charge density (e/Å²)")
-        >>> ax.set_ylabel("Surface area contribution (Å²)")
-        >>> ax.legend()
+        ...     _ = ax.plot(grid, component.get_sigma_profile(s), label=s)
+        >>> _ = ax.plot(grid, component.get_sigma_profile(), label="Overall")
+        >>> _ = ax.set_xlabel("Charge density (e/Å²)")
+        >>> _ = ax.set_ylabel("Surface area contribution (Å²)")
+        >>> _ = ax.legend()
         >>> fig.tight_layout()
     """
 
