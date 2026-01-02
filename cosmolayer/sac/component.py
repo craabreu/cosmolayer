@@ -58,7 +58,7 @@ class Component:
     >>> component.get_volume()
     80.07160...
     >>> sigma_profile = component.get_sigma_profile()
-    >>> sum(sigma_profile)
+    >>> sum(sigma_profile).item()
     97.34554...
     >>> sigma_profiles = {
     ...     s: component.get_sigma_profile(s)
