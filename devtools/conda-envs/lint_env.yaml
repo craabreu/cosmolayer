@@ -6,7 +6,10 @@ dependencies:
     # Base depends
   - python
   - numpy
+  - pandas
+  - periodictable
   - pyyaml
+  - scipy
 
     # Testing
   - pytest

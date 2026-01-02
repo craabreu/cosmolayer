@@ -27,7 +27,10 @@ dependencies = [
     "lightning",
     "numpy",
     "opt-einsum",
+    "pandas",
+    "periodictable",
     "pyyaml",
+    "scipy",
     "torch",
 ]
 

@@ -7,10 +7,14 @@ dependencies:
   - python
   - pip
   - numpy
+  - pandas
+  - periodictable
   - pyyaml
+  - scipy
   - typing-extensions
 
     # Testing
+  - matplotlib
   - pytest
   - pytest-cov
 

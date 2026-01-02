@@ -7,7 +7,10 @@ dependencies:
   - python
   - pip
   - numpy
+  - pandas
+  - periodictable
   - pyyaml
+  - scipy
 
     # Machine learning dependencies
   - pytorch
@@ -19,6 +22,7 @@ dependencies:
   - pytest-cov
 
   # Docs building
+  - matplotlib
   - sphinx
   - sphinxcontrib-bibtex
   - sphinx-copybutton
