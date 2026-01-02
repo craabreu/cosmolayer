@@ -5,6 +5,7 @@ import pandas as pd
 import periodictable as pt
 
 from ..parser import parse_cosmo_file
+from .segment_groups import NHB, OH, OT, SEGMENT_GROUPS
 
 COVALENT_FACTOR = 1.3  # Same as in RDKit
 
@@ -16,6 +17,9 @@ class Component:
     ----------
     cosmo_file_path : str or os.PathLike
         Path to the COSMO output file from quantum mechanical calculations.
+
+    Keyword Arguments
+    -----------------
     min_sigma : float, optional
         Minimum screening charge density in e/Å². Default is -0.025 e/Å².
     max_sigma : float, optional
@@ -69,6 +73,7 @@ class Component:
     def __init__(  # noqa: PLR0913
         self,
         cosmo_file_path: str | os.PathLike,
+        *,
         min_sigma: float = -0.025,  # e/A^2
         max_sigma: float = 0.025,  # e/A^2
         num_points: int = 51,
@@ -131,12 +136,12 @@ class Component:
         radii = elements.apply(self._get_covalent_radius).values
         bonds = np.nonzero(np.triu(distances < (radii[:, None] + radii[None, :]), k=1))
         hb_class = df["element"].apply(
-            lambda element: "OT" if element in ["N", "F", "O"] else "NHB"
+            lambda element: OT if element in ["N", "F", "O"] else NHB
         )
         for i, j in zip(*bonds):
             elements_ij = set(elements.iloc[[i, j]])
             if elements_ij in [{"O", "H"}, {"N", "H"}, {"F", "H"}]:
-                hb_class.at[i] = hb_class.at[j] = "OH" if "O" in elements_ij else "OT"
+                hb_class.at[i] = hb_class.at[j] = OH if "O" in elements_ij else OT
         return hb_class
 
     def _average_sigmas(self) -> np.ndarray:
@@ -206,8 +211,8 @@ class Component:
         element = atom_indices.map(self._atom_data["element"])
         is_hb_candidate = (element == "H") == (averaged_sigmas < 0.0)
         hb_class = atom_indices.map(self._get_hydrogen_bonding_classes())
-        mask_oh = is_hb_candidate & (hb_class == "OH")
-        mask_ot = is_hb_candidate & (hb_class == "OT")
+        mask_oh = is_hb_candidate & (hb_class == OH)
+        mask_ot = is_hb_candidate & (hb_class == OT)
         mask_nhb = ~(mask_oh | mask_ot)
         areas = self._segment_data["area"].values
         profile_oh = self._compute_sigma_profile(
@@ -221,9 +226,9 @@ class Component:
         )
         hb_probability = 1.0 - np.exp(-0.5 * (self._grid / self._sigma_0) ** 2)
         return {
-            "NHB": profile_nhb + (profile_oh + profile_ot) * (1.0 - hb_probability),
-            "OH": profile_oh * hb_probability,
-            "OT": profile_ot * hb_probability,
+            NHB: profile_nhb + (profile_oh + profile_ot) * (1.0 - hb_probability),
+            OH: profile_oh * hb_probability,
+            OT: profile_ot * hb_probability,
         }
 
     def get_area(self) -> float:
@@ -252,8 +257,8 @@ class Component:
 
         The segment classes are:
         - NHB: Non-hydrogen-bonding segments
-        - OH: Hydrogen-bonding segments associated with hydroxyl groups
-        - OT: Hydrogen-bonding segments associated with other hydrogen-bonding groups
+        - OH: Segments associated with hydroxyl groups
+        - OT: Segments associated with other hydrogen-bonding groups
 
         Parameters
         ----------
@@ -274,25 +279,25 @@ class Component:
         return np.sum(list(self._sigma_profiles.values()), axis=0)
 
     def get_segment_type_distribution(self, merged: bool = False) -> np.ndarray:
-        """Get the normalized distribution of segment types in the molecule.
+        """Get the normalized distribution of segment groups in the molecule.
 
-        A segment type is defined by its hydrogen bonding class (NHB, OH, OT) and its
+        A segment group is defined by its hydrogen bonding class (NHB, OH, OT) and its
         averaged charge density.
 
         Parameters
         ----------
         merged : bool, optional
-            Whether to merge the segment classes (NHB, OH, OT) into a single profile.
+            Whether to merge the segment groups (NHB, OH, OT) into a single profile.
             Default is False.
 
         Returns
         -------
         np.ndarray
-            Normalized distribution of segment types (sum = 1.0).
+            Normalized distribution of segment groups (sum = 1.0).
             If merged=True: shape is (num_points,) - total sigma profile normalized.
             If merged=False: shape is (3*num_points,) - concatenated profiles.
         """
-        profiles = list(self._sigma_profiles.values())
+        profiles = [self._sigma_profiles[segtype] for segtype in SEGMENT_GROUPS]
         if merged:
             return np.sum(profiles, axis=0) / self._area
         return np.concatenate(profiles) / self._area
