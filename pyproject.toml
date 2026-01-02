@@ -16,12 +16,12 @@ license = { text = "MIT" }
 # See https://pypi.org/classifiers/
 classifiers = [
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 # Declare any run-time dependencies that should be installed with the package.
 dependencies = [
     "lightning",
@@ -144,7 +144,7 @@ addopts = "-v -ra --doctest-modules --cov=cosmolayer --cov-report=term --cov-rep
 testpaths = ["cosmolayer"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
