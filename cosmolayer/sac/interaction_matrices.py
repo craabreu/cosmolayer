@@ -70,11 +70,11 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     >>> matrix = create_cosmo_sac_2002_matrix(T)
     >>> matrix.shape
     (51, 51)
-    >>> np.all(np.isfinite(matrix))
+    >>> bool(np.all(np.isfinite(matrix)))
     True
-    >>> matrix.min() < 0  # H-bonding can be favorable (negative)
+    >>> bool(matrix.min() < 0)  # H-bonding can be favorable (negative)
     True
-    >>> matrix.max() > 0  # Misfit interactions are unfavorable
+    >>> bool(matrix.max() > 0)  # Misfit interactions are unfavorable
     True
 
     Plotting the interaction matrix:
