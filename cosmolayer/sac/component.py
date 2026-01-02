@@ -10,7 +10,7 @@ COVALENT_FACTOR = 1.3  # Same as in RDKit
 
 
 class Component:
-    """Molecular component for the COSMO-SAC activity coefficient model.
+    r"""Molecular component for the COSMO-SAC activity coefficient model.
 
     Parameters
     ----------
@@ -22,16 +22,15 @@ class Component:
         Maximum screening charge density in e/Å². Default is 0.025 e/Å².
     num_points : int, optional
         Number of discrete points in the sigma profile. Default is 51.
-    effective_area : float, optional
-        Effective contact area for distance-weighted sigma averaging in Å².
-        Represents the effective interaction area between segments.
-        Default is 7.25 Å² :cite:`Bell2020`.
-    sigma_0 : float, optional
-        Standard deviation of the Gaussian probability of a segment to form a hydrogen
-        bond. Default is 0.007 e/Å² :cite:`Bell2020`.
+    averaging_squared_radius : float, optional
+        Effective squared radius for distance-weighted sigma averaging in Å².
+        Default is (7.25 / π) Å² :cite:`Bell2020`.
     f_decay : float, optional
         Decay factor for exponential distance weighting in the sigma averaging
         procedure. Default is 3.57 :cite:`Bell2020`.
+    sigma_0 : float, optional
+        Standard deviation of the Gaussian probability of a segment to form a hydrogen
+        bond. Default is 0.007 e/Å² :cite:`Bell2020`.
 
     Raises
     ------
@@ -54,11 +53,12 @@ class Component:
     80.07160...
     >>> sum(component.get_sigma_profile())
     97.34554...
-    >>> np.allclose(
-    ...    sum(component.get_sigma_profile(t) for t in ["NHB", "OH", "OT"]),
-    ...    component.get_sigma_profile(),
-    ... )
-    True
+    >>> sum(component.get_sigma_profile("NHB"))
+    72.3180...
+    >>> sum(component.get_sigma_profile("OH"))
+    12.2573...
+    >>> sum(component.get_sigma_profile("OT"))
+    12.7701...
     >>> distribution = component.get_segment_type_distribution()
     >>> len(distribution)
     153
@@ -72,17 +72,18 @@ class Component:
         min_sigma: float = -0.025,  # e/A^2
         max_sigma: float = 0.025,  # e/A^2
         num_points: int = 51,
-        effective_area: float = 7.25,  # A^2
-        sigma_0: float = 0.007,  # e/A^2
+        hydrogen_bonding_profiles: bool = True,
+        averaging_squared_radius: float = 7.25 / np.pi,  # A^2
         f_decay: float = 3.57,
+        sigma_0: float = 0.007,  # e/A^2
     ):
         self._min_sigma = min_sigma
         self._grid = np.linspace(min_sigma, max_sigma, num_points)
         self._bin_width = (max_sigma - min_sigma) / (num_points - 1)
 
-        self._effective_area = effective_area
-        self._sigma_0 = sigma_0
+        self._averaging_squared_radius = averaging_squared_radius
         self._f_decay = f_decay
+        self._sigma_0 = sigma_0
 
         self._atom_data, self._segment_data, self._volume = parse_cosmo_file(
             cosmo_file_path
@@ -149,15 +150,13 @@ class Component:
         np.ndarray
             Averaged screening charge density for each segment in e/Å.
         """
-        effective_squared_radius = self._effective_area / np.pi
-
         sigmas = self._segment_data["charge"].values / self._segment_data["area"].values
         coords = self._segment_data[["x", "y", "z"]].values
         squared_distances = np.square(coords[:, None, :] - coords).sum(axis=-1)
         squared_radii = self._segment_data["area"].values / np.pi
 
-        sums = squared_radii + effective_squared_radius
-        prods = squared_radii * effective_squared_radius
+        sums = squared_radii + self._averaging_squared_radius
+        prods = squared_radii * self._averaging_squared_radius
         weights = np.exp(-self._f_decay * squared_distances / sums) * prods / sums
         return np.sum(weights * sigmas, axis=1) / np.sum(weights, axis=1)
 
@@ -248,40 +247,42 @@ class Component:
         """
         return self._volume
 
-    def get_sigma_profile(self, hb_type: str | None = None) -> np.ndarray:
-        """Get the sigma profile for a given hydrogen bonding type or the total sigma
-        profile.
+    def get_sigma_profile(self, segment_class: str | None = None) -> np.ndarray:
+        """Get the sigma profile for a given segment class or the overall sigma profile.
 
-        The hydrogen bonding types are:
-        - NHB: Non-hydrogen bonding segments
-        - OH: Hydrogen bonding segments associated with -OH groups
-        - OT: Hydrogen bonding segments associated with other functional groups
+        The segment classes are:
+        - NHB: Non-hydrogen-bonding segments
+        - OH: Hydrogen-bonding segments associated with hydroxyl groups
+        - OT: Hydrogen-bonding segments associated with other hydrogen-bonding groups
 
         Parameters
         ----------
-        hb_type : str, optional
-            Hydrogen bonding type. If None, returns the total sigma profile.
+        segment_class : str, optional
+            Segment class. If None, returns the total sigma profile.
 
         Returns
         -------
         np.ndarray
-            Sigma profile for the given hydrogen bonding type or the total sigma
-            profile. Shape: (num_points,). Units: Å².
+            Sigma profile for the given segment class or the overall sigma profile.
+            Shape: (num_points,). Units: Å².
         """
-        if hb_type:
+        if segment_class:
             try:
-                return self._sigma_profiles[hb_type.upper()]
+                return self._sigma_profiles[segment_class.upper()]
             except KeyError as e:
-                raise ValueError(f"Invalid hydrogen bonding type: {hb_type}") from e
+                raise ValueError(f"Invalid segment class: {segment_class}") from e
         return np.sum(list(self._sigma_profiles.values()), axis=0)
 
     def get_segment_type_distribution(self, merged: bool = False) -> np.ndarray:
         """Get the normalized distribution of segment types in the molecule.
 
+        A segment type is defined by its hydrogen bonding class (NHB, OH, OT) and its
+        averaged charge density.
+
         Parameters
         ----------
         merged : bool, optional
-            Whether to merge the hydrogen bonding types into a single profile.
+            Whether to merge the segment classes (NHB, OH, OT) into a single profile.
             Default is False.
 
         Returns
