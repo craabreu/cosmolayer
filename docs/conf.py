@@ -231,6 +231,7 @@ extensions = [
     "sphinx.ext.extlinks",
     "sphinxcontrib.bibtex",
     "sphinx_copybutton",
+    "matplotlib.sphinxext.plot_directive",
 ]
 
 autosummary_generate = False
