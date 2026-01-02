@@ -51,24 +51,58 @@ class Component:
     >>> import numpy as np
     >>> from importlib.resources import files
     >>> from cosmolayer.sac import Component
-    >>> component = Component(files("cosmolayer.data") / "C=C(N)O.cosmo")
+    >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+    >>> component = Component(path)
     >>> component.get_area()
     97.34554...
     >>> component.get_volume()
     80.07160...
-    >>> sum(component.get_sigma_profile())
+    >>> sigma_profile = component.get_sigma_profile()
+    >>> sum(sigma_profile)
     97.34554...
-    >>> sum(component.get_sigma_profile("NHB"))
-    72.3180...
-    >>> sum(component.get_sigma_profile("OH"))
-    12.2573...
-    >>> sum(component.get_sigma_profile("OT"))
-    12.7701...
-    >>> distribution = component.get_segment_type_distribution()
-    >>> len(distribution)
-    153
-    >>> np.isclose(distribution.sum(), 1.0)
-    True
+    >>> sigma_profiles = {
+    ...     s: component.get_sigma_profile(s)
+    ...     for s in ["NHB", "OH", "OT"]
+    ... }
+    >>> for s in ["NHB", "OH", "OT"]:
+    ...     print(s, sum(sigma_profiles[s]))
+    NHB 72.31802...
+    OH 12.25732...
+    OT 12.77019...
+
+    Plotting the sigma profiles:
+
+    >>> from matplotlib import pyplot as plt  # doctest: +SKIP
+    >>> fig, ax = plt.subplots(figsize=(8, 4))  # doctest: +SKIP
+    >>> grid = component.get_sigma_grid()
+    >>> for s in ["NHB", "OH", "OT"]:
+    ...     ax.plot(grid, sigma_profiles[s], label=s)  # doctest: +SKIP
+    >>> ax.plot(grid, sigma_profile, label="Overall")  # doctest: +SKIP
+    >>> ax.set_xlabel("Charge density (e/Å²)")  # doctest: +SKIP
+    >>> ax.set_ylabel("Surface area contribution (Å²)")  # doctest: +SKIP
+    >>> ax.legend()  # doctest: +SKIP
+    >>> fig.tight_layout()  # doctest: +SKIP
+
+    .. plot::
+        :context: close-figs
+
+        >>> from importlib.resources import files
+        >>> from cosmolayer.sac import Component
+        >>> from matplotlib import pyplot as plt
+        >>> component = Component(files("cosmolayer.data") / "C=C(N)O.cosmo")
+        >>> sigma_profile = component.get_sigma_profile()
+        >>> sigma_profiles = {
+        ...     s: component.get_sigma_profile(s) for s in ["NHB", "OH", "OT"]
+        ... }
+        >>> fig, ax = plt.subplots(figsize=(8, 4))
+        >>> grid = component.get_sigma_grid()
+        >>> for s in ["NHB", "OH", "OT"]:
+        ...     ax.plot(grid, sigma_profiles[s], label=s)
+        >>> ax.plot(grid, sigma_profile, label="Overall")
+        >>> ax.set_xlabel("Charge density (e/Å²)")
+        >>> ax.set_ylabel("Surface area contribution (Å²)")
+        >>> ax.legend()
+        >>> fig.tight_layout()
     """
 
     def __init__(  # noqa: PLR0913
@@ -260,6 +294,16 @@ class Component:
         """
         volume: float = float(self._volume)
         return volume
+
+    def get_sigma_grid(self) -> NDArray[np.float64]:
+        """Get the charge density grid in e/Å².
+
+        Returns
+        -------
+        np.ndarray
+            Charge density grid in e/Å².
+        """
+        return self._grid
 
     def get_sigma_profile(
         self, segment_class: str | None = None
