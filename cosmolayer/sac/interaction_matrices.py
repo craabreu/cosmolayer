@@ -8,6 +8,7 @@
 from collections import defaultdict
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy import constants as spc
 
 from .segment_groups import OH, OT, SEGMENT_GROUPS
@@ -16,7 +17,7 @@ GAS_CONSTANT = spc.gas_constant / (spc.kilo * spc.calorie)  # kcal/(mol·K)
 
 
 def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
-    temperature,  # K
+    temperature: float,  # K
     *,
     min_sigma: float = -0.025,
     max_sigma: float = 0.025,
@@ -24,7 +25,7 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     sigma_hb: float = 0.0084,  # e/Å²
     alpha_prime: float = 16466.72,  # (kcal/mol)/(e/Å²)²
     c_hb: float = 85580.0,  # (kcal/mol)/(e/Å²)²
-) -> np.ndarray:
+) -> NDArray[np.float64]:
     r"""Create an interaction matrix for the COSMO-SAC 2002 model :cite:`Bell2020`.
 
     Computes the pairwise interaction energies between surface segments with given
@@ -101,11 +102,12 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     delta = (grid - sigma_hb).clip(min=0) + (grid + sigma_hb).clip(max=0)
     hb_block = np.outer(delta, delta).clip(max=0)
     energy_matrix = (alpha_prime / 2) * squared_sum_block + c_hb * hb_block
-    return energy_matrix / (GAS_CONSTANT * temperature)
+    result: NDArray[np.float64] = energy_matrix / (GAS_CONSTANT * temperature)
+    return result
 
 
 def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
-    temperature,  # K
+    temperature: float,  # K
     *,
     min_sigma: float = -0.025,
     max_sigma: float = 0.025,
@@ -115,7 +117,7 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
     c_oh_oh: float = 4013.78,  # kcal·Å^4·mol⁻¹·e⁻²
     c_ot_ot: float = 932.31,  # kcal·Å^4·mol⁻¹·e⁻²
     c_oh_ot: float = 3016.43,  # kcal·Å^4·mol⁻¹·e⁻²
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     r"""Create interaction matrices for the COSMO-SAC 2010 model :cite:`Bell2020`.
 
     Computes the electrostatic and hydrogen bonding parts of pairwise interaction
@@ -185,7 +187,9 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
         >>> fig.tight_layout()
     """
     RT = GAS_CONSTANT * temperature
-    c_hb = defaultdict(lambda: defaultdict(float))
+    c_hb: defaultdict[str, defaultdict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
     c_hb[OH][OH] = c_oh_oh
     c_hb[OT][OT] = c_ot_ot
     c_hb[OH][OT] = c_hb[OT][OH] = c_oh_ot
@@ -199,4 +203,6 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
         [[c_hb[s][t] * hb_block for t in SEGMENT_GROUPS] for s in SEGMENT_GROUPS]
     )
 
-    return a_es * es_matrix - hb_matrix, (b_es / temperature**2) * es_matrix
+    result_a: NDArray[np.float64] = a_es * es_matrix - hb_matrix
+    result_b: NDArray[np.float64] = (b_es / temperature**2) * es_matrix
+    return result_a, result_b

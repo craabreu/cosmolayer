@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import periodictable as pt
+from numpy.typing import NDArray
 
 from ..parser import parse_cosmo_file
 from .segment_groups import NHB, OH, OT, SEGMENT_GROUPS
@@ -72,7 +73,7 @@ class Component:
 
     def __init__(  # noqa: PLR0913
         self,
-        cosmo_file_path: str | os.PathLike,
+        cosmo_file_path: str | os.PathLike[str],
         *,
         min_sigma: float = -0.025,  # e/A^2
         max_sigma: float = 0.025,  # e/A^2
@@ -115,7 +116,8 @@ class Component:
         float
             Covalent radius in Å, scaled by factor 1.3.
         """
-        return COVALENT_FACTOR * pt.elements.symbol(element).covalent_radius
+        radius: float = float(pt.elements.symbol(element).covalent_radius)
+        return COVALENT_FACTOR * radius
 
     def _get_hydrogen_bonding_classes(self) -> pd.Series:
         """Classify atoms into hydrogen bonding types (OH, OT, NHB).
@@ -138,13 +140,13 @@ class Component:
         hb_class = df["element"].apply(
             lambda element: OT if element in ["N", "F", "O"] else NHB
         )
-        for i, j in zip(*bonds):
+        for i, j in zip(*bonds, strict=True):
             elements_ij = set(elements.iloc[[i, j]])
             if elements_ij in [{"O", "H"}, {"N", "H"}, {"F", "H"}]:
                 hb_class.at[i] = hb_class.at[j] = OH if "O" in elements_ij else OT
         return hb_class
 
-    def _average_sigmas(self) -> np.ndarray:
+    def _average_sigmas(self) -> NDArray[np.float64]:
         """Apply distance-weighted averaging to segment charge densities.
 
         Smooths raw screening charge densities (σ = q/A) using exponentially
@@ -163,11 +165,14 @@ class Component:
         sums = squared_radii + self._averaging_squared_radius
         prods = squared_radii * self._averaging_squared_radius
         weights = np.exp(-self._f_decay * squared_distances / sums) * prods / sums
-        return np.sum(weights * sigmas, axis=1) / np.sum(weights, axis=1)
+        result: NDArray[np.float64] = np.sum(weights * sigmas, axis=1) / np.sum(
+            weights, axis=1
+        )
+        return result
 
     def _compute_sigma_profile(
-        self, averaged_sigmas: np.ndarray, areas: np.ndarray
-    ) -> np.ndarray:
+        self, averaged_sigmas: NDArray[np.float64], areas: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
         """Bin segment areas by charge density using linear interpolation.
 
         Parameters
@@ -183,14 +188,16 @@ class Component:
             Sigma profile histogram. Shape: (num_points,).
         """
         profile = np.zeros_like(self._grid)
-        for sigma, area in zip(averaged_sigmas, areas):
+        for sigma, area in zip(averaged_sigmas, areas, strict=True):
             index = int((sigma - self._min_sigma) / self._bin_width)
             weight = (self._grid[index + 1] - sigma) / self._bin_width
             profile[index] += area * weight
             profile[index + 1] += area * (1.0 - weight)
         return profile
 
-    def _compute_sigma_profiles(self, averaged_sigmas: np.ndarray) -> dict:
+    def _compute_sigma_profiles(
+        self, averaged_sigmas: NDArray[np.float64]
+    ) -> dict[str, NDArray[np.float64]]:
         """Compute sigma profiles separated by hydrogen bonding type.
 
         Classifies segments by H-bonding type (OH, OT, NHB) based on parent atom
@@ -240,7 +247,8 @@ class Component:
             Cavity surface area in Å². This is the sum of the areas of all
             segments from the COSMO calculation.
         """
-        return self._area
+        area: float = float(self._area)
+        return area
 
     def get_volume(self) -> float:
         """Get the cavity volume of the molecule in Å³.
@@ -250,9 +258,12 @@ class Component:
         float
             Cavity volume in Å³.
         """
-        return self._volume
+        volume: float = float(self._volume)
+        return volume
 
-    def get_sigma_profile(self, segment_class: str | None = None) -> np.ndarray:
+    def get_sigma_profile(
+        self, segment_class: str | None = None
+    ) -> NDArray[np.float64]:
         """Get the sigma profile for a given segment class or the overall sigma profile.
 
         The segment classes are:
@@ -273,12 +284,20 @@ class Component:
         """
         if segment_class:
             try:
-                return self._sigma_profiles[segment_class.upper()]
+                profile: NDArray[np.float64] = self._sigma_profiles[
+                    segment_class.upper()
+                ]
+                return profile
             except KeyError as e:
                 raise ValueError(f"Invalid segment class: {segment_class}") from e
-        return np.sum(list(self._sigma_profiles.values()), axis=0)
+        total_profile: NDArray[np.float64] = np.sum(
+            list(self._sigma_profiles.values()), axis=0
+        )
+        return total_profile
 
-    def get_segment_type_distribution(self, merged: bool = False) -> np.ndarray:
+    def get_segment_type_distribution(
+        self, merged: bool = False
+    ) -> NDArray[np.float64]:
         """Get the normalized distribution of segment groups in the molecule.
 
         A segment group is defined by its hydrogen bonding class (NHB, OH, OT) and its
@@ -299,5 +318,9 @@ class Component:
         """
         profiles = [self._sigma_profiles[segtype] for segtype in SEGMENT_GROUPS]
         if merged:
-            return np.sum(profiles, axis=0) / self._area
-        return np.concatenate(profiles) / self._area
+            merged_profile: NDArray[np.float64] = np.sum(profiles, axis=0) / self._area
+            return merged_profile
+        concatenated_profile: NDArray[np.float64] = (
+            np.concatenate(profiles) / self._area
+        )
+        return concatenated_profile

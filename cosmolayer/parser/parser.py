@@ -13,7 +13,7 @@ from . import turbomole
 
 
 def parse_cosmo_file(
-    path: str | os.PathLike,
+    path: str | os.PathLike[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame, float]:
     """Parse a COSMO output file.
 
