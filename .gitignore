@@ -110,3 +110,7 @@ ENV/
 
 # VSCode
 .vscode/
+
+
+# Testing notebook
+test.ipynb
