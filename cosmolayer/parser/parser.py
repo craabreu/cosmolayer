@@ -22,7 +22,7 @@ def get_atom_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
         module.ATOM_INFO_SCHEMA,
     )
     for axis in "xyz":
-        df[axis] *= module.COORDINATE_CONVERSION_FACTOR
+        df[axis] *= module.ATOM_CONVERSION_FACTOR
     return df
 
 
@@ -34,7 +34,7 @@ def get_segment_dataframe(module: ModuleType, file_contents: str) -> pd.DataFram
         module.SEGMENT_INFO_SCHEMA,
     )
     for axis in "xyz":
-        df[axis] *= module.COORDINATE_CONVERSION_FACTOR
+        df[axis] *= module.SEGMENT_CONVERSION_FACTOR
     return df
 
 

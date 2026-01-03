@@ -8,7 +8,7 @@ import re
 from .common import (  # noqa: F401
     ATOM_INFO_SCHEMA,
     ATOM_ROW_REGEX,
-    COORDINATE_CONVERSION_FACTOR,
+    SEGMENT_CONVERSION_FACTOR,
     SEGMENT_INFO_SCHEMA,
     SEGMENT_ROW_REGEX,
 )
@@ -29,4 +29,5 @@ ATOM_SECTION_REGEX = re.compile(
 
 VOLUME_REGEX = re.compile(r"Total volume of cavity \(A\*\*3\)\s*=\s*(\d+(?:\.\d+)?)")
 
-VOLUME_CONVERSION_FACTOR = 1.0  # DMol-3 volume is already in Angstroms^3
+ATOM_CONVERSION_FACTOR = 1.0
+VOLUME_CONVERSION_FACTOR = 1.0
