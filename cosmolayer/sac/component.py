@@ -111,8 +111,8 @@ class Component:
         self._f_decay = f_decay
         self._sigma_0 = sigma_0
 
-        self._atom_data, self._segment_data, self._volume = parse_cosmo_file(
-            cosmo_file_path
+        self._format, self._atom_data, self._segment_data, self._volume = (
+            parse_cosmo_file(cosmo_file_path)
         )
         averaged_sigmas = self._average_sigmas()
         if (averaged_sigmas < min_sigma).any() or (averaged_sigmas > max_sigma).any():
@@ -278,6 +278,29 @@ class Component:
             Cavity volume in Å³.
         """
         return self._volume
+
+    def get_format(self) -> str:
+        """Get the COSMO file format that was parsed.
+
+        Returns
+        -------
+        str
+            The detected file format. Either "TURBOMOLE" or "DMol-3".
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from cosmolayer.sac import Component
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> component = Component(path)
+        >>> component.get_format()
+        'TURBOMOLE'
+        >>> path = files("cosmolayer.data") / "NCCO.cosmo"
+        >>> component = Component(path)
+        >>> component.get_format()
+        'DMol-3'
+        """
+        return self._format
 
     def get_sigma_grid(self) -> NDArray[np.float64]:
         """Get the charge density grid in e/Å².

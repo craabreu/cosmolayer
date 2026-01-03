@@ -6,24 +6,54 @@
 """
 
 import os
+from types import ModuleType
 
 import pandas as pd
 
-from . import turbomole
+from . import dmol3, turbomole
+from .utils import parse_table, parse_value
+
+
+def get_atom_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
+    df = parse_table(
+        file_contents,
+        module.ATOM_ROW_REGEX,
+        module.ATOM_SECTION_REGEX,
+        module.ATOM_INFO_SCHEMA,
+    )
+    for axis in "xyz":
+        df[axis] *= module.ATOM_CONVERSION_FACTOR
+    return df
+
+
+def get_segment_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
+    df = parse_table(
+        file_contents,
+        module.SEGMENT_ROW_REGEX,
+        module.SEGMENT_SECTION_REGEX,
+        module.SEGMENT_INFO_SCHEMA,
+    )
+    for axis in "xyz":
+        df[axis] *= module.SEGMENT_CONVERSION_FACTOR
+    return df
+
+
+def get_volume(module: ModuleType, file_contents: str) -> float:
+    return float(
+        parse_value(file_contents, module.VOLUME_REGEX)
+        * module.VOLUME_CONVERSION_FACTOR
+    )
 
 
 def parse_cosmo_file(
     path: str | os.PathLike[str],
-) -> tuple[pd.DataFrame, pd.DataFrame, float]:
+) -> tuple[str, pd.DataFrame, pd.DataFrame, float]:
     """Parse a COSMO output file.
 
     This function reads a COSMO (Conductor-like Screening Model) output file
     and extracts atomic coordinates, segment information, and molecular volume.
-
-    Note
-    ----
-    The current implementation supports TURBOMOLE format. Support for additional
-    COSMO file formats may be added in future versions.
+    It automatically detects the file format (TURBOMOLE or DMol-3) and uses
+    the appropriate parser.
 
     Parameters
     ----------
@@ -32,6 +62,8 @@ def parse_cosmo_file(
 
     Returns
     -------
+    format : str
+        The file format detected ("DMol-3" or "TURBOMOLE").
     atom_df : pd.DataFrame
         DataFrame containing atomic information with columns:
         - id: atom identifier (str)
@@ -56,9 +88,13 @@ def parse_cosmo_file(
 
     Examples
     --------
+    Parse a TURBOMOLE COSMO file:
+
     >>> from importlib.resources import files
     >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
-    >>> atoms, segments, volume = parse_cosmo_file(path)
+    >>> fmt, atoms, segments, volume = parse_cosmo_file(path)
+    >>> print(fmt)
+    TURBOMOLE
     >>> atoms.tail(3)
        id         x         y         z element
     6  H3  0.338091 -0.995118 -0.082975       H
@@ -71,15 +107,37 @@ def parse_cosmo_file(
     470     9  2.133636  1.152865  0.489697 -0.001817  0.145681
     >>> volume
     80.07160...
+
+    Parse a DMol-3 COSMO file:
+
+    >>> path = files("cosmolayer.data") / "NCCO.cosmo"
+    >>> fmt, atoms, segments, volume = parse_cosmo_file(path)
+    >>> print(fmt)
+    DMol-3
+    >>> len(atoms)
+    11
+    >>> len(segments)
+    429
+    >>> volume
+    86.10187...
     """
     with open(path, encoding="utf-8", errors="replace") as file:
         contents = file.read()
 
-    if "$segment_information" in contents and "$coord_car" in contents:
-        return (
-            turbomole.get_atom_dataframe(contents),
-            turbomole.get_segment_dataframe(contents),
-            turbomole.get_volume(contents),
-        )
+    module: ModuleType
+    if "DMol3/COSMO Results" in contents:
+        format = "DMol-3"
+        module = dmol3
+    elif "$segment_information" in contents and "$coord_car" in contents:
+        format = "TURBOMOLE"
+        module = turbomole
     else:
-        raise ValueError("Could not parse COSMO file.")
+        raise ValueError(
+            "Could not parse COSMO file. Supported formats: TURBOMOLE, DMol-3"
+        )
+    return (
+        format,
+        get_atom_dataframe(module, contents),
+        get_segment_dataframe(module, contents),
+        get_volume(module, contents),
+    )
