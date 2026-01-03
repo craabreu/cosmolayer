@@ -9,7 +9,7 @@ import os
 
 import pandas as pd
 
-from . import turbomole
+from . import dmol3, turbomole
 
 
 def parse_cosmo_file(
@@ -19,11 +19,8 @@ def parse_cosmo_file(
 
     This function reads a COSMO (Conductor-like Screening Model) output file
     and extracts atomic coordinates, segment information, and molecular volume.
-
-    Note
-    ----
-    The current implementation supports TURBOMOLE format. Support for additional
-    COSMO file formats may be added in future versions.
+    It automatically detects the file format (TURBOMOLE or DMol-3) and uses
+    the appropriate parser.
 
     Parameters
     ----------
@@ -56,6 +53,8 @@ def parse_cosmo_file(
 
     Examples
     --------
+    Parse a TURBOMOLE COSMO file:
+
     >>> from importlib.resources import files
     >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
     >>> atoms, segments, volume = parse_cosmo_file(path)
@@ -71,15 +70,37 @@ def parse_cosmo_file(
     470     9  2.133636  1.152865  0.489697 -0.001817  0.145681
     >>> volume
     80.07160...
+
+    Parse a DMol-3 COSMO file:
+
+    >>> path = files("cosmolayer.data") / "NCCO.cosmo"
+    >>> atoms, segments, volume = parse_cosmo_file(path)
+    >>> len(atoms)
+    11
+    >>> len(segments)
+    429
+    >>> volume
+    86.10187...
     """
     with open(path, encoding="utf-8", errors="replace") as file:
         contents = file.read()
 
-    if "$segment_information" in contents and "$coord_car" in contents:
+    # Try to detect the file format
+    if "DMol3/COSMO Results" in contents:
+        # DMol-3 format
+        return (
+            dmol3.get_atom_dataframe(contents),
+            dmol3.get_segment_dataframe(contents),
+            dmol3.get_volume(contents),
+        )
+    elif "$segment_information" in contents and "$coord_car" in contents:
+        # TURBOMOLE format
         return (
             turbomole.get_atom_dataframe(contents),
             turbomole.get_segment_dataframe(contents),
             turbomole.get_volume(contents),
         )
     else:
-        raise ValueError("Could not parse COSMO file.")
+        raise ValueError(
+            "Could not parse COSMO file. Supported formats: TURBOMOLE, DMol-3"
+        )
