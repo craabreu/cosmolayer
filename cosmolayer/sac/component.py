@@ -111,7 +111,7 @@ class Component:
         self._f_decay = f_decay
         self._sigma_0 = sigma_0
 
-        self._atom_data, self._segment_data, self._volume = parse_cosmo_file(
+        _, self._atom_data, self._segment_data, self._volume = parse_cosmo_file(
             cosmo_file_path
         )
         averaged_sigmas = self._average_sigmas()
