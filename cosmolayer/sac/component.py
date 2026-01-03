@@ -58,7 +58,7 @@ class Component:
     >>> component.get_volume()
     80.07160...
     >>> sigma_profile = component.get_sigma_profile()
-    >>> sum(sigma_profile).item()
+    >>> print(sum(sigma_profile))
     97.34554...
     >>> sigma_profiles = {
     ...     s: component.get_sigma_profile(s)
@@ -118,7 +118,7 @@ class Component:
         if (averaged_sigmas < min_sigma).any() or (averaged_sigmas > max_sigma).any():
             raise ValueError("Averaged charge densities out of range.")
 
-        self._area = self._segment_data["area"].sum()
+        self._area = float(self._segment_data["area"].sum())
 
         self._sigma_profiles = self._compute_sigma_profiles(averaged_sigmas)
 
@@ -267,8 +267,7 @@ class Component:
             Cavity surface area in Å². This is the sum of the areas of all
             segments from the COSMO calculation.
         """
-        area: float = float(self._area)
-        return area
+        return self._area
 
     def get_volume(self) -> float:
         """Get the cavity volume of the molecule in Å³.
@@ -278,8 +277,7 @@ class Component:
         float
             Cavity volume in Å³.
         """
-        volume: float = float(self._volume)
-        return volume
+        return self._volume
 
     def get_sigma_grid(self) -> NDArray[np.float64]:
         """Get the charge density grid in e/Å².
