@@ -29,4 +29,4 @@ ATOM_SECTION_REGEX = re.compile(
 
 VOLUME_REGEX = re.compile(r"Total volume of cavity \(A\*\*3\)\s*=\s*(\d+(?:\.\d+)?)")
 
-VOLUME_CONVERSION_FACTOR = 1.0
+VOLUME_CONVERSION_FACTOR = 1.0  # DMol-3 volume is already in Angstroms^3
