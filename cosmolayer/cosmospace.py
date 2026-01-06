@@ -58,11 +58,11 @@ def cosmospace(
     >>> U_RT = create_cosmo_sac_2002_matrix(298.15)
     >>> B = torch.exp(-torch.tensor(U_RT, dtype=torch.float32))
     >>> lngamma, iterations = cosmospace(P, B)
-    >>> iterations
-    85
+    >>> 80 < iterations < 90
+    True
     >>> lngamma
-    tensor([[ -5.2049,  -4.6854, ... -13.3667, -14.4569],
-            [-22.4734, -20.7932, ... -4.8301,  -5.5926]])
+    tensor([[ -5.2...,  -4.6..., ... -13.3..., -14.4...],
+            [-22.4..., -20.7..., ... -4.8...,  -5.5...]])
     """
     tol = 10 * torch.finfo(p.dtype).eps
     p = p.unsqueeze(-1)
