@@ -38,12 +38,12 @@ def test_cosmospace_output_shapes() -> None:
     log_p, U_RT = create_random_problem(n, batch_size)
 
     # Forward pass
-    gamma: torch.Tensor = CosmoSpace.apply(log_p, U_RT)  # type: ignore[no-untyped-call]
+    gamma: torch.Tensor = CosmoSpace.apply(log_p, U_RT)
     assert gamma.shape == (batch_size, n)
 
     # Backward pass
     loss = (gamma**2).sum()
-    loss.backward()  # type: ignore[no-untyped-call]
+    loss.backward()
 
     assert log_p.grad is not None
     assert U_RT.grad is not None
@@ -57,7 +57,7 @@ def test_cosmospace_solution() -> None:
     batch_size = 3
     log_p, U_RT = create_random_problem(n, batch_size)
 
-    gamma: torch.Tensor = CosmoSpace.apply(log_p, U_RT)  # type: ignore[no-untyped-call]
+    gamma: torch.Tensor = CosmoSpace.apply(log_p, U_RT)
 
     # Verify: gamma = 1 / (B @ z), where z = p * gamma
     p = torch.softmax(log_p, dim=-1)
