@@ -98,7 +98,6 @@ class Component:
         min_sigma: float = -0.025,  # e/A^2
         max_sigma: float = 0.025,  # e/A^2
         num_points: int = 51,
-        hydrogen_bonding_profiles: bool = True,
         averaging_squared_radius: float = 7.25 / np.pi,  # A^2
         f_decay: float = 3.57,
         sigma_0: float = 0.007,  # e/A^2
