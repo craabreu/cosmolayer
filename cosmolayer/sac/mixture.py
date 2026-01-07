@@ -5,7 +5,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .component import Component
-from .interaction_matrices import create_cosmo_sac_2010_matrices
+from .interaction_matrices import (
+    create_cosmo_sac_2002_matrix,
+    create_cosmo_sac_2010_matrices,
+)
 
 
 class Mixture:
@@ -309,3 +312,93 @@ class Mixture:
         True
         """
         return self._interaction_matrix_generator(temperature)
+
+
+class CosmoSac2002Mixture(Mixture):
+    """Mixture of molecular components for COSMO-SAC 2002 calculations.
+
+    This class is pre-configured with COSMO-SAC 2002 model parameters:
+
+    - averaging_squared_radius = (0.81764 Å)²
+    - f_decay = 1.0
+    - merge = True (single segment type distribution)
+    - Interaction matrix from :func:`create_cosmo_sac_2002_matrix` with default
+      parameters.
+
+    Parameters
+    ----------
+    components : dict[str, str | os.PathLike]
+        Dictionary mapping component names to paths of COSMO output files.
+
+    Examples
+    --------
+    >>> from importlib.resources import files
+    >>> from cosmolayer.sac import CosmoSac2002Mixture
+    >>> components = {
+    ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
+    ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+    ... }
+    >>> mixture = CosmoSac2002Mixture(components)
+    >>> len(mixture)
+    2
+    >>> log_probs = mixture.get_log_probabilities()
+    >>> log_probs.shape  # merge=True, so shape is (n_components, num_points)
+    (2, 51)
+    >>> matrices = mixture.get_interaction_matrices(298.15)
+    >>> len(matrices)  # COSMO-SAC 2002 returns single matrix (in tuple)
+    1
+    >>> matrices[0].shape
+    (51, 51)
+    """
+
+    def __init__(self, components: dict[str, str | os.PathLike[str]]) -> None:
+        super().__init__(
+            components,
+            averaging_squared_radius=0.81764**2,  # ≈ 0.6685 Å²
+            f_decay=1.0,
+            merge=True,
+            interaction_matrix_generator=lambda temperature: (
+                create_cosmo_sac_2002_matrix(temperature),
+            ),
+        )
+
+
+class CosmoSac2010Mixture(Mixture):
+    """Mixture of molecular components for COSMO-SAC 2010 calculations.
+
+    This class is pre-configured with COSMO-SAC 2010 model parameters:
+
+    - averaging_squared_radius = 7.25/π Å²
+    - f_decay = 3.57
+    - merge = False (separate segment type distributions for NHB, OH, OT)
+    - Interaction matrices from :func:`create_cosmo_sac_2010_matrices` with default
+      parameters.
+
+    Parameters
+    ----------
+    components : dict[str, str | os.PathLike]
+        Dictionary mapping component names to paths of COSMO output files.
+
+    Examples
+    --------
+    >>> from importlib.resources import files
+    >>> from cosmolayer.sac import CosmoSac2010Mixture
+    >>> components = {
+    ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
+    ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+    ... }
+    >>> mixture = CosmoSac2010Mixture(components)
+    >>> len(mixture)
+    2
+    >>> log_probs = mixture.get_log_probabilities()
+    >>> log_probs.shape  # merge=False, so shape is (n_components, 3*num_points)
+    (2, 153)
+    >>> matrices = mixture.get_interaction_matrices(298.15)
+    >>> len(matrices)  # COSMO-SAC 2010 returns two matrices
+    2
+    >>> all(mat.shape == (153, 153) for mat in matrices)
+    True
+    """
+
+    def __init__(self, components: dict[str, str | os.PathLike[str]]) -> None:
+        super().__init__(components)

@@ -6,6 +6,8 @@ from ._version import __version__
 from .cosmospace import CosmoSpace
 from .sac import (
     Component,
+    CosmoSac2002Mixture,
+    CosmoSac2010Mixture,
     Mixture,
     create_cosmo_sac_2002_matrix,
     create_cosmo_sac_2010_matrices,
@@ -14,6 +16,8 @@ from .sac import (
 __all__ = [
     "__version__",
     "Component",
+    "CosmoSac2002Mixture",
+    "CosmoSac2010Mixture",
     "CosmoSpace",
     "Mixture",
     "create_cosmo_sac_2002_matrix",
