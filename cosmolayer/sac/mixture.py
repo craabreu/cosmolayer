@@ -17,6 +17,10 @@ class Mixture:
     This class manages a collection of molecular components, each defined by
     a COSMO output file from quantum mechanical calculations.
 
+    .. note::
+        With all default parameters, this class is equivalent to
+        :class:`CosmoSac2010Mixture`.
+
     Parameters
     ----------
     components : dict[str, str | os.PathLike]
