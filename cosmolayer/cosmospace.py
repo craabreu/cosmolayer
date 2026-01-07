@@ -84,30 +84,40 @@ class CosmoSpace(torch.autograd.Function):
     Solves the following implicit equation for the activity coefficient vector γ, given
     the segment-type fraction vector x and the interaction Boltzmann-factor matrix B:
 
-        F(γ; x, B) = γ ⊙ (B a) - 𝟙ₙ = 𝟘ₙ
-
-    where a = x ⊙ γ is the vector of activities.
+        γ ⊙ (B (x ⊙ γ)) = 𝟙ₙ
 
     The user must make sure that min(B) > 0, min(x) ≥ 0, and xᵀ𝟙ₙ = sum(x) = 1. These
     conditions are assumed to be satisfied, as well as their implications for the
-    solutions, namely min(γ) > 0 and aᵀBa = 1.
+    solution, namely min(γ) > 0 and aᵀBa = 1, where a = x ⊙ γ is the activity vector.
 
-    Even though B is usually symmetric, there is no assumption about its symmetry.
+    Even though B is usually symmetric, it is not assumed to be so.
 
-    Parameters (apply inputs)
-    -------------------------
+    .. note::
+        Supports batching, meaning that x and B can have broadcastable leading
+        dimensions, and all computations are vectorized along these dimensions.
+
+    Parameters
+    ----------
     x : torch.Tensor
-        Vector of segment type fractions. Shape (..., n). Must satisfy sum(x) = 1.
+        Vector of segment type fractions. Must satisfy min(x) ≥ 0 and sum(x) = 1.
+        Shape: (..., n).
     B : torch.Tensor
-        Interaction Boltzmann factor matrix. Shape (..., n, n).
+        Interaction Boltzmann factor matrix. Must satisfy min(B) > 0.
+        Shape: (..., n, n).
     max_iter : int
         Maximum number of iterations.
 
     Returns
     -------
     gamma : torch.Tensor
-        The segment activity coefficient vector.
+        The segment activity coefficient vector. Satisfies min(γ) > 0 and aᵀBa = 1,
+        where a = x ⊙ γ, if input constraints are satisfied.
         Shape: (..., n).
+
+    Raises
+    ------
+    RuntimeError
+        If the fixed-point solver does not converge within ``max_iter`` iterations.
 
     Examples
     --------
@@ -141,6 +151,7 @@ class CosmoSpace(torch.autograd.Function):
             [-1.6...e-03, -8.5...e-04, -2.2...e-03, -1.3...e-03, -2.1...e-03],
             [ 5.2...e-03,  2.6...e-03,  6.8...e-03,  4.1...e-03,  6.6...e-03]])
     """
+
     @staticmethod
     def _fixed_point_solver(
         x: torch.Tensor, B: torch.Tensor, max_iter: int
@@ -153,8 +164,8 @@ class CosmoSpace(torch.autograd.Function):
                 gamma_prev = gamma
                 a = x * gamma
                 Ba = B @ a
-                gamma = torch.sqrt((a * Ba).sum(dim=-2, keepdim=True)) / Ba
-                if ((gamma - gamma_prev) / gamma).abs().max() < tol:
+                gamma = (a * Ba).sum(dim=-2, keepdim=True).sqrt() / Ba
+                if ((gamma - gamma_prev) / gamma).abs().max().item() < tol:
                     return gamma.squeeze(-1)
             raise RuntimeError(
                 f"Fixed-point solver did not converge in {max_iter} iterations"
@@ -162,7 +173,7 @@ class CosmoSpace(torch.autograd.Function):
 
     @staticmethod
     def forward(
-        ctx,
+        ctx: torch.autograd.function.FunctionCtx,
         x: torch.Tensor,
         B: torch.Tensor,
         max_iter: int = 1000,
@@ -173,14 +184,15 @@ class CosmoSpace(torch.autograd.Function):
 
     @staticmethod
     def backward(
-        ctx,
+        ctx: torch.autograd.function.NestedIOFunction,
         grad_gamma: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, None]:
         gamma, B, x = ctx.saved_tensors
-        JT = x.unsqueeze(-1) * B * gamma.unsqueeze(-2)
+        BT = B.transpose(-2, -1)
+        JT = x.unsqueeze(-1) * BT * gamma.unsqueeze(-2)
         JT.diagonal(dim1=-2, dim2=-1).add_(gamma.reciprocal())
         v = torch.linalg.solve(JT, grad_gamma.unsqueeze(-1)).squeeze(-1)
         gv = (gamma * v).unsqueeze(-1)
-        grad_x = -(gamma * (B.transpose(-2, -1) @ gv).squeeze(-1))
+        grad_x = -(gamma * (BT @ gv).squeeze(-1))
         grad_B = -(gv * (x * gamma).unsqueeze(-2))
         return grad_x, grad_B, None
