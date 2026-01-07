@@ -59,14 +59,13 @@ class CosmoSpace(torch.autograd.Function):
     ...     Component(files("cosmolayer.data") / f"{species}.cosmo")
     ...     for species in ("C=C(N)O", "NCCO")
     ... ]
-    >>> distributions = [
-    ...     component.get_segment_type_distribution(merged=True)
+    >>> log_distributions = [
+    ...     component.get_log_probabilities(merge=True)
     ...     for component in components
     ... ]
-    >>> p = torch.stack(
-    ...     [torch.tensor(p, dtype=torch.float32) for p in distributions],
-    ... )
-    >>> log_p = (p + 1e-10).log().requires_grad_(True)
+    >>> log_p = torch.stack(
+    ...     [torch.tensor(log_p, dtype=torch.float32) for log_p in log_distributions],
+    ... ).requires_grad_(True)
     >>> U_RT = torch.tensor(
     ...     create_cosmo_sac_2002_matrix(298.15),
     ...     dtype=torch.float32,

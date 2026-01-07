@@ -398,7 +398,10 @@ class Component:
         if regularize < 0:
             raise ValueError("Regularization value must be non-negative.")
         profiles = [self._sigma_profiles[segtype] for segtype in SEGMENT_GROUPS]
-        probabilities: NDArray[np.float64] = (
+        probabilities = (
             np.sum(profiles, axis=0) if merge else np.concatenate(profiles)
         ) / self._area
-        return np.log(probabilities.clip(min=regularize))
+        log_probabilities: NDArray[np.float64] = np.log(
+            probabilities.clip(min=regularize)
+        )
+        return log_probabilities
