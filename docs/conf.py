@@ -239,6 +239,13 @@ napoleon_google_docstring = False
 napoleon_use_param = True
 napoleon_use_ivar = True
 
+# Intersphinx mapping for cross-references to external documentation
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "torch": ("https://pytorch.org/docs/stable/", None),
+}
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
 
