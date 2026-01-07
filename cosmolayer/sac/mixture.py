@@ -1,9 +1,11 @@
 import os
+from collections.abc import Callable
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .component import Component
+from .interaction_matrices import create_cosmo_sac_2010_matrices
 
 
 class Mixture:
@@ -36,6 +38,10 @@ class Mixture:
     regularize : float, optional
         Minimum value for clipping probabilities before taking logarithm
         in get_log_probabilities(). Default is 1e-10.
+    interaction_matrix_generator : Callable, optional
+        Function to generate the interaction matrix for the mixture at a given
+        temperature. Default is :func:`create_cosmo_sac_2010_matrices` with default
+        parameters.
 
     Raises
     ------
@@ -81,6 +87,9 @@ class Mixture:
         sigma_0: float = 0.007,  # e/A^2
         merge: bool = False,
         regularize: float = 1e-10,
+        interaction_matrix_generator: Callable[
+            [float], tuple[NDArray[np.float64], ...]
+        ] = lambda temperature: create_cosmo_sac_2010_matrices(temperature),
     ) -> None:
         if not components:
             raise ValueError("At least one component must be provided.")
@@ -100,6 +109,7 @@ class Mixture:
         }
         self._merge = merge
         self._regularize = regularize
+        self._interaction_matrix_generator = interaction_matrix_generator
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -262,3 +272,40 @@ class Mixture:
                 for name in self._names
             ]
         )
+
+    def get_interaction_matrices(
+        self, temperature: float
+    ) -> tuple[NDArray[np.float64], ...]:
+        """Get the COSMO-SAC interaction matrices for the mixture.
+
+        Parameters
+        ----------
+        temperature : float
+            The temperature in Kelvin at which the interaction matrices are computed.
+
+        Returns
+        -------
+        tuple[NDArray[np.float64], ...]
+            Tuple of interaction matrices, one for each segment type pair.
+            Each matrix has shape (n_segment_types, n_segment_types).
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from cosmolayer.sac import Mixture
+        >>> components = {
+        ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
+        ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+        ... }
+        >>> mixture = Mixture(components)
+        >>> matrices = mixture.get_interaction_matrices(298.15)
+        >>> isinstance(matrices, tuple)
+        True
+        >>> len(matrices)
+        2
+        >>> all(isinstance(mat, np.ndarray) for mat in matrices)
+        True
+        >>> all(mat.shape == (153, 153) for mat in matrices)
+        True
+        """
+        return self._interaction_matrix_generator(temperature)
