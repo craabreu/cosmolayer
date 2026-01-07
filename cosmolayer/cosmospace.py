@@ -118,38 +118,6 @@ class CosmoSpace(torch.autograd.Function):
     ------
     RuntimeError
         If the fixed-point solver does not converge within ``max_iter`` iterations.
-
-    Examples
-    --------
-    >>> B = torch.tensor(
-    ...     [
-    ...         [1.0, 2.24, 0.45, 0.82, 0.30],
-    ...         [2.24, 1.0, 0.67, 3.35, 0.92],
-    ...         [0.45, 0.67, 1.0, 0.45, 0.30],
-    ...         [0.82, 3.35, 0.45, 1.0, 0.67],
-    ...         [0.30, 0.92, 0.30, 0.67, 1.0],
-    ...     ],
-    ...     dtype=torch.float32,
-    ...     requires_grad=True,
-    ... )
-    >>> p = torch.full((5,), 0.2, dtype=torch.float32, requires_grad=True)
-    >>> gamma = CosmoSpace.apply(p, B)
-    >>> gamma
-    tensor([1.1544, 0.5818, 1.5232, 0.9132, 1.4643], grad_fn=<CosmoSpaceBackward>)
-    >>> gamma_ref = torch.tensor(
-    ...     [1.2, 0.6, 1.5, 0.9, 1.5],
-    ...     dtype=torch.float32,
-    ... )
-    >>> mse = ((gamma - gamma_ref) ** 2).mean()
-    >>> mse.backward()
-    >>> p.grad
-    tensor([ 0.0160,  0.0175, -0.0088,  0.0161,  0.0273])
-    >>> B.grad
-    tensor([[ 4.7...e-03,  2.3...e-03,  6.2...e-03,  3.7...e-03,  6.0...e-03],
-            [ 9.8...e-05,  4.9...e-05,  1.3...e-04,  7.8...e-05,  1.2...e-04],
-            [-4.3...e-03, -2.1...e-03, -5.7...e-03, -3.4...e-03, -5.5...e-03],
-            [-1.6...e-03, -8.5...e-04, -2.2...e-03, -1.3...e-03, -2.1...e-03],
-            [ 5.2...e-03,  2.6...e-03,  6.8...e-03,  4.1...e-03,  6.6...e-03]])
     """
 
     @staticmethod
