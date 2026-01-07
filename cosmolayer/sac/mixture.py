@@ -70,8 +70,8 @@ class Mixture:
     103.51765...
     >>> mixture[0].get_area()
     97.34554...
-    >>> list(mixture.names)
-    ['1-aminoethenol', '2-aminoethanol']
+    >>> mixture.get_component_names()
+    ('1-aminoethenol', '2-aminoethanol')
     >>> areas = mixture.get_areas()
     >>> areas.shape
     (2,)
@@ -114,17 +114,6 @@ class Mixture:
         self._regularize = regularize
         self._interaction_matrix_generator = interaction_matrix_generator
 
-    @property
-    def names(self) -> tuple[str, ...]:
-        """Get the names of all components in the mixture.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Tuple of component names in the order they were provided.
-        """
-        return tuple(self._names)
-
     def __len__(self) -> int:
         """Return the number of components in the mixture."""
         return len(self._names)
@@ -152,6 +141,16 @@ class Mixture:
         if isinstance(key, str):
             return self._components_dict[key]
         return self._components_dict[self._names[key]]
+
+    def get_component_names(self) -> tuple[str, ...]:
+        """Get the names of all components in the mixture.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Tuple of component names in the order they were provided.
+        """
+        return tuple(self._names)
 
     def get_areas(self) -> NDArray[np.float64]:
         """Get cavity surface areas for all components.
