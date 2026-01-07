@@ -6,77 +6,7 @@
 """
 
 import torch
-
-
-def cosmospace(
-    x: torch.Tensor,
-    U_RT: torch.Tensor,
-    max_iter: int = 1000,
-) -> tuple[torch.Tensor, int]:
-    r"""Solves the self-consistent equation for the segment activities.
-
-    Parameters
-    ----------
-    x : torch.Tensor
-        The segment type distribution vector, assumed to satisfy x.sum(dim=-1) = 1.
-        Shape: (..., n).
-    U_RT : torch.Tensor
-        Reduced interaction energy matrix U/RT. The corresponding Boltzmann-factor
-        matrix is computed internally as B = exp(-U_RT). Shape: (..., n, n).
-    max_iter : int
-        Maximum number of iterations.
-
-    Returns
-    -------
-    gamma : torch.Tensor
-        The segment activity coefficient vector. Shape: (..., n).
-    iterations : int
-        The number of iterations taken to converge.
-
-    Raises
-    ------
-    RuntimeError
-        If the fixed-point solver does not converge in the maximum number of iterations.
-
-    Examples
-    --------
-    >>> from cosmolayer import Component, create_cosmo_sac_2002_matrix
-    >>> from importlib.resources import files
-    >>> components = [
-    ...     Component(files("cosmolayer.data") / f"{species}.cosmo")
-    ...     for species in ("C=C(N)O", "NCCO")
-    ... ]
-    >>> distributions = [
-    ...     component.get_segment_type_distribution(merged=True)
-    ...     for component in components
-    ... ]
-    >>> P = torch.stack(
-    ...     [torch.tensor(p, dtype=torch.float32) for p in distributions],
-    ... )
-    >>> U_RT = create_cosmo_sac_2002_matrix(298.15)
-    >>> U_RT = torch.tensor(U_RT, dtype=torch.float32)
-    >>> Gamma, iterations = cosmospace(P, U_RT)
-    >>> 80 < iterations < 90
-    True
-    >>> Gamma.log()
-    tensor([[ -5.2...,  -4.6..., ... -13.3..., -14.4...],
-            [-22.4..., -20.7..., ... -4.8...,  -5.5...]])
-    >>> B = torch.exp(-U_RT)
-    >>> [(gamma.T @ (B * p) @ gamma).item() for gamma, p in zip(Gamma, P)]
-    [51.000..., 51.000...]
-    """
-    tol = 10 * torch.finfo(x.dtype).eps
-    x = x.unsqueeze(-1)
-    B = torch.exp(-U_RT)
-    gamma = (B @ x).reciprocal()
-    for iterations in range(max_iter):
-        gamma_prev = gamma
-        a = x * gamma
-        Ba = B @ a
-        gamma = torch.sqrt((a * Ba).sum(dim=-2, keepdim=True)) / Ba
-        if ((gamma - gamma_prev) / gamma).abs().max() < tol:
-            return gamma.squeeze(-1), iterations + 1
-    raise RuntimeError(f"Fixed-point solver did not converge in {max_iter} iterations")
+from torch.autograd.function import FunctionCtx, NestedIOFunction
 
 
 class CosmoSpace(torch.autograd.Function):
@@ -120,6 +50,37 @@ class CosmoSpace(torch.autograd.Function):
     ------
     RuntimeError
         If the fixed-point solver does not converge within ``max_iter`` iterations.
+
+    Examples
+    --------
+    >>> from cosmolayer import Component, create_cosmo_sac_2002_matrix
+    >>> from importlib.resources import files
+    >>> components = [
+    ...     Component(files("cosmolayer.data") / f"{species}.cosmo")
+    ...     for species in ("C=C(N)O", "NCCO")
+    ... ]
+    >>> distributions = [
+    ...     component.get_segment_type_distribution(merged=True)
+    ...     for component in components
+    ... ]
+    >>> p = torch.stack(
+    ...     [torch.tensor(p, dtype=torch.float32) for p in distributions],
+    ... )
+    >>> log_p = (p + 1e-10).log().requires_grad_(True)
+    >>> U_RT = torch.tensor(
+    ...     create_cosmo_sac_2002_matrix(298.15),
+    ...     dtype=torch.float32,
+    ...     requires_grad=True,
+    ... )
+    >>> gamma = CosmoSpace.apply(log_p, U_RT)
+    >>> gamma.log()
+    tensor([[ -5.2...,  -4.6...,  ... -13.3..., -14.5...],
+            [-22.4..., -20.7...,  ... -4.8...,  -5.5...]], grad_fn=<LogBackward0>)
+    >>> loss = (gamma ** 2).sum()
+    >>> loss.backward()
+    >>> log_p.grad
+    tensor([[ 2.7...e-07,  6.0...e-08,  ... -4.8...e-06],
+            [-5.1...e-08, -5.0...e-08,  ...  6.3...e-08]])
     """
 
     @staticmethod
@@ -144,7 +105,7 @@ class CosmoSpace(torch.autograd.Function):
 
     @staticmethod
     def forward(
-        ctx: torch.autograd.function.FunctionCtx,
+        ctx: FunctionCtx,
         log_p: torch.Tensor,
         U_RT: torch.Tensor,
         max_iter: int = 1000,
@@ -157,7 +118,7 @@ class CosmoSpace(torch.autograd.Function):
 
     @staticmethod
     def backward(
-        ctx: torch.autograd.function.NestedIOFunction,
+        ctx: NestedIOFunction,
         grad_gamma: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, None]:
         gamma, x, B = ctx.saved_tensors
