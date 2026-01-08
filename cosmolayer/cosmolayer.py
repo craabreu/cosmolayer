@@ -5,7 +5,9 @@
 
 from typing import cast
 
+import numpy as np
 import torch
+from numpy.typing import NDArray
 
 from cosmolayer.cosmospace import CosmoSpace
 
@@ -30,7 +32,7 @@ class CosmoLayer(torch.nn.Module):
 
     Parameters
     ----------
-    interaction_matrices : tuple[torch.Tensor, ...]
+    interaction_matrices : tuple[NDArray[np.float64], ...]
         Reduced interaction energy matrices. Must be square matrices, all with the same
         shape.
     exponents : tuple[float, ...]
@@ -62,11 +64,17 @@ class CosmoLayer(torch.nn.Module):
     >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents, area_per_segment)
     >>> cosmo_layer
     CosmoLayer(t_ref=298.15, aps=7.50, exponents=[1], n_types=51)
+    >>> x = torch.tensor([0.235, 0.765], requires_grad=True)
+    >>> a = torch.tensor(mixture.get_areas())
+    >>> v = torch.tensor(mixture.get_volumes())
+    >>> ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
+    >>> ln_gamma_c.tolist()
+    [-0.27687..., -0.052266...]
     """
 
     def __init__(  # noqa: PLR0913
         self,
-        interaction_matrices: tuple[torch.Tensor, ...],
+        interaction_matrices: tuple[NDArray[np.float64], ...],
         exponents: tuple[float, ...],
         area_per_segment: float,
         *,
@@ -188,7 +196,7 @@ class CosmoLayer(torch.nn.Module):
         # Shape: (..., n + 1, n_types)
 
         # Call CosmoSpace on mixture-level probabilities
-        log_Gamma_all = CosmoSpace.apply(log_P_all, U_RT)
+        log_Gamma_all = CosmoSpace.apply(log_P_all, U_RT)  # type: ignore[no-untyped-call]
         # Shape: (..., n + 1, n_types)
 
         log_gamma_s = log_Gamma_all[..., -1]  # Shape: (..., n_types)
@@ -208,7 +216,8 @@ class CosmoLayer(torch.nn.Module):
             dim=-1, keepdim=True
         )  # Shape: (..., n, 1)
 
-        return n * (P_log_gamma_s.unsqueeze(-1) - P_log_Gamma).squeeze(-1)
+        result = n * (P_log_gamma_s.unsqueeze(-1) - P_log_Gamma).squeeze(-1)
+        return cast(torch.Tensor, result)
         # Shape: (..., n)
 
     def combinatorial_log_activity_coefficients(
@@ -217,16 +226,31 @@ class CosmoLayer(torch.nn.Module):
         a: torch.Tensor,
         v: torch.Tensor,
     ) -> torch.Tensor:
-        """Compute the logarithms of the combinatorial activity coefficients.
+        r"""Compute the logarithms of the combinatorial activity coefficients.
+
+        This method implements the Staverman-Guggenheim model:
+
+        .. math::
+
+            \ln {\boldsymbol \gamma}_c = {\mathbf 1}
+                - \frac{\mathbf v}{v}
+                + \ln \frac{\mathbf v}{v}
+                + \frac{Z}{2 a_0} \left[
+                    a \frac{\mathbf v}{v}
+                    + {\mathbf a} \odot \left(
+                        \ln \frac{\mathbf a}{a} - \ln \frac{\mathbf v}{v} - {\mathbf 1}
+                    \right)
+                \right]
 
         Parameters
         ----------
         x : torch.Tensor
-            Mole fractions of the components. Must sum to 1. Shape: (..., n).
+            Mole fractions of the mixture components. Must sum to 1. Shape: (..., n).
         a : torch.Tensor
-            Surface areas of the components, all in the same units. Shape: (..., n).
+            Surface areas of the mixture components, all in the same units.
+            Shape: (..., n).
         v : torch.Tensor
-            Volumes of the components, all in the same units. Shape: (..., n).
+            Volumes of the mixture components, all in the same units. Shape: (..., n).
 
         Returns
         -------
@@ -234,17 +258,16 @@ class CosmoLayer(torch.nn.Module):
             Logarithms of the combinatorial activity coefficients. Shape: (..., n).
         """
         am = (a * x).sum(dim=-1, keepdim=True)
+        vm = (v * x).sum(dim=-1, keepdim=True)
         a_am = a / am
-        v_vm = v / (v * x).sum(dim=-1, keepdim=True)
+        v_vm = v / vm
+        log_a_am = a_am.log()
         log_v_vm = v_vm.log()
+        kappa = cast(torch.Tensor, self.kappa)
         ln_gamma_c = (
-            1
-            - v_vm
-            - self.kappa * am * (a_am - v_vm)
-            + log_v_vm
-            + self.kappa * a * (a_am.log() - log_v_vm)
+            1 - v_vm + log_v_vm + kappa * (am * v_vm + a * (log_a_am - log_v_vm - 1))
         )
-        return ln_gamma_c
+        return cast(torch.Tensor, ln_gamma_c)
 
     def forward(
         self,
