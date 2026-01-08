@@ -3,20 +3,22 @@ channels:
   - conda-forge
   - mdtools
 dependencies:
-    # Base depends (from pyproject.toml)
+    # Base depends
   - python
-  - lightning
+  - pip
   - numpy
-  - opt-einsum
   - pandas
   - periodictable
   - pyyaml
   - scipy
-  - torch
+  - typing-extensions
 
     # Testing
+  - matplotlib
   - pytest
+  - pytest-cov
 
-    # Linting
-  - ruff
-  - mypy
+    # Machine learning dependencies
+  - pytorch
+  - lightning
+  - opt-einsum
