@@ -26,7 +26,8 @@ class CosmoLayer(torch.nn.Module):
     Parameters
     ----------
     interaction_matrices : tuple[torch.Tensor, ...]
-        Reduced interaction energy matrices.
+        Reduced interaction energy matrices. Must be square matrices, all with the same
+        shape.
     exponents : tuple[float, ...]
         Temperature exponents. Must be the same length as ``interaction_matrices``.
     reference_temperature : float, optional
@@ -52,7 +53,7 @@ class CosmoLayer(torch.nn.Module):
     >>> exponents = mixture.get_temperature_exponents()
     >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents)
     >>> cosmo_layer
-    CosmoLayer(t_ref=298.15 K, exponents=[1, 3])
+    CosmoLayer(t_ref=298.15, exponents=[1, 3], num_types=153)
     """
 
     def __init__(
@@ -73,6 +74,14 @@ class CosmoLayer(torch.nn.Module):
             )
 
         self._interaction_matrices: list[torch.Tensor] = []
+
+        shapes = {matrix.shape for matrix in interaction_matrices}
+        if len(shapes) != 1:
+            raise ValueError("All interaction matrices must have the same shape")
+        rows, cols = shapes.pop()
+        if rows != cols:
+            raise ValueError("Interaction matrices must be square")
+        self._num_types = rows
 
         for idx, input_matrix in enumerate(interaction_matrices, start=1):
             matrix = torch.as_tensor(input_matrix)
@@ -97,4 +106,91 @@ class CosmoLayer(torch.nn.Module):
     def extra_repr(self) -> str:
         ref_temp = cast(torch.Tensor, self.reference_temperature).item()
         exp = cast(torch.Tensor, self.exponents).tolist()
-        return f"t_ref={ref_temp:.2f} K, exponents={exp}"
+        return f"t_ref={ref_temp:.2f}, exponents={exp}, num_types={self._num_types}"
+
+    def residual_log_activity_coefficients(
+        self,
+        temperature: torch.Tensor,
+        mole_fractions: torch.Tensor,
+        areas: torch.Tensor,
+        log_p: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute the logarithms of the residual activity coefficients.
+
+        Parameters
+        ----------
+        temperature : torch.Tensor
+            Temperature in the same units as the reference temperature. Shape: (...,).
+        mole_fractions : torch.Tensor
+            Mole fractions of the components. Must sum to 1. Shape: (..., n).
+        areas : torch.Tensor
+            Surface areas of the components, all in the same units. Shape: (..., n).
+        log_p : torch.Tensor
+            Log-probabilities of segment types. Shape: (..., num_types).
+
+        Returns
+        -------
+        torch.Tensor
+            Logarithms of the residual activity coefficients. Shape: (..., n).
+        """
+        raise NotImplementedError("Not implemented")
+
+    def combinatorial_log_activity_coefficients(
+        self,
+        mole_fractions: torch.Tensor,
+        areas: torch.Tensor,
+        volumes: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute the logarithms of the combinatorial activity coefficients.
+
+        Parameters
+        ----------
+        mole_fractions : torch.Tensor
+            Mole fractions of the components. Must sum to 1. Shape: (..., n).
+        areas : torch.Tensor
+            Surface areas of the components, all in the same units. Shape: (..., n).
+        volumes : torch.Tensor
+            Volumes of the components, all in the same units. Shape: (..., n).
+
+        Returns
+        -------
+        torch.Tensor
+            Logarithms of the combinatorial activity coefficients. Shape: (..., n).
+        """
+        raise NotImplementedError("Not implemented")
+
+    def forward(
+        self,
+        temperature: torch.Tensor,
+        mole_fractions: torch.Tensor,
+        areas: torch.Tensor,
+        volumes: torch.Tensor,
+        log_p: torch.Tensor,
+    ) -> torch.Tensor:
+        """Forward pass of the CosmoLayer.
+
+        Parameters
+        ----------
+        temperature : torch.Tensor
+            Temperature in the same units as the reference temperature. Shape: (...,).
+        mole_fractions : torch.Tensor
+            Mole fractions of the components. Must sum to 1. Shape: (..., n).
+        areas : torch.Tensor
+            Surface areas of the components, all in the same units. Shape: (..., n).
+        volumes : torch.Tensor
+            Volumes of the components, all in the same units. Shape: (..., n).
+        log_p : torch.Tensor
+            Log-probabilities of segment types. Shape: (..., num_types).
+
+        Returns
+        -------
+        torch.Tensor
+            Logarithms of the activity coefficients. Shape: (..., n).
+        """
+        log_gamma_r = self.residual_log_activity_coefficients(
+            temperature, mole_fractions, areas, log_p
+        )
+        log_gamma_c = self.combinatorial_log_activity_coefficients(
+            mole_fractions, areas, volumes
+        )
+        return log_gamma_r + log_gamma_c
