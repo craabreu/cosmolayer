@@ -109,7 +109,7 @@ def test_dmol3_parser_integration() -> None:
     component = Component(cosmo_path)  # type: ignore[arg-type]
 
     # Load reference sigma profiles
-    sigma_path = files("cosmolayer.data") / "NCCO.sigma"
+    sigma_path = files("cosmolayer.data") / "NCCO.sigma3"
     expected_sigma_grid, expected_profiles, expected_area, expected_volume = (
         load_reference_sigma_profiles(str(sigma_path))
     )
