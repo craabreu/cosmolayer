@@ -68,6 +68,23 @@ class CosmoLayer(torch.nn.Module):
     >>> ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
     >>> ln_gamma_c.tolist()
     [-0.27687..., -0.052266...]
+
+    Check the thermodynamic consistency (partial molar properties):
+
+    .. math::
+
+        \frac{G^E}{RT} = {\mathbf x} \cdot \ln {\boldsymbol \gamma}
+        \quad \Rightarrow \quad
+        RT \ln {\boldsymbol \gamma} = \nabla_{\mathbf x}G^E + \left(
+            G^E - \mathbf x \cdot \nabla_{\mathbf x}G^E
+        \right) {\mathbf 1}
+
+    >>> gERT_c = (x * ln_gamma_c).sum()
+    >>> gERT_c.backward()
+    >>> x.grad
+    tensor([-0.276..., -0.052...])
+    >>> (x.grad + gERT_c - (x * x.grad).sum()).tolist()
+    [-0.27687..., -0.052266...]
     """
 
     def __init__(  # noqa: PLR0913

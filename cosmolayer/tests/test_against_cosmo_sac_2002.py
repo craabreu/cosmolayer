@@ -7,7 +7,7 @@ Reference implementation:
 
 import re
 from importlib.resources import files
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
 import numpy as np
 import pandas as pd
@@ -352,7 +352,7 @@ def test_combinatorial_multiple_mixtures_multiple_compositions(
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
-def test_combinatorial_multiple_mixtures_multiple_compositions_broadcast(
+def test_combinatorial_broadcasting(
     n: int,
     mixtures: list[_MixtureType],
     compositions: dict[int, list[NDArray[np.float64]]],
@@ -398,3 +398,46 @@ def test_combinatorial_multiple_mixtures_multiple_compositions_broadcast(
     assert ln_gamma_c.shape == (num_compositions, num_mixtures, n)
 
     np.testing.assert_allclose(ln_gamma_c.numpy(), ln_gamma_c_ref, rtol=_RTOL)
+
+
+def test_combinatorial_differentiation(
+    mixtures: list[_MixtureType],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    cosmo_layer: CosmoLayer,
+) -> None:
+    """Test that combinatorial activity coefficients backpropagate correctly."""
+    # Use double precision for gradcheck
+    dtype = torch.float64
+
+    def reduced_excess_gibbs_energy(
+        x: torch.Tensor, a: torch.Tensor, v: torch.Tensor
+    ) -> torch.Tensor:
+        """Scalar function for gradcheck: gERT_c = x^T @ ln_gamma_c."""
+        ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
+        return (x * ln_gamma_c).sum()
+
+    for mixture in mixtures:
+        n, _, areas, volumes = mixture
+        a = torch.as_tensor(areas, dtype=dtype).requires_grad_(True)
+        v = torch.as_tensor(volumes, dtype=dtype).requires_grad_(True)
+        for composition in compositions[n]:
+            x = torch.as_tensor(composition, dtype=dtype).requires_grad_(True)
+
+            # Check that the gradients are computed correctly
+            assert torch.autograd.gradcheck(
+                reduced_excess_gibbs_energy,
+                (x, a, v),
+                atol=1e-6,
+                rtol=1e-5,
+                eps=1e-6,
+            )
+
+            # Check the thermodynamic consistency
+            gERT = reduced_excess_gibbs_energy(x, a, v)
+            gERT.backward()
+            with torch.no_grad():
+                log_gamma = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
+                x_grad = cast(torch.Tensor, x.grad)
+                np.testing.assert_allclose(
+                    log_gamma, x_grad + gERT - (x * x_grad).sum(), rtol=_RTOL
+                )
