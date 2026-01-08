@@ -7,6 +7,11 @@ from typing import cast
 
 import torch
 
+from cosmolayer.cosmospace import CosmoSpace
+
+AREA_PER_CONTACT = 79.53  # Å²
+COORDINATION_NUMBER = 10
+
 
 class CosmoLayer(torch.nn.Module):
     r"""Differentiable COSMO-type activity coefficient layer.
@@ -30,6 +35,8 @@ class CosmoLayer(torch.nn.Module):
         shape.
     exponents : tuple[float, ...]
         Temperature exponents. Must be the same length as ``interaction_matrices``.
+    reference_area : float
+        Reference area (area per segment).
     reference_temperature : float, optional
         Reference temperature. Default is 298.15 K.
     learn_matrices : bool, optional
@@ -51,17 +58,19 @@ class CosmoLayer(torch.nn.Module):
     >>> mixture = CosmoSac2010Mixture(components)
     >>> interaction_matrices = mixture.get_interaction_matrices(T_ref)
     >>> exponents = mixture.get_temperature_exponents()
-    >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents)
+    >>> reference_area = 7.25  # mixture.get_area_per_segment()
+    >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents, reference_area)
     >>> cosmo_layer
-    CosmoLayer(t_ref=298.15, exponents=[1, 3], num_types=153)
+    CosmoLayer(t_ref=298.15, a_ref=7.25, exponents=[1, 3], n_types=153)
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         interaction_matrices: tuple[torch.Tensor, ...],
         exponents: tuple[float, ...],
+        reference_area: float,
         *,
-        reference_temperature: float = 298.15,
+        reference_temperature: float = 298.15,  # K
         learn_matrices: bool = False,
     ):
         super().__init__()
@@ -73,7 +82,7 @@ class CosmoLayer(torch.nn.Module):
                 f"number of interaction matrices ({num_matrices})"
             )
 
-        self._interaction_matrices: list[torch.Tensor] = []
+        self._num_matrices = num_matrices
 
         shapes = {matrix.shape for matrix in interaction_matrices}
         if len(shapes) != 1:
@@ -81,7 +90,7 @@ class CosmoLayer(torch.nn.Module):
         rows, cols = shapes.pop()
         if rows != cols:
             raise ValueError("Interaction matrices must be square")
-        self._num_types = rows
+        self._n_types = rows
 
         for idx, input_matrix in enumerate(interaction_matrices, start=1):
             matrix = torch.as_tensor(input_matrix)
@@ -89,10 +98,8 @@ class CosmoLayer(torch.nn.Module):
             if learn_matrices:
                 param = torch.nn.Parameter(matrix)
                 self.register_parameter(name, param)
-                self._interaction_matrices.append(param)
             else:
                 self.register_buffer(name, matrix)
-                self._interaction_matrices.append(getattr(self, name))
 
         self.register_buffer(
             "exponents",
@@ -102,54 +109,125 @@ class CosmoLayer(torch.nn.Module):
             "reference_temperature",
             torch.as_tensor(reference_temperature),
         )
+        self.register_buffer(
+            "reference_area",
+            torch.as_tensor(reference_area),
+        )
+        self.register_buffer(
+            "kappa",
+            torch.as_tensor(COORDINATION_NUMBER / (2 * AREA_PER_CONTACT)),
+        )
 
     def extra_repr(self) -> str:
         ref_temp = cast(torch.Tensor, self.reference_temperature).item()
         exp = cast(torch.Tensor, self.exponents).tolist()
-        return f"t_ref={ref_temp:.2f}, exponents={exp}, num_types={self._num_types}"
+        a_ref = cast(torch.Tensor, self.reference_area).item()
+        return (
+            f"t_ref={ref_temp:.2f}, "
+            f"a_ref={a_ref:.2f}, "
+            f"exponents={exp}, "
+            f"n_types={self._n_types}"
+        )
 
     def residual_log_activity_coefficients(
         self,
-        temperature: torch.Tensor,
-        mole_fractions: torch.Tensor,
-        areas: torch.Tensor,
-        log_p: torch.Tensor,
+        T: torch.Tensor,
+        x: torch.Tensor,
+        a: torch.Tensor,
+        log_P: torch.Tensor,
     ) -> torch.Tensor:
         """Compute the logarithms of the residual activity coefficients.
 
         Parameters
         ----------
-        temperature : torch.Tensor
+        T : torch.Tensor
             Temperature in the same units as the reference temperature. Shape: (...,).
-        mole_fractions : torch.Tensor
+        x : torch.Tensor
             Mole fractions of the components. Must sum to 1. Shape: (..., n).
-        areas : torch.Tensor
+        a : torch.Tensor
             Surface areas of the components, all in the same units. Shape: (..., n).
-        log_p : torch.Tensor
-            Log-probabilities of segment types. Shape: (..., num_types).
+        log_P : torch.Tensor
+            Log-probabilities of segment types. Shape: (..., n, n_types).
 
         Returns
         -------
         torch.Tensor
             Logarithms of the residual activity coefficients. Shape: (..., n).
         """
-        raise NotImplementedError("Not implemented")
+        # Compute temperature-dependent U/RT with proper batching
+        ref_temp = cast(torch.Tensor, self.reference_temperature).to(T.device)
+        beta = ref_temp / T.unsqueeze(-1).unsqueeze(-1)  # Shape: (..., 1, 1)
+
+        # Fix: Accumulate weighted matrices properly
+        U_RT = torch.zeros(
+            (*beta.shape[:-2], self._n_types, self._n_types),
+            dtype=beta.dtype,
+            device=beta.device,
+        )
+        exponents = cast(torch.Tensor, self.exponents)
+        for i, exponent in enumerate(exponents):
+            matrix = cast(
+                torch.Tensor, getattr(self, f"interaction_matrix_{i + 1}")
+            )
+            U_RT = U_RT + matrix * beta.pow(exponent.item())
+        # Shape: (..., n_types, n_types)
+
+        P = torch.exp(log_P)  # Shape: (..., n, n_types)
+        theta = x * a / (x * a).sum(dim=-1, keepdim=True)  # Shape: (..., n)
+
+        # Compute mixture-level log-probabilities by weighting component
+        # probabilities: p_mixture = sum_i (theta_i * P_i)
+        # In log space: logsumexp(log_P + log(theta))
+        log_theta = theta.log().unsqueeze(-1)  # Shape: (..., n, 1)
+
+        # Compute surface-weighted mixture probabilities
+        # p_s = sum_i (theta_i * P_i) weighted by surface areas
+        log_p_s = torch.logsumexp(log_P + log_theta, dim=-2)
+        # Shape: (..., n_types)
+
+        # Stack mixture-level probabilities to component-level probabilities
+        log_P_all = torch.stack([log_P, log_p_s], dim=-2)
+        # Shape: (..., n + 1, n_types)
+
+        # Call CosmoSpace on mixture-level probabilities
+        log_Gamma_all = CosmoSpace.apply(log_P_all, U_RT)
+        # Shape: (..., n + 1, n_types)
+
+        log_gamma_s = log_Gamma_all[..., -1]  # Shape: (..., n_types)
+        log_Gamma = log_Gamma_all[..., :-1]  # Shape: (..., n, n_types)
+
+        # Compute component-level activity coefficients
+        area_per_seg = cast(torch.Tensor, self.reference_area)
+        n = a / area_per_seg  # Shape: (..., n)
+
+        # Compute residual activity coefficients for each component
+        # P @ log_gamma_s: (..., n, n_types) @ (..., n_types) -> (..., n)
+        log_gamma_s_expanded = log_gamma_s.unsqueeze(-2)  # Shape: (..., 1, n_types)
+        P_log_gamma_s = (P * log_gamma_s_expanded).sum(dim=-1)  # Shape: (..., n)
+
+        log_Gamma_expanded = log_Gamma.unsqueeze(-2)  # Shape: (..., 1, n_types)
+        P_log_Gamma = (P * log_Gamma_expanded).sum(
+            dim=-1, keepdim=True
+        )  # Shape: (..., n, 1)
+
+        return n * (P_log_gamma_s.unsqueeze(-1) - P_log_Gamma).squeeze(-1)
+        # Shape: (..., n)
 
     def combinatorial_log_activity_coefficients(
         self,
-        mole_fractions: torch.Tensor,
-        areas: torch.Tensor,
-        volumes: torch.Tensor,
+        x: torch.Tensor,
+        a: torch.Tensor,
+        v: torch.Tensor,
     ) -> torch.Tensor:
         """Compute the logarithms of the combinatorial activity coefficients.
 
         Parameters
         ----------
-        mole_fractions : torch.Tensor
+        x : torch.Tensor
             Mole fractions of the components. Must sum to 1. Shape: (..., n).
-        areas : torch.Tensor
+        a : torch.Tensor
             Surface areas of the components, all in the same units. Shape: (..., n).
-        volumes : torch.Tensor
+        v : torch.Tensor
             Volumes of the components, all in the same units. Shape: (..., n).
 
         Returns
@@ -157,7 +235,18 @@ class CosmoLayer(torch.nn.Module):
         torch.Tensor
             Logarithms of the combinatorial activity coefficients. Shape: (..., n).
         """
-        raise NotImplementedError("Not implemented")
+        am = (a * x).sum(dim=-1, keepdim=True)
+        a_am = a / am
+        v_vm = v / (v * x).sum(dim=-1, keepdim=True)
+        log_v_vm = v_vm.log()
+        ln_gamma_c = (
+            1
+            - v_vm
+            - self.kappa * am * (a_am - v_vm)
+            + log_v_vm
+            + self.kappa * a * (a_am.log() - log_v_vm)
+        )
+        return ln_gamma_c
 
     def forward(
         self,
