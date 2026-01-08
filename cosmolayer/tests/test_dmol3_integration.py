@@ -106,7 +106,7 @@ def test_dmol3_parser_integration() -> None:
     """
     # Load the COSMO file using the Component class with default parameters
     cosmo_path = files("cosmolayer.data") / "NCCO.cosmo"
-    component = Component(cosmo_path)  # type: ignore[arg-type]
+    component = Component(str(cosmo_path))
 
     # Load reference sigma profiles
     sigma_path = files("cosmolayer.data") / "NCCO.sigma3"

@@ -154,11 +154,7 @@ disallow_untyped_defs = true
 ignore_missing_imports = true
 strict = true
 
-# Disable specific torch.autograd.Function typing issues
+# Allow untyped calls in test files (PyTorch autograd functions are untyped)
 [[tool.mypy.overrides]]
-module = "cosmolayer.cosmospace"
-disable_error_code = ["misc"]
-
-[[tool.mypy.overrides]]
-module = "cosmolayer.tests.test_cosmospace_grad"
+module = "cosmolayer.tests.*"
 disable_error_code = ["no-untyped-call"]
