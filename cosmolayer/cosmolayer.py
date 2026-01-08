@@ -35,8 +35,8 @@ class CosmoLayer(torch.nn.Module):
         shape.
     exponents : tuple[float, ...]
         Temperature exponents. Must be the same length as ``interaction_matrices``.
-    reference_area : float
-        Reference area (area per segment).
+    area_per_segment : float
+        Surface area of one segment.
     reference_temperature : float, optional
         Reference temperature. Default is 298.15 K.
     learn_matrices : bool, optional
@@ -48,27 +48,27 @@ class CosmoLayer(torch.nn.Module):
     --------
     >>> from importlib.resources import files
     >>> from cosmolayer import CosmoLayer
-    >>> from cosmolayer.sac import CosmoSac2010Mixture
+    >>> from cosmolayer.sac import CosmoSac2002Mixture
     >>> import torch
     >>> T_ref = 298.15  # K
     >>> components = {
-    ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
     ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+    ...     "water": files("cosmolayer.data") / "O.cosmo",
     ... }
-    >>> mixture = CosmoSac2010Mixture(components)
+    >>> mixture = CosmoSac2002Mixture(components)
     >>> interaction_matrices = mixture.get_interaction_matrices(T_ref)
     >>> exponents = mixture.get_temperature_exponents()
-    >>> reference_area = 7.25  # mixture.get_area_per_segment()
-    >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents, reference_area)
+    >>> area_per_segment = mixture.get_area_per_segment()
+    >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents, area_per_segment)
     >>> cosmo_layer
-    CosmoLayer(t_ref=298.15, a_ref=7.25, exponents=[1, 3], n_types=153)
+    CosmoLayer(t_ref=298.15, aps=7.50, exponents=[1], n_types=51)
     """
 
     def __init__(  # noqa: PLR0913
         self,
         interaction_matrices: tuple[torch.Tensor, ...],
         exponents: tuple[float, ...],
-        reference_area: float,
+        area_per_segment: float,
         *,
         reference_temperature: float = 298.15,  # K
         learn_matrices: bool = False,
@@ -110,8 +110,8 @@ class CosmoLayer(torch.nn.Module):
             torch.as_tensor(reference_temperature),
         )
         self.register_buffer(
-            "reference_area",
-            torch.as_tensor(reference_area),
+            "area_per_segment",
+            torch.as_tensor(area_per_segment),
         )
         self.register_buffer(
             "kappa",
@@ -121,10 +121,10 @@ class CosmoLayer(torch.nn.Module):
     def extra_repr(self) -> str:
         ref_temp = cast(torch.Tensor, self.reference_temperature).item()
         exp = cast(torch.Tensor, self.exponents).tolist()
-        a_ref = cast(torch.Tensor, self.reference_area).item()
+        aps = cast(torch.Tensor, self.area_per_segment).item()
         return (
             f"t_ref={ref_temp:.2f}, "
-            f"a_ref={a_ref:.2f}, "
+            f"aps={aps:.2f}, "
             f"exponents={exp}, "
             f"n_types={self._n_types}"
         )
@@ -166,9 +166,7 @@ class CosmoLayer(torch.nn.Module):
         )
         exponents = cast(torch.Tensor, self.exponents)
         for i, exponent in enumerate(exponents):
-            matrix = cast(
-                torch.Tensor, getattr(self, f"interaction_matrix_{i + 1}")
-            )
+            matrix = cast(torch.Tensor, getattr(self, f"interaction_matrix_{i + 1}"))
             U_RT = U_RT + matrix * beta.pow(exponent.item())
         # Shape: (..., n_types, n_types)
 
@@ -197,7 +195,7 @@ class CosmoLayer(torch.nn.Module):
         log_Gamma = log_Gamma_all[..., :-1]  # Shape: (..., n, n_types)
 
         # Compute component-level activity coefficients
-        area_per_seg = cast(torch.Tensor, self.reference_area)
+        area_per_seg = cast(torch.Tensor, self.area_per_segment)
         n = a / area_per_seg  # Shape: (..., n)
 
         # Compute residual activity coefficients for each component

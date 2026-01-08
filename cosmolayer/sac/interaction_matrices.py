@@ -16,6 +16,8 @@ from .segment_groups import OH, OT, SEGMENT_GROUPS
 GAS_CONSTANT = spc.gas_constant / (spc.kilo * spc.calorie)  # kcal/(mol·K)
 COSMO_SAC_2002_EXPONENTS = (1,)
 COSMO_SAC_2010_EXPONENTS = (1, 3)
+COSMO_SAC_2002_REFERENCE_AREA = 7.5  # Å²
+COSMO_SAC_2010_REFERENCE_AREA = 7.25  # Å²
 
 
 def create_cosmo_sac_2002_matrix(  # noqa: PLR0913

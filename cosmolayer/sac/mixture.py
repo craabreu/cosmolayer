@@ -7,7 +7,9 @@ from numpy.typing import NDArray
 from .component import Component
 from .interaction_matrices import (
     COSMO_SAC_2002_EXPONENTS,
+    COSMO_SAC_2002_REFERENCE_AREA,
     COSMO_SAC_2010_EXPONENTS,
+    COSMO_SAC_2010_REFERENCE_AREA,
     create_cosmo_sac_2002_matrix,
     create_cosmo_sac_2010_matrices,
 )
@@ -33,6 +35,8 @@ class Mixture:
         Maximum screening charge density in e/Å². Default is 0.025 e/Å².
     num_points : int, optional
         Number of discrete points in the sigma profile. Default is 51.
+    area_per_segment : float, optional
+        Reference area in Å². Default is 7.25 Å².
     averaging_squared_radius : float, optional
         Effective squared radius for distance-weighted sigma averaging in Å².
         Default is (7.25 / π) Å².
@@ -95,7 +99,8 @@ class Mixture:
         min_sigma: float = -0.025,  # e/A^2
         max_sigma: float = 0.025,  # e/A^2
         num_points: int = 51,
-        averaging_squared_radius: float = 7.25 / np.pi,  # A^2
+        area_per_segment: float = COSMO_SAC_2010_REFERENCE_AREA,  # Å²
+        averaging_squared_radius: float = COSMO_SAC_2010_REFERENCE_AREA / np.pi,  # A^2
         f_decay: float = 3.57,
         sigma_0: float = 0.007,  # e/A^2
         merge: bool = False,
@@ -121,6 +126,7 @@ class Mixture:
             )
             for name, path in components.items()
         }
+        self._area_per_segment = area_per_segment
         self._merge = merge
         self._regularize = regularize
         self._interaction_matrix_generator = interaction_matrix_generator
@@ -153,6 +159,16 @@ class Mixture:
         if isinstance(key, str):
             return self._components_dict[key]
         return self._components_dict[self._names[key]]
+
+    def get_area_per_segment(self) -> float:
+        """Get the area per segment for the mixture.
+
+        Returns
+        -------
+        float
+            Area per segment in Å².
+        """
+        return self._area_per_segment
 
     def get_component_names(self) -> tuple[str, ...]:
         """Get the names of all components in the mixture.
@@ -376,6 +392,7 @@ class CosmoSac2002Mixture(Mixture):
     def __init__(self, components: dict[str, str | os.PathLike[str]]) -> None:
         super().__init__(
             components,
+            area_per_segment=COSMO_SAC_2002_REFERENCE_AREA,
             averaging_squared_radius=0.81764**2,  # ≈ 0.6685 Å²
             f_decay=1.0,
             merge=True,
