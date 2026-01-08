@@ -3,6 +3,7 @@ Differentiable COSMO-Type Activity Coefficient Layer
 """
 
 from ._version import __version__
+from .cosmolayer import CosmoLayer
 from .cosmospace import CosmoSpace
 from .sac import (
     Component,
@@ -16,6 +17,7 @@ from .sac import (
 __all__ = [
     "__version__",
     "Component",
+    "CosmoLayer",
     "CosmoSac2002Mixture",
     "CosmoSac2010Mixture",
     "CosmoSpace",

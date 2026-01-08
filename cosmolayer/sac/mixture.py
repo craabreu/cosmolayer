@@ -6,6 +6,8 @@ from numpy.typing import NDArray
 
 from .component import Component
 from .interaction_matrices import (
+    COSMO_SAC_2002_EXPONENTS,
+    COSMO_SAC_2010_EXPONENTS,
     create_cosmo_sac_2002_matrix,
     create_cosmo_sac_2010_matrices,
 )
@@ -49,6 +51,10 @@ class Mixture:
         Function to generate the interaction matrix for the mixture at a given
         temperature. Default is :func:`create_cosmo_sac_2010_matrices` with default
         parameters.
+    temperature_exponents : tuple[float, ...], optional
+        Temperature exponents for the interaction matrices. Must be the same length as
+        the tuple returned by ``interaction_matrix_generator``.
+        Default is (1, 3).
 
     Raises
     ------
@@ -97,6 +103,7 @@ class Mixture:
         interaction_matrix_generator: Callable[
             [float], tuple[NDArray[np.float64], ...]
         ] = lambda temperature: create_cosmo_sac_2010_matrices(temperature),
+        temperature_exponents: tuple[float, ...] = COSMO_SAC_2010_EXPONENTS,
     ) -> None:
         if not components:
             raise ValueError("At least one component must be provided.")
@@ -117,6 +124,7 @@ class Mixture:
         self._merge = merge
         self._regularize = regularize
         self._interaction_matrix_generator = interaction_matrix_generator
+        self._temperature_exponents = temperature_exponents
 
     def __len__(self) -> int:
         """Return the number of components in the mixture."""
@@ -316,6 +324,16 @@ class Mixture:
         """
         return self._interaction_matrix_generator(temperature)
 
+    def get_temperature_exponents(self) -> tuple[float, ...]:
+        """Get the temperature exponents for the interaction matrices.
+
+        Returns
+        -------
+        tuple[float, ...]
+            Tuple of temperature exponents.
+        """
+        return self._temperature_exponents
+
 
 class CosmoSac2002Mixture(Mixture):
     """Mixture of molecular components for COSMO-SAC 2002 calculations.
@@ -327,6 +345,7 @@ class CosmoSac2002Mixture(Mixture):
     - merge = True (single segment type distribution)
     - Interaction matrix from :func:`create_cosmo_sac_2002_matrix` with default
       parameters.
+    - temperature_exponents = (1,)
 
     Parameters
     ----------
@@ -363,6 +382,7 @@ class CosmoSac2002Mixture(Mixture):
             interaction_matrix_generator=lambda temperature: (
                 create_cosmo_sac_2002_matrix(temperature),
             ),
+            temperature_exponents=COSMO_SAC_2002_EXPONENTS,
         )
 
 
