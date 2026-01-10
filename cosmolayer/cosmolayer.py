@@ -207,6 +207,30 @@ class CosmoLayer(torch.nn.Module):
         ln_gamma_c = 1 - v_hat + v_hat.log() - kappa * a * (1 - w_hat + w_hat.log())
         return cast(torch.Tensor, ln_gamma_c)
 
+    def mixture_log_probabilities(
+        self, x: torch.Tensor, a: torch.Tensor, log_p: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute the log-probabilities of segment types in the mixture.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Mole fractions of the components. Must sum to 1. Shape: (..., n).
+        a : torch.Tensor
+            Surface areas of the components. Shape: (..., n).
+        log_p : torch.Tensor
+            Log-probabilities of segment types per component, stacked along the last
+            dimension.
+            Shape: (..., num_types, n).
+
+        Returns
+        -------
+        torch.Tensor
+            Log-probabilities of segment types in the mixture. Shape: (..., num_types).
+        """
+        log_theta = (x * a).log() - (x * a).sum(dim=-1, keepdim=True).log()
+        return torch.logsumexp(log_theta.unsqueeze(-1) + log_p, dim=-2)
+
     def forward(
         self,
         temperature: torch.Tensor,

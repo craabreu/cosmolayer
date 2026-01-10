@@ -31,6 +31,26 @@ _MixtureType: TypeAlias = tuple[
 ]
 
 
+def get_psigma_mix(
+    x: NDArray[np.float64], profs: list[pd.DataFrame]
+) -> NDArray[np.float64]:
+    """
+    Get the value of p(sigma) for the mixture
+    """
+    As = [prof["p(sigma)*A [A^2]"].sum() for prof in profs]
+    psigma_mix = sum(
+        [
+            fraction * prof["p(sigma)*A [A^2]"].values
+            for fraction, prof in zip(x, profs, strict=True)
+        ]
+    ) / sum([fraction * area for fraction, area in zip(x, As, strict=True)])
+    return np.array(psigma_mix)
+
+
+def get_probabilities(profiles: list[pd.DataFrame]) -> NDArray[np.float64]:
+    return np.stack([profile["p(sigma)"].values for profile in profiles])
+
+
 def get_Gamma(
     T: float, psigma: NDArray[np.float64], DELTAW: NDArray[np.float64]
 ) -> NDArray[np.float64]:
@@ -441,3 +461,21 @@ def test_combinatorial_differentiation(
                 np.testing.assert_allclose(
                     log_gamma, x_grad + gERT - (x * x_grad).sum(), rtol=_RTOL
                 )
+
+
+def test_mixture_log_probabilities(
+    mixtures: list[_MixtureType],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    cosmo_layer: CosmoLayer,
+) -> None:
+    for mixture in mixtures:
+        n, profiles, areas, _ = mixture
+        a = torch.as_tensor(areas)
+        logP = torch.as_tensor(get_probabilities(profiles)).log()
+        for composition in compositions[n]:
+            p_mix_ref = get_psigma_mix(composition, profiles)
+            x = torch.as_tensor(composition)
+            log_p_mix = cosmo_layer.mixture_log_probabilities(x, a, logP)
+            np.testing.assert_allclose(
+                torch.softmax(log_p_mix, dim=-1), p_mix_ref, rtol=_RTOL
+            )
