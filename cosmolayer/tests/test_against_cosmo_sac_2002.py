@@ -25,6 +25,8 @@ _Q0 = 79.53  # [A^2]
 _R0 = 66.69  # [A^3]
 _Z_COORDINATION = 10
 _R = 8.3144598 / 4184  # 0.001987 # but really: 8.3144598/4184
+_REF_TEMP = 298.15
+
 
 _MixtureType: TypeAlias = tuple[
     int,
@@ -222,7 +224,8 @@ def compositions() -> dict[int, list[NDArray[np.float64]]]:
 
 @pytest.fixture
 def cosmo_layer(interaction_matrix: NDArray[np.float64]) -> CosmoLayer:
-    return CosmoLayer((interaction_matrix,), (1,), _AEFFPRIME)
+    U_RT = interaction_matrix / (_R * _REF_TEMP)
+    return CosmoLayer((U_RT,), (1,), _AEFFPRIME)
 
 
 def test_single_mixture_single_composition(
@@ -506,3 +509,12 @@ def test_combinatorial_differentiation(
                 np.testing.assert_allclose(
                     log_gamma, x_grad + gERT - (x * x_grad).sum(), rtol=_RTOL
                 )
+
+
+def test_reduced_energy_matrix(
+    interaction_matrix: NDArray[np.float64], cosmo_layer: CosmoLayer
+) -> None:
+    T = torch.as_tensor(523.15)
+    U_RT = cosmo_layer.scaled_interaction_energy_matrix(T)
+    assert U_RT.shape == (51, 51)
+    np.testing.assert_allclose(U_RT, interaction_matrix / (_R * T), rtol=_RTOL)
