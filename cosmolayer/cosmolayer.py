@@ -240,7 +240,7 @@ class CosmoLayer(torch.nn.Module):
             The scaled interaction energy matrix at the given temperature.
             Shape: (..., num_types, num_types).
         """
-        beta = self._reference_temperature / temperature
+        beta = (self._reference_temperature / temperature).unsqueeze(-1).unsqueeze(-1)
         U_RT = self.interaction_matrix_0 * beta
         if self._exponents[0] != 1:
             U_RT *= beta ** (self._exponents[0] - 1)

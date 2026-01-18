@@ -518,3 +518,14 @@ def test_reduced_energy_matrix(
     U_RT = cosmo_layer.scaled_interaction_energy_matrix(T)
     assert U_RT.shape == (51, 51)
     np.testing.assert_allclose(U_RT, interaction_matrix / (_R * T), rtol=_RTOL)
+
+
+def test_reduced_energy_matrix_broadcasting(
+    interaction_matrix: NDArray[np.float64], cosmo_layer: CosmoLayer
+) -> None:
+    T = torch.as_tensor([273.15 + i * 100 for i in range(4)])
+    U_RT = cosmo_layer.scaled_interaction_energy_matrix(T)
+    assert U_RT.shape == (4, 51, 51)
+    np.testing.assert_allclose(
+        U_RT, interaction_matrix / (_R * T[:, None, None]), rtol=_RTOL
+    )
