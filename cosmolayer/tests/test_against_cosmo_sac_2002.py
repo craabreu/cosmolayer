@@ -19,6 +19,7 @@ from cosmolayer import CosmoLayer
 
 _NUM_POINTS = 3
 _RTOL = 1e-6
+_RTOL_LN_GAMMA = 1e-4
 
 _AEFFPRIME = 7.5
 _Q0 = 79.53  # [A^2]
@@ -232,23 +233,26 @@ def cosmo_layer(interaction_matrix: NDArray[np.float64]) -> CosmoLayer:
     return CosmoLayer((U_RT,), (1,), _AEFFPRIME)
 
 
-def test_single_mixture_single_composition(
+def test_single_mixture_single_condition(
     mixtures: list[_MixtureType],
     conditions: dict[int, list[_ConditionType]],
+    interaction_matrix: NDArray[np.float64],
     cosmo_layer: CosmoLayer,
 ) -> None:
     for n, profiles, areas, volumes, log_probabilities in mixtures:
-        for _, composition in conditions[n]:
+        probabilities = np.exp(log_probabilities)
+        a = torch.as_tensor(areas)
+        v = torch.as_tensor(volumes)
+        logP = torch.as_tensor(log_probabilities)
+        for temperature, composition in conditions[n]:
             ln_gamma_c_ref = np.array(
                 [
                     get_lngamma_comb(composition.tolist(), i, areas, volumes)
                     for i in range(n)
                 ]
             )
+            T = torch.as_tensor(temperature)
             x = torch.as_tensor(composition)
-            a = torch.as_tensor(areas)
-            v = torch.as_tensor(volumes)
-            logP = torch.as_tensor(log_probabilities)
 
             ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
             np.testing.assert_allclose(ln_gamma_c.numpy(), ln_gamma_c_ref, rtol=_RTOL)
@@ -260,8 +264,27 @@ def test_single_mixture_single_composition(
                 torch.softmax(log_p_mix, dim=-1), p_mix_ref, rtol=_RTOL
             )
 
+            ln_gamma_mix = np.log(get_Gamma(temperature, p_mix_ref, interaction_matrix))
 
-def test_single_mixture_multiple_compositions(
+            ln_gamma_pure_ref = np.array(
+                [
+                    np.log(get_Gamma(temperature, probabilities[i], interaction_matrix))
+                    for i in range(n)
+                ]
+            )
+
+            ln_gamma_s, ln_gamma_pure = cosmo_layer.log_segment_activity_coefficients(
+                T, x, a, logP
+            )
+            np.testing.assert_allclose(
+                ln_gamma_s.numpy(), ln_gamma_mix, rtol=_RTOL_LN_GAMMA
+            )
+            np.testing.assert_allclose(
+                ln_gamma_pure.numpy(), ln_gamma_pure_ref, rtol=_RTOL_LN_GAMMA
+            )
+
+
+def test_single_mixture_multiple_conditions(
     mixtures: list[_MixtureType],
     conditions: dict[int, list[_ConditionType]],
     cosmo_layer: CosmoLayer,
@@ -297,7 +320,7 @@ def test_single_mixture_multiple_compositions(
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
-def test_multiple_mixtures_single_composition(
+def test_multiple_mixtures_single_condition(
     n: int,
     mixtures: list[_MixtureType],
     conditions: dict[int, list[_ConditionType]],
@@ -352,7 +375,7 @@ def test_multiple_mixtures_single_composition(
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
-def test_multiple_mixtures_multiple_compositions(
+def test_multiple_mixtures_multiple_conditions(
     n: int,
     mixtures: list[_MixtureType],
     conditions: dict[int, list[_ConditionType]],
