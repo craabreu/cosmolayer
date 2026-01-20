@@ -10,6 +10,8 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
+from .cosmospace import CosmoSpace
+
 AREA_PER_CONTACT = 79.53  # Å²
 COORDINATION_NUMBER = 10
 
@@ -248,6 +250,45 @@ class CosmoLayer(torch.nn.Module):
             matrix * beta**exponent for matrix, exponent in self._matrices_and_exponents
         ]
         return torch.stack(matrices).sum(dim=0)
+
+    def log_segment_activity_coefficients(
+        self,
+        temperature: torch.Tensor,
+        mole_fractions: torch.Tensor,
+        areas: torch.Tensor,
+        log_probabilities: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compute the logarithms of the activity coefficients of segment types.
+
+        Parameters
+        ----------
+        temperature : torch.Tensor
+            Temperature in the same units as the reference temperature. Shape: (...,).
+        mole_fractions : torch.Tensor
+            Mole fractions of the components. Must sum to 1. Shape: (..., n).
+        areas : torch.Tensor
+            Surface areas of the components. Shape: (..., n).
+        log_probabilities : torch.Tensor
+            Log-probabilities of segment types per component.
+            Shape: (..., num_types, n).
+
+        Returns
+        -------
+        torch.Tensor
+            Logarithms of the activity coefficients of segment types in the mixture.
+            Shape: (..., n).
+        torch.Tensor
+            Logarithms of the activity coefficients of segment types in pure compounds.
+            Shape: (..., num_types, n).
+        """
+        U_RT = self.scaled_interaction_energy_matrix(temperature)
+        log_ps = self.mixture_log_probabilities(
+            mole_fractions, areas, log_probabilities
+        )
+        log_p = torch.cat([log_ps.unsqueeze(-2), log_probabilities], dim=-2)
+        gamma = CosmoSpace.apply(log_p, U_RT)  # type: ignore[no-untyped-call]
+        log_gamma: torch.Tensor = gamma.log()
+        return log_gamma[..., 0, :], log_gamma[..., 1:, :]
 
     def forward(
         self,
