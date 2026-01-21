@@ -239,11 +239,11 @@ def test_single_mixture_single_condition(
     interaction_matrix: NDArray[np.float64],
     cosmo_layer: CosmoLayer,
 ) -> None:
-    for n, profiles, areas, volumes, log_probabilities in mixtures:
-        probabilities = np.exp(log_probabilities)
+    for n, profiles, areas, volumes, logprobs in mixtures:
+        probabilities = np.exp(logprobs)
         a = torch.as_tensor(areas)
         v = torch.as_tensor(volumes)
-        logP = torch.as_tensor(log_probabilities)
+        logP = torch.as_tensor(logprobs)
         for temperature, composition in conditions[n]:
             ln_gamma_c_ref = np.array(
                 [
@@ -289,13 +289,13 @@ def test_single_mixture_multiple_conditions(
     conditions: dict[int, list[_ConditionType]],
     cosmo_layer: CosmoLayer,
 ) -> None:
-    for n, profiles, areas, volumes, log_probabilities in mixtures:
+    for n, profiles, areas, volumes, logprobs in mixtures:
         _, composition_list = zip(*conditions[n], strict=True)
         composition_batch = np.array(composition_list)
         x = torch.as_tensor(composition_batch)
         a = torch.as_tensor(areas)
         v = torch.as_tensor(volumes)
-        logP = torch.as_tensor(log_probabilities)
+        logP = torch.as_tensor(logprobs)
 
         num_compositions = len(composition_batch)
         assert x.shape == (num_compositions, n)
@@ -331,7 +331,7 @@ def test_multiple_mixtures_single_condition(
 
     _, composition_list = zip(*conditions[n], strict=True)
 
-    _, profiles_list, areas_list, volumes_list, log_probabilities_list = zip(
+    _, profiles_list, areas_list, volumes_list, logprobs_list = zip(
         *mixtures, strict=True
     )
 
@@ -341,7 +341,7 @@ def test_multiple_mixtures_single_condition(
     v = torch.as_tensor(np.array(volumes_list))
     assert v.shape == (num_mixtures, n)
 
-    logP = torch.as_tensor(np.stack(log_probabilities_list))
+    logP = torch.as_tensor(np.stack(logprobs_list))
     assert logP.shape == (num_mixtures, n, 51)
 
     for composition in composition_list:
@@ -383,23 +383,22 @@ def test_multiple_mixtures_multiple_conditions(
     cosmo_layer: CosmoLayer,
 ) -> None:
     mixtures = list(filter(lambda mixture: mixture[0] == n, mixtures))
-    num_mixtures = len(mixtures)
-
-    num_compositions = len(conditions[n])
 
     areas_list = []
     volumes_list = []
-    log_probabilities_list = []
+    logprobs_list = []
     temperature_list = []
     composition_list = []
     ln_gamma_c_ref_list = []
     p_mix_ref_list = []
     ln_gamma_mix_list = []
-    for _, profiles, areas, volumes, log_probabilities in mixtures:
+    ln_gamma_pure_list = []
+    for _, profiles, areas, volumes, logprobs in mixtures:
+        probs = np.exp(logprobs)
         for temperature, composition in conditions[n]:
             areas_list.append(areas)
             volumes_list.append(volumes)
-            log_probabilities_list.append(log_probabilities)
+            logprobs_list.append(logprobs)
             temperature_list.append(temperature)
             composition_list.append(composition)
             ln_gamma_c_ref_list.append(
@@ -410,42 +409,41 @@ def test_multiple_mixtures_multiple_conditions(
             )
             psigma = get_psigma_mix(composition, profiles)
             p_mix_ref_list.append(psigma)
-            ln_gamma_mix = np.log(get_Gamma(temperature, psigma, interaction_matrix))
-            ln_gamma_mix_list.append(ln_gamma_mix)
-
-    shape = (num_compositions * num_mixtures, n)
+            ln_gamma_mix_list.append(
+                np.log(get_Gamma(temperature, psigma, interaction_matrix))
+            )
+            ln_gamma_pure_list.append(
+                np.array(
+                    [
+                        np.log(get_Gamma(temperature, probs[i], interaction_matrix))
+                        for i in range(n)
+                    ]
+                )
+            )
 
     a = torch.as_tensor(np.array(areas_list, dtype=np.float64))
-    assert a.shape == shape
-
     v = torch.as_tensor(np.array(volumes_list, dtype=np.float64))
-    assert v.shape == shape
-
-    logP = torch.as_tensor(np.stack(log_probabilities_list))
-    assert logP.shape == (*shape, 51)
-
+    logP = torch.as_tensor(np.stack(logprobs_list))
     T = torch.as_tensor(np.array(temperature_list, dtype=np.float64))
-    assert T.shape == (num_compositions * num_mixtures,)
-
     x = torch.as_tensor(np.array(composition_list, dtype=np.float64))
-    assert x.shape == shape
-
     ln_gamma_c_ref = np.array(ln_gamma_c_ref_list)
-    assert ln_gamma_c_ref.shape == shape
-
     p_mix_ref = np.stack(p_mix_ref_list)
-    assert p_mix_ref.shape == (num_compositions * num_mixtures, 51)
+    ln_gamma_pure_ref = np.stack(ln_gamma_pure_list)
+    ln_gamma_mix_ref = np.stack(ln_gamma_mix_list)
 
     ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
-    assert ln_gamma_c.shape == (num_compositions * num_mixtures, n)
     np.testing.assert_allclose(ln_gamma_c.numpy(), ln_gamma_c_ref, rtol=_RTOL)
 
-    log_p_mix = cosmo_layer.mixture_log_probabilities(x, a, logP)
-    p_mix = torch.softmax(log_p_mix, dim=-1)
+    p_mix = cosmo_layer.mixture_log_probabilities(x, a, logP).softmax(dim=-1)
     np.testing.assert_allclose(p_mix, p_mix_ref, rtol=_RTOL)
 
-    ln_gamma_mix_ref = np.stack(ln_gamma_mix_list)
-    assert ln_gamma_mix_ref.shape == (num_compositions * num_mixtures, 51)
+    log_gamma_s, log_gamma_pure = cosmo_layer.log_segment_activity_coefficients(
+        T, x, a, logP
+    )
+    np.testing.assert_allclose(
+        log_gamma_s.numpy(), ln_gamma_mix_ref, rtol=_RTOL_LN_GAMMA
+    )
+    np.testing.assert_allclose(log_gamma_pure, ln_gamma_pure_ref, rtol=_RTOL_LN_GAMMA)
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
@@ -461,7 +459,7 @@ def test_broadcasting(
     _, composition_list = zip(*conditions[n], strict=True)
     num_compositions = len(composition_list)
 
-    _, profiles_list, areas_list, volumes_list, log_probabilities_list = zip(
+    _, profiles_list, areas_list, volumes_list, logprobs_list = zip(
         *mixtures, strict=True
     )
 
@@ -471,7 +469,7 @@ def test_broadcasting(
     v = torch.as_tensor(np.array(volumes_list)).reshape(1, -1, n)
     assert v.shape == (1, num_mixtures, n)
 
-    logP = torch.as_tensor(np.stack(log_probabilities_list)).reshape(1, -1, n, 51)
+    logP = torch.as_tensor(np.stack(logprobs_list)).reshape(1, -1, n, 51)
     assert logP.shape == (1, num_mixtures, n, 51)
 
     x = torch.as_tensor(np.array(composition_list, dtype=np.float64)).reshape(-1, 1, n)

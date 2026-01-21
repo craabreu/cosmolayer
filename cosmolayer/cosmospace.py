@@ -17,10 +17,10 @@ class CosmoSpace(torch.autograd.Function):
     the (unnormalized, log-scale) segment-type distribution vector log(p) and the
     reduced interaction energy matrix U/RT:
 
-        γ ⊙ (B (x ⊙ γ)) = 𝟙ₙ,
+        γ ⊙ (B (x ⊙ γ)) = 𝟙ₘ,
 
-    where x = softmax(log(p)) is the normalized segment-type distribution vector and
-    B = exp(-U/RT) is the Boltzmann-factor matrix.
+    where m is the number of segment types, x = softmax(log(p)) is the normalized
+    segment-type distribution vector, and B = exp(-U/RT) is the Boltzmann-factor matrix.
 
     The solution satisfies min(γ) > 0 and aᵀBa = 1, where a = x ⊙ γ is the activity
     vector.
@@ -34,9 +34,9 @@ class CosmoSpace(torch.autograd.Function):
     Parameters
     ----------
     log_p : torch.Tensor
-        Segment-type distribution vector in log-scale. Shape: (..., n).
+        Segment-type distribution vector in log-scale. Shape: (..., m).
     U_RT : torch.Tensor
-        Reduced interaction energy matrix U/RT. Shape: (..., n, n).
+        Reduced interaction energy matrix U/RT. Shape: (..., m, m).
     max_iter : int
         Maximum number of iterations.
 
@@ -44,7 +44,7 @@ class CosmoSpace(torch.autograd.Function):
     -------
     gamma : torch.Tensor
         The segment activity coefficient vector. Satisfies min(γ) > 0 and aᵀBa = 1,
-        where a = x ⊙ γ, with x = softmax(log(p)). Shape: (..., n).
+        where a = x ⊙ γ, with x = softmax(log(p)). Shape: (..., m).
 
     Raises
     ------
@@ -118,16 +118,16 @@ class CosmoSpace(torch.autograd.Function):
         ctx : FunctionCtx
             Context object for saving tensors needed in backward pass.
         log_p : torch.Tensor
-            Log-probabilities of segment types. Shape: (..., n).
+            Log-probabilities of segment types. Shape: (..., m).
         U_RT : torch.Tensor
-            Reduced interaction energy matrix. Shape: (..., n, n).
+            Reduced interaction energy matrix. Shape: (..., m, m).
         max_iter : int, optional
             Maximum number of iterations for the fixed-point solver.
 
         Returns
         -------
         torch.Tensor
-            Activity coefficient vector γ. Shape: (..., n).
+            Activity coefficient vector γ. Shape: (..., m).
         """
         x = torch.softmax(log_p, dim=-1)
         B = torch.exp(-U_RT)
@@ -150,7 +150,7 @@ class CosmoSpace(torch.autograd.Function):
         ctx : NestedIOFunction
             Context object containing saved tensors from forward pass.
         grad_gamma : torch.Tensor
-            Gradient with respect to the output γ. Shape: (..., n).
+            Gradient with respect to the output γ. Shape: (..., m).
 
         Returns
         -------

@@ -133,13 +133,13 @@ class CosmoLayer(torch.nn.Module):
                 self._matrices_and_exponents.append((matrix, exponents[idx]))
 
         self._exponents = list(exponents)
-        self._reference_temperature = reference_temperature
+        self._ref_temp = reference_temperature
         self._area_per_segment = area_per_segment
         self._kappa = COORDINATION_NUMBER / (2 * AREA_PER_CONTACT)
 
     def extra_repr(self) -> str:
         return (
-            f"t_ref={self._reference_temperature:.2f}, "
+            f"t_ref={self._ref_temp:.2f}, "
             f"aps={self._area_per_segment:.2f}, "
             f"exponents={self._exponents}, "
             f"n_types={self._n_types}"
@@ -147,7 +147,7 @@ class CosmoLayer(torch.nn.Module):
 
     def combinatorial_log_activity_coefficients(
         self,
-        mole_fractions: torch.Tensor,
+        molfracs: torch.Tensor,
         areas: torch.Tensor,
         volumes: torch.Tensor,
     ) -> torch.Tensor:
@@ -180,7 +180,7 @@ class CosmoLayer(torch.nn.Module):
 
         Parameters
         ----------
-        mole_fractions : torch.Tensor
+        molfracs : torch.Tensor
             Mole fractions of the mixture components. Must sum to 1. Shape: (..., n).
         areas : torch.Tensor
             Surface areas of the mixture components, all in the same units.
@@ -193,8 +193,8 @@ class CosmoLayer(torch.nn.Module):
         torch.Tensor
             Logarithms of the combinatorial activity coefficients. Shape: (..., n).
         """
-        v_hat = volumes / (mole_fractions * volumes).sum(dim=-1, keepdim=True)
-        a_hat = areas / (mole_fractions * areas).sum(dim=-1, keepdim=True)
+        v_hat = volumes / (molfracs * volumes).sum(dim=-1, keepdim=True)
+        a_hat = areas / (molfracs * areas).sum(dim=-1, keepdim=True)
         w_hat = v_hat / a_hat
         ln_gamma_c = (
             1 - v_hat + v_hat.log() - self._kappa * areas * (1 - w_hat + w_hat.log())
@@ -203,49 +203,45 @@ class CosmoLayer(torch.nn.Module):
 
     def mixture_log_probabilities(
         self,
-        mole_fractions: torch.Tensor,
+        molfracs: torch.Tensor,
         areas: torch.Tensor,
-        log_probabilities: torch.Tensor,
+        logprobs: torch.Tensor,
     ) -> torch.Tensor:
         """Compute the log-probabilities of segment types in the mixture.
 
         Parameters
         ----------
-        mole_fractions : torch.Tensor
+        molfracs : torch.Tensor
             Mole fractions of the components. Must sum to 1. Shape: (..., n).
         areas : torch.Tensor
             Surface areas of the components. Shape: (..., n).
-        log_probabilities : torch.Tensor
-            Log-probabilities of segment types per component, stacked along the last
-            dimension.
-            Shape: (..., num_types, n).
+        logprobs : torch.Tensor
+            Log-probabilities of segment types per component. Shape: (..., n, m).
 
         Returns
         -------
         torch.Tensor
-            Log-probabilities of segment types in the mixture. Shape: (..., num_types).
+            Log-probabilities of segment types in the mixture. Shape: (..., m).
         """
-        xa = mole_fractions * areas
+        xa = molfracs * areas
         log_theta = xa.log() - xa.sum(dim=-1, keepdim=True).log()
-        return torch.logsumexp(log_theta.unsqueeze(-1) + log_probabilities, dim=-2)
+        return torch.logsumexp(log_theta.unsqueeze(-1) + logprobs, dim=-2)
 
-    def scaled_interaction_energy_matrix(
-        self, temperature: torch.Tensor
-    ) -> torch.Tensor:
+    def scaled_interaction_energy_matrix(self, temp: torch.Tensor) -> torch.Tensor:
         """Compute the scaled interaction energy matrix at a given temperature.
 
         Parameters
         ----------
-        temperature : torch.Tensor
+        temp : torch.Tensor
             Temperature in the same units as the reference temperature. Shape: (...,).
 
         Returns
         -------
         torch.Tensor
             The scaled interaction energy matrix at the given temperature.
-            Shape: (..., num_types, num_types).
+            Shape: (..., m, m).
         """
-        beta = (self._reference_temperature / temperature).unsqueeze(-1).unsqueeze(-1)
+        beta = (self._ref_temp / temp).unsqueeze(-1).unsqueeze(-1)
         matrices = [
             matrix * beta**exponent for matrix, exponent in self._matrices_and_exponents
         ]
@@ -253,24 +249,23 @@ class CosmoLayer(torch.nn.Module):
 
     def log_segment_activity_coefficients(
         self,
-        temperature: torch.Tensor,
-        mole_fractions: torch.Tensor,
+        temp: torch.Tensor,
+        molfracs: torch.Tensor,
         areas: torch.Tensor,
-        log_probabilities: torch.Tensor,
+        logprobs: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute the logarithms of the activity coefficients of segment types.
 
         Parameters
         ----------
-        temperature : torch.Tensor
+        temp : torch.Tensor
             Temperature in the same units as the reference temperature. Shape: (...,).
-        mole_fractions : torch.Tensor
+        molfracs : torch.Tensor
             Mole fractions of the components. Must sum to 1. Shape: (..., n).
         areas : torch.Tensor
             Surface areas of the components. Shape: (..., n).
-        log_probabilities : torch.Tensor
-            Log-probabilities of segment types per component.
-            Shape: (..., num_types, n).
+        logprobs : torch.Tensor
+            Log-probabilities of segment types per component. Shape: (..., n, m).
 
         Returns
         -------
@@ -279,38 +274,36 @@ class CosmoLayer(torch.nn.Module):
             Shape: (..., n).
         torch.Tensor
             Logarithms of the activity coefficients of segment types in pure compounds.
-            Shape: (..., num_types, n).
+            Shape: (..., n, m).
         """
-        U_RT = self.scaled_interaction_energy_matrix(temperature)
-        log_ps = self.mixture_log_probabilities(
-            mole_fractions, areas, log_probabilities
-        )
-        log_p = torch.cat([log_ps.unsqueeze(-2), log_probabilities], dim=-2)
+        U_RT = self.scaled_interaction_energy_matrix(temp).unsqueeze(-3)
+        log_ps = self.mixture_log_probabilities(molfracs, areas, logprobs).unsqueeze(-2)
+        log_p = torch.cat([log_ps, logprobs], dim=-2)
         gamma = CosmoSpace.apply(log_p, U_RT)  # type: ignore[no-untyped-call]
         log_gamma: torch.Tensor = gamma.log()
         return log_gamma[..., 0, :], log_gamma[..., 1:, :]
 
     def forward(
         self,
-        temperature: torch.Tensor,
-        mole_fractions: torch.Tensor,
+        temp: torch.Tensor,
+        molfracs: torch.Tensor,
         areas: torch.Tensor,
         volumes: torch.Tensor,
-        log_probabilities: torch.Tensor,
+        logprobs: torch.Tensor,
     ) -> torch.Tensor:
         """Forward pass of the CosmoLayer.
 
         Parameters
         ----------
-        temperature : torch.Tensor
+        temp : torch.Tensor
             Temperature in the same units as the reference temperature. Shape: (...,).
-        mole_fractions : torch.Tensor
+        molfracs : torch.Tensor
             Mole fractions of the components. Must sum to 1. Shape: (..., n).
         areas : torch.Tensor
             Surface areas of the components, all in the same units. Shape: (..., n).
         volumes : torch.Tensor
             Volumes of the components, all in the same units. Shape: (..., n).
-        log_probabilities : torch.Tensor
+        logprobs : torch.Tensor
             Log-probabilities of segment types. Shape: (..., num_types).
 
         Returns
@@ -319,6 +312,6 @@ class CosmoLayer(torch.nn.Module):
             Logarithms of the activity coefficients. Shape: (..., n).
         """
         log_gamma_c = self.combinatorial_log_activity_coefficients(
-            mole_fractions, areas, volumes
+            molfracs, areas, volumes
         )
         return log_gamma_c
