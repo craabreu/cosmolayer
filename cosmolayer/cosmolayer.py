@@ -271,17 +271,19 @@ class CosmoLayer(torch.nn.Module):
         -------
         torch.Tensor
             Logarithms of the activity coefficients of segment types in the mixture.
-            Shape: (..., n).
+            Shape: (..., m).
         torch.Tensor
             Logarithms of the activity coefficients of segment types in pure compounds.
             Shape: (..., n, m).
         """
-        U_RT = self.scaled_interaction_energy_matrix(temp).unsqueeze(-3)
-        log_ps = self.mixture_log_probabilities(molfracs, areas, logprobs).unsqueeze(-2)
-        log_p = torch.cat([log_ps, logprobs], dim=-2)
-        gamma = CosmoSpace.apply(log_p, U_RT)  # type: ignore[no-untyped-call]
-        log_gamma: torch.Tensor = gamma.log()
-        return log_gamma[..., 0, :], log_gamma[..., 1:, :]
+        log_p_mix = self.mixture_log_probabilities(molfracs, areas, logprobs)
+        U_RT = self.scaled_interaction_energy_matrix(temp)
+        gamma_mix = CosmoSpace.apply(log_p_mix, U_RT)
+
+        U_RT_broadcast = U_RT.unsqueeze(-3)
+        gamma_pure = CosmoSpace.apply(logprobs, U_RT_broadcast)
+
+        return gamma_mix.log(), gamma_pure.log()
 
     def forward(
         self,
