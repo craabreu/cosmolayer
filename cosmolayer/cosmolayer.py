@@ -57,7 +57,7 @@ class CosmoLayer(torch.nn.Module):
     >>> import torch
     >>> T_ref = 298.15  # K
     >>> components = {
-    ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+    ...     "fluoromethane": files("cosmolayer.data") / "CF.cosmo",
     ...     "water": files("cosmolayer.data") / "O.cosmo",
     ... }
     >>> mixture = CosmoSac2002Mixture(components)
@@ -67,29 +67,20 @@ class CosmoLayer(torch.nn.Module):
     >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents, area_per_segment)
     >>> cosmo_layer
     CosmoLayer(t_ref=298.15, aps=7.50, exponents=[1], n_types=51)
-    >>> x = torch.tensor([0.235, 0.765], requires_grad=True)
+    >>> T = torch.tensor(373.15)
+    >>> x = torch.tensor([0.5, 0.5], requires_grad=True)
     >>> a = torch.tensor(mixture.get_areas())
     >>> v = torch.tensor(mixture.get_volumes())
-    >>> ln_gamma_c = cosmo_layer.log_combinatorial_activity_coefficients(x, a, v)
-    >>> ln_gamma_c.tolist()
-    [-0.27687..., -0.052266...]
-
-    Check the thermodynamic consistency (partial molar properties):
-
-    .. math::
-
-        \frac{G^E}{RT} = {\mathbf x} \cdot \ln {\boldsymbol \gamma}
-        \quad \Rightarrow \quad
-        RT \ln {\boldsymbol \gamma} = \nabla_{\mathbf x}G^E + \left(
-            G^E - \mathbf x \cdot \nabla_{\mathbf x}G^E
-        \right) {\mathbf 1}
-
-    >>> gERT_c = (x * ln_gamma_c).sum()
-    >>> gERT_c.backward()
-    >>> x.grad
-    tensor([-0.276..., -0.052...])
-    >>> (x.grad + gERT_c - (x * x.grad).sum()).tolist()
-    [-0.27687..., -0.052266...]
+    >>> P = torch.tensor(mixture.get_probabilities())
+    >>> ln_gamma = cosmo_layer(T, x, a, v, P)
+    >>> ln_gamma.tolist()
+    [0.805765..., 0.648046...]
+    >>> gE_RT = (x * ln_gamma).sum()
+    >>> gE_RT.item()
+    0.726905...
+    >>> gE_RT.backward()
+    >>> x.grad.tolist()
+    [0.805765..., 0.648046...]
     """
 
     def __init__(  # noqa: PLR0913
@@ -221,7 +212,8 @@ class CosmoLayer(torch.nn.Module):
             Surface areas of the components.
             Shape: (..., num_components).
         probs : torch.Tensor
-            Probabilities of segment types per component. Must sum to 1.
+            Probabilities of segment types per component. Must sum to 1 along the
+            segment type dimension.
             Shape: (..., num_components, num_segment_types).
 
         Returns
@@ -268,7 +260,8 @@ class CosmoLayer(torch.nn.Module):
             Scaled interaction energy matrix.
             Shape: (..., num_segment_types, num_segment_types).
         probs : torch.Tensor
-            Probabilities of segment types per component. Must sum to 1.
+            Probabilities of segment types per component. Must sum to 1 along the
+            segment type dimension.
             Shape: (..., num_components, num_segment_types).
 
         Returns
@@ -303,7 +296,8 @@ class CosmoLayer(torch.nn.Module):
             Surface areas of the components.
             Shape: (..., num_components).
         probs : torch.Tensor
-            Probabilities of segment types per component. Must sum to 1.
+            Probabilities of segment types per component. Must sum to 1 along the
+            segment type dimension.
             Shape: (..., num_components, num_segment_types).
 
         Returns
@@ -339,7 +333,8 @@ class CosmoLayer(torch.nn.Module):
             Surface areas of the components.
             Shape: (..., num_components).
         probs : torch.Tensor
-            Probabilities of segment types per component. Must sum to 1.
+            Probabilities of segment types per component. Must sum to 1 along the
+            segment type dimension.
             Shape: (..., num_components, num_segment_types).
 
         Returns
@@ -386,7 +381,8 @@ class CosmoLayer(torch.nn.Module):
             Volumes of the components.
             Shape: (..., num_components).
         probs : torch.Tensor
-            Probabilities of segment types per component. Must sum to 1.
+            Probabilities of segment types per component. Must sum to 1 along the
+            segment type dimension.
             Shape: (..., num_components, num_segment_types).
 
         Returns
@@ -416,22 +412,26 @@ class CosmoLayer(torch.nn.Module):
         Parameters
         ----------
         temp : torch.Tensor
-            Temperature in the same units as the reference temperature. Shape: (...,).
+            Temperature in the same units as the reference temperature.
+            Shape: (...,).
         fracs : torch.Tensor
-            Mole fractions of the components. Must sum to 1. Shape: (..., n).
+            Mole fractions of the components. Must sum to 1.
+            Shape: (..., num_components).
         areas : torch.Tensor
-            Surface areas of the components, all in the same units. Shape: (..., n).
+            Surface areas of the components.
+            Shape: (..., num_components).
         volumes : torch.Tensor
-            Volumes of the components, all in the same units. Shape: (..., n).
+            Volumes of the components.
+            Shape: (..., num_components).
         probs : torch.Tensor
-            Probabilities of segment types. Must sum to 1. Shape: (..., num_types).
+            Probabilities of segment types per component. Must sum to 1 along the
+            segment type dimension.
+            Shape: (..., num_components, num_segment_types).
 
         Returns
         -------
         torch.Tensor
-            Logarithms of the activity coefficients. Shape: (..., n).
+            Logarithms of the activity coefficients.
+            Shape: (..., num_components).
         """
-        log_gamma_c = self.log_combinatorial_activity_coefficients(
-            fracs, areas, volumes
-        )
-        return log_gamma_c
+        return self.log_activity_coefficients(temp, fracs, areas, volumes, probs)
