@@ -362,6 +362,48 @@ class CosmoLayer(torch.nn.Module):
         ).sum(dim=-1)
         return log_gamma_res
 
+    def log_activity_coefficients(
+        self,
+        temperature: torch.Tensor,
+        molfracs: torch.Tensor,
+        areas: torch.Tensor,
+        volumes: torch.Tensor,
+        logprobs: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute the logarithms of the activity coefficients.
+
+        Parameters
+        ----------
+        temperature : torch.Tensor
+            Temperature in the same units as the reference temperature.
+            Shape: (...,).
+        molfracs : torch.Tensor
+            Mole fractions of the components. Must sum to 1.
+            Shape: (..., num_components).
+        areas : torch.Tensor
+            Surface areas of the components.
+            Shape: (..., num_components).
+        volumes : torch.Tensor
+            Volumes of the components.
+            Shape: (..., num_components).
+        logprobs : torch.Tensor
+            Log-probabilities of segment types per component.
+            Shape: (..., num_components, num_segment_types).
+
+        Returns
+        -------
+        torch.Tensor
+            Logarithms of the activity coefficients.
+            Shape: (..., num_components).
+        """
+        log_gamma_c = self.log_combinatorial_activity_coefficients(
+            molfracs, areas, volumes
+        )
+        log_gamma_r = self.log_residual_activity_coefficients(
+            temperature, molfracs, areas, logprobs
+        )
+        return log_gamma_c + log_gamma_r
+
     def forward(
         self,
         temp: torch.Tensor,
