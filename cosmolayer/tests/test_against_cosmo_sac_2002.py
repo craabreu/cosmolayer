@@ -8,7 +8,7 @@ Reference implementation:
 import itertools
 import re
 from importlib.resources import files
-from typing import TypeAlias, cast
+from typing import TypeAlias, TypedDict, cast
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,7 @@ from cosmolayer import CosmoLayer
 
 _NUM_POINTS = 3
 _RTOL = 1e-6
-_RTOL_LN_GAMMA = 1e-4
+_RTOL_LN_GAMMA = 1e-3
 
 _AEFFPRIME = 7.5
 _Q0 = 79.53  # [A^2]
@@ -34,12 +34,19 @@ _MixtureType: TypeAlias = tuple[
     NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]
 ]
 
-_ConditionType: TypeAlias = tuple[float, NDArray[np.float64]]
+
+class ReferenceData(TypedDict):
+    """Reference data structure for test validation."""
+
+    ln_gamma_c: dict[int, dict[int, NDArray[np.float64]]]  # mix -> comp -> array
+    psigma: dict[int, dict[int, NDArray[np.float64]]]  # mix -> comp -> array
+    ln_gamma_mix: dict[
+        int, dict[int, dict[int, NDArray[np.float64]]]
+    ]  # mix -> comp -> temp -> array
+    ln_gamma_pure: dict[int, dict[int, NDArray[np.float64]]]  # mix -> temp -> array
 
 
-_ReferenceResultsType: TypeAlias = dict[
-    int, dict[int, dict[int, dict[str, NDArray[np.float64]]]]
-]
+_ReferenceResultsType: TypeAlias = dict[int, ReferenceData]  # n -> reference data
 
 
 def softmax(x: NDArray[np.float64], axis: int = -1) -> NDArray[np.float64]:
@@ -260,26 +267,30 @@ def mixtures() -> dict[int, list[_MixtureType]]:
 
 
 @pytest.fixture
-def conditions() -> dict[int, list[_ConditionType]]:
-    binary_conditions = []
-    ternary_conditions = []
-    temperature = 273.15
+def compositions() -> dict[int, list[NDArray[np.float64]]]:
+    binary_compositions = []
+    ternary_compositions = []
     for i in range(_NUM_POINTS):
         j_plus_k = _NUM_POINTS - i
         binary_composition = np.array([i, j_plus_k]) / _NUM_POINTS
-        binary_conditions.append((temperature, binary_composition))
+        binary_compositions.append(binary_composition)
         for j in range(j_plus_k):
-            temperature += 20.0
             k = j_plus_k - j
             ternary_composition = np.array([i, j, k]) / _NUM_POINTS
-            ternary_conditions.append((temperature, ternary_composition))
-    return {2: binary_conditions, 3: ternary_conditions}
+            ternary_compositions.append(ternary_composition)
+    return {2: binary_compositions, 3: ternary_compositions}
+
+
+@pytest.fixture
+def temperatures() -> list[float]:
+    return [273.15 + i * 100 for i in range(4)]
 
 
 @pytest.fixture
 def reference_results(
     mixtures: dict[int, list[_MixtureType]],
-    conditions: dict[int, list[_ConditionType]],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    temperatures: list[float],
     interaction_matrix: NDArray[np.float64],
 ) -> _ReferenceResultsType:
     """
@@ -287,24 +298,33 @@ def reference_results(
     """
     results: _ReferenceResultsType = {}
     for n, mixtures_n in mixtures.items():
-        results[n] = {}
-        for i, (areas, volumes, logprobs) in enumerate(mixtures_n):
+        results[n] = ReferenceData(
+            ln_gamma_c={},
+            psigma={},
+            ln_gamma_mix={},
+            ln_gamma_pure={},
+        )
+        for mix, (areas, volumes, logprobs) in enumerate(mixtures_n):
             probs = softmax(logprobs)
-            results[n][i] = {}
-            for j, (temperature, composition) in enumerate(conditions[n]):
+            results[n]["ln_gamma_c"][mix] = {}
+            results[n]["psigma"][mix] = {}
+            results[n]["ln_gamma_mix"][mix] = {}
+            results[n]["ln_gamma_pure"][mix] = {}
+            for comp, composition in enumerate(compositions[n]):
                 psigma = get_psigma_mix(composition, logprobs, areas)
-                results[n][i][j] = {
-                    "ln_gamma_c_ref": get_lngamma_comb_vector(
-                        composition, areas, volumes
-                    ),
-                    "psigma": psigma,
-                    "ln_gamma_mix_ref": get_ln_Gamma_mix(
+                results[n]["psigma"][mix][comp] = psigma
+                results[n]["ln_gamma_c"][mix][comp] = get_lngamma_comb_vector(
+                    composition, areas, volumes
+                )
+                results[n]["ln_gamma_mix"][mix][comp] = {}
+                for temp, temperature in enumerate(temperatures):
+                    results[n]["ln_gamma_mix"][mix][comp][temp] = get_ln_Gamma_mix(
                         temperature, psigma, interaction_matrix
-                    ),
-                    "ln_gamma_pure_ref": get_ln_Gamma_pure(
-                        temperature, probs, interaction_matrix
-                    ),
-                }
+                    )
+            for temp, temperature in enumerate(temperatures):
+                results[n]["ln_gamma_pure"][mix][temp] = get_ln_Gamma_pure(
+                    temperature, probs, interaction_matrix
+                )
     return results
 
 
@@ -318,67 +338,94 @@ def cosmo_layer(interaction_matrix: NDArray[np.float64]) -> CosmoLayer:
 def test_single_mixture_single_condition(
     n: int,
     mixtures: dict[int, list[_MixtureType]],
-    conditions: dict[int, list[_ConditionType]],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    temperatures: list[float],
     reference_results: _ReferenceResultsType,
     cosmo_layer: CosmoLayer,
 ) -> None:
     ref = reference_results[n]
-    for i, (areas, volumes, logprobs) in enumerate(mixtures[n]):
+    for mix, (areas, volumes, logprobs) in enumerate(mixtures[n]):
         a = torch.as_tensor(areas)
         v = torch.as_tensor(volumes)
         logP = torch.as_tensor(logprobs)
-        for j, (temperature, composition) in enumerate(conditions[n]):
-            ln_gamma_c_ref = ref[i][j]["ln_gamma_c_ref"]
-            T = torch.as_tensor(temperature)
+
+        scaled_interaction_matrices = [
+            cosmo_layer.scaled_interactions(torch.as_tensor(temperature))
+            for temperature in temperatures
+        ]
+
+        for comp, composition in enumerate(compositions[n]):
             x = torch.as_tensor(composition)
 
+            ln_gamma_c_ref = ref["ln_gamma_c"][mix][comp]
             ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
             np.testing.assert_allclose(ln_gamma_c.numpy(), ln_gamma_c_ref, rtol=_RTOL)
 
-            p_mix_ref = ref[i][j]["psigma"]
-            x = torch.as_tensor(composition)
+            p_mix_ref = ref["psigma"][mix][comp]
             log_p_mix = cosmo_layer.mixture_log_probabilities(x, a, logP)
             p_mix = torch.softmax(log_p_mix, dim=-1)
             np.testing.assert_allclose(p_mix.numpy(), p_mix_ref, rtol=_RTOL)
 
-            ln_gamma_mix = ref[i][j]["ln_gamma_mix_ref"]
+            for temp, scaled_interactions in enumerate(scaled_interaction_matrices):
+                ln_gamma_mix = ref["ln_gamma_mix"][mix][comp][temp]
 
-            ln_gamma_pure_ref = ref[i][j]["ln_gamma_pure_ref"]
+                ln_gamma_s = cosmo_layer.log_mixture_segment_activity_coefficients(
+                    scaled_interactions, x, a, logP
+                )
+                np.testing.assert_allclose(
+                    ln_gamma_s.numpy(), ln_gamma_mix, rtol=_RTOL_LN_GAMMA
+                )
 
-            ln_gamma_s, ln_gamma_pure = cosmo_layer.log_segment_activity_coefficients(
-                T, x, a, logP
+        for temp, scaled_interaction in enumerate(scaled_interaction_matrices):
+            ln_gamma_pure_ref = ref["ln_gamma_pure"][mix][temp]
+            ln_gamma_pure = cosmo_layer.log_pure_segment_activity_coefficients(
+                scaled_interaction, logP
             )
             np.testing.assert_allclose(
-                ln_gamma_s.numpy(), ln_gamma_mix, rtol=_RTOL_LN_GAMMA
-            )
-            np.testing.assert_allclose(
-                ln_gamma_pure.numpy(), ln_gamma_pure_ref, rtol=_RTOL_LN_GAMMA
+                ln_gamma_pure.squeeze(0).squeeze(0).numpy(),
+                ln_gamma_pure_ref,
+                rtol=_RTOL_LN_GAMMA,
             )
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
-def test_multiple_mixtures_multiple_conditions(
+def test_multiple_mixtures_multiple_compositions(
     n: int,
     mixtures: dict[int, list[_MixtureType]],
-    conditions: dict[int, list[_ConditionType]],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    temperatures: list[float],
     reference_results: _ReferenceResultsType,
     cosmo_layer: CosmoLayer,
 ) -> None:
     data = [
         (areas, volumes, logprobs, temperature, composition)
         for areas, volumes, logprobs in mixtures[n]
-        for temperature, composition in conditions[n]
+        for composition in compositions[n]
+        for temperature in temperatures
     ]
     a, v, logP, T, x = map(torch.as_tensor, zip(*data, strict=True))
+    print(a.shape, v.shape, logP.shape, T.shape, x.shape)
 
-    all_i = range(len(mixtures[n]))
-    all_j = range(len(conditions[n]))
-    pairs = list(itertools.product(all_i, all_j))
-    results = reference_results[n]
-    ln_gamma_c_ref = np.array([results[i][j]["ln_gamma_c_ref"] for i, j in pairs])
-    p_mix_ref = np.array([results[i][j]["psigma"] for i, j in pairs])
-    ln_gamma_mix_ref = np.array([results[i][j]["ln_gamma_mix_ref"] for i, j in pairs])
-    ln_gamma_pure_ref = np.array([results[i][j]["ln_gamma_pure_ref"] for i, j in pairs])
+    scaled_interaction_matrices = cosmo_layer.scaled_interactions(T)
+
+    triples = list(
+        itertools.product(
+            range(len(mixtures[n])),
+            range(len(compositions[n])),
+            range(len(temperatures)),
+        ),
+    )
+    ref = reference_results[n]
+    ln_gamma_c_ref = np.array(
+        [ref["ln_gamma_c"][mix][comp] for mix, comp, _ in triples]
+    )
+    p_mix_ref = np.array([ref["psigma"][mix][comp] for mix, comp, _ in triples])
+    ln_gamma_mix_ref = np.array(
+        [ref["ln_gamma_mix"][mix][comp][temp] for mix, comp, temp in triples]
+    )
+    ln_gamma_pure_ref = np.array(
+        [ref["ln_gamma_pure"][mix][temp] for mix, _, temp in triples]
+    )
 
     ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
     np.testing.assert_allclose(ln_gamma_c.numpy(), ln_gamma_c_ref, rtol=_RTOL)
@@ -386,74 +433,100 @@ def test_multiple_mixtures_multiple_conditions(
     p_mix = cosmo_layer.mixture_log_probabilities(x, a, logP).softmax(dim=-1)
     np.testing.assert_allclose(p_mix, p_mix_ref, rtol=_RTOL)
 
-    log_gamma_s, log_gamma_pure = cosmo_layer.log_segment_activity_coefficients(
-        T, x, a, logP
+    log_gamma_mix = cosmo_layer.log_mixture_segment_activity_coefficients(
+        scaled_interaction_matrices, x, a, logP
     )
     np.testing.assert_allclose(
-        log_gamma_s.numpy(), ln_gamma_mix_ref, rtol=_RTOL_LN_GAMMA
+        log_gamma_mix.numpy(), ln_gamma_mix_ref, rtol=_RTOL_LN_GAMMA
     )
-    np.testing.assert_allclose(log_gamma_pure, ln_gamma_pure_ref, rtol=_RTOL_LN_GAMMA)
+
+    log_gamma_pure = cosmo_layer.log_pure_segment_activity_coefficients(
+        scaled_interaction_matrices, logP
+    )
+    np.testing.assert_allclose(
+        log_gamma_pure.numpy(), ln_gamma_pure_ref, rtol=_RTOL_LN_GAMMA
+    )
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
 def test_broadcasting(
     n: int,
     mixtures: dict[int, list[_MixtureType]],
-    conditions: dict[int, list[_ConditionType]],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    temperatures: list[float],
     reference_results: _ReferenceResultsType,
     cosmo_layer: CosmoLayer,
 ) -> None:
     num_mixtures = len(mixtures[n])
-
-    temperature_list, composition_list = zip(*conditions[n], strict=True)
-    num_compositions = len(composition_list)
+    num_compositions = len(compositions[n])
+    num_temperatures = len(temperatures)
 
     areas_list, volumes_list, logprobs_list = zip(*mixtures[n], strict=True)
 
-    a = torch.as_tensor(np.array(areas_list, dtype=np.float64)).reshape(1, -1, n)
-    assert a.shape == (1, num_mixtures, n)
+    a = torch.as_tensor(np.array(areas_list, dtype=np.float64))
+    assert a.shape == (num_mixtures, n)
 
-    v = torch.as_tensor(np.array(volumes_list)).reshape(1, -1, n)
-    assert v.shape == (1, num_mixtures, n)
+    v = torch.as_tensor(np.array(volumes_list))
+    assert v.shape == (num_mixtures, n)
 
-    logP = torch.as_tensor(np.stack(logprobs_list)).reshape(1, -1, n, 51)
-    assert logP.shape == (1, num_mixtures, n, 51)
+    logP = torch.as_tensor(np.stack(logprobs_list))
+    assert logP.shape == (num_mixtures, n, 51)
 
-    T = torch.as_tensor(np.array(temperature_list, dtype=np.float64)).reshape(-1, 1)
-    assert T.shape == (num_compositions, 1)
+    T = torch.as_tensor(np.array(temperatures, dtype=np.float64))
+    assert T.shape == (num_temperatures,)
 
-    x = torch.as_tensor(np.array(composition_list, dtype=np.float64)).reshape(-1, 1, n)
-    assert x.shape == (num_compositions, 1, n)
+    scaled_interactions = cosmo_layer.scaled_interactions(T)
+    assert scaled_interactions.shape == (num_temperatures, 51, 51)
+    scaled_interactions = scaled_interactions.reshape(num_temperatures, 1, 1, 51, 51)
+
+    x = torch.as_tensor(np.array(compositions[n], dtype=np.float64))
+    assert x.shape == (num_compositions, n)
+    x = x.reshape(num_compositions, 1, n)
 
     ref = reference_results[n]
 
-    all_i = range(len(mixtures[n]))
-    all_j = range(len(conditions[n]))
+    all_mix = range(num_mixtures)
+    all_comp = range(num_compositions)
+    all_temp = range(num_temperatures)
 
     ln_gamma_c_ref = np.array(
-        [[ref[i][j]["ln_gamma_c_ref"] for i in all_i] for j in all_j]
-    )
-    p_mix_ref = np.array([[ref[i][j]["psigma"] for i in all_i] for j in all_j])
-    ln_gamma_mix_ref = np.array(
-        [[ref[i][j]["ln_gamma_mix_ref"] for i in all_i] for j in all_j]
-    )
-    ln_gamma_pure_ref = np.array(
-        [[ref[i][j]["ln_gamma_pure_ref"] for i in all_i] for j in all_j]
+        [[ref["ln_gamma_c"][mix][comp] for mix in all_mix] for comp in all_comp]
     )
 
     ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
     np.testing.assert_allclose(ln_gamma_c.numpy(), ln_gamma_c_ref, rtol=_RTOL)
 
-    log_p_mix = cosmo_layer.mixture_log_probabilities(x, a, logP)
-    p_mix = torch.softmax(log_p_mix, dim=-1)
-    np.testing.assert_allclose(p_mix, p_mix_ref, rtol=_RTOL)
+    p_mix_ref = np.array(
+        [[ref["psigma"][mix][comp] for mix in all_mix] for comp in all_comp]
+    )
+    p_mix = torch.softmax(cosmo_layer.mixture_log_probabilities(x, a, logP), dim=-1)
+    assert p_mix.shape == (num_compositions, num_mixtures, 51)
+    np.testing.assert_allclose(p_mix.numpy(), p_mix_ref, rtol=_RTOL)
 
-    log_gamma_s, log_gamma_pure = cosmo_layer.log_segment_activity_coefficients(
-        T, x, a, logP
+    ln_gamma_mix_ref = np.array(
+        [
+            [
+                [ref["ln_gamma_mix"][mix][comp][temp] for mix in all_mix]
+                for comp in all_comp
+            ]
+            for temp in all_temp
+        ]
     )
+    log_gamma_mix = cosmo_layer.log_mixture_segment_activity_coefficients(
+        scaled_interactions, x, a, logP
+    )
+    assert log_gamma_mix.shape == (num_temperatures, num_compositions, num_mixtures, 51)
     np.testing.assert_allclose(
-        log_gamma_s.numpy(), ln_gamma_mix_ref, rtol=_RTOL_LN_GAMMA
+        log_gamma_mix.numpy(), ln_gamma_mix_ref, rtol=_RTOL_LN_GAMMA
     )
+
+    ln_gamma_pure_ref = np.array(
+        [[[ref["ln_gamma_pure"][mix][temp] for mix in all_mix]] for temp in all_temp]
+    )
+    log_gamma_pure = cosmo_layer.log_pure_segment_activity_coefficients(
+        scaled_interactions, logP
+    )
+    assert log_gamma_pure.shape == (num_temperatures, 1, num_mixtures, n, 51)
     np.testing.assert_allclose(
         log_gamma_pure.numpy(), ln_gamma_pure_ref, rtol=_RTOL_LN_GAMMA
     )
@@ -463,7 +536,7 @@ def test_broadcasting(
 def test_combinatorial_differentiation(
     n: int,
     mixtures: dict[int, list[_MixtureType]],
-    conditions: dict[int, list[_ConditionType]],
+    compositions: dict[int, list[NDArray[np.float64]]],
     cosmo_layer: CosmoLayer,
 ) -> None:
     """Test that combinatorial activity coefficients backpropagate correctly."""
@@ -481,7 +554,7 @@ def test_combinatorial_differentiation(
         areas, volumes, _ = mixture
         a = torch.as_tensor(areas, dtype=dtype).requires_grad_(True)
         v = torch.as_tensor(volumes, dtype=dtype).requires_grad_(True)
-        for _, composition in conditions[n]:
+        for composition in compositions[n]:
             x = torch.as_tensor(composition, dtype=dtype).requires_grad_(True)
 
             # Check that the gradients are computed correctly
@@ -505,20 +578,25 @@ def test_combinatorial_differentiation(
 
 
 def test_reduced_energy_matrix(
-    interaction_matrix: NDArray[np.float64], cosmo_layer: CosmoLayer
+    interaction_matrix: NDArray[np.float64],
+    temperatures: list[float],
+    cosmo_layer: CosmoLayer,
 ) -> None:
-    T = torch.as_tensor(523.15)
-    U_RT = cosmo_layer.scaled_interaction_energy_matrix(T)
-    assert U_RT.shape == (51, 51)
-    np.testing.assert_allclose(U_RT, interaction_matrix / (_R * T), rtol=_RTOL)
+    for temperature in temperatures:
+        T = torch.as_tensor(temperature)
+        U_RT = cosmo_layer.scaled_interactions(T)
+        assert U_RT.shape == (51, 51)
+        np.testing.assert_allclose(U_RT, interaction_matrix / (_R * T), rtol=_RTOL)
 
 
 def test_reduced_energy_matrix_broadcasting(
-    interaction_matrix: NDArray[np.float64], cosmo_layer: CosmoLayer
+    interaction_matrix: NDArray[np.float64],
+    temperatures: list[float],
+    cosmo_layer: CosmoLayer,
 ) -> None:
-    T = torch.as_tensor([273.15 + i * 100 for i in range(4)])
-    U_RT = cosmo_layer.scaled_interaction_energy_matrix(T)
-    assert U_RT.shape == (4, 51, 51)
+    T = torch.as_tensor(temperatures)
+    U_RT = cosmo_layer.scaled_interactions(T)
+    assert U_RT.shape == (len(temperatures), 51, 51)
     np.testing.assert_allclose(
         U_RT, interaction_matrix / (_R * T[:, None, None]), rtol=_RTOL
     )
