@@ -47,10 +47,9 @@ class Mixture:
         a hydrogen bond. Default is 0.007 e/Å².
     merge : bool, optional
         Whether to merge segment groups (NHB, OH, OT) into a single profile
-        when calling get_log_probabilities(). Default is False.
+        when calling get_probabilities(). Default is False.
     regularize : float, optional
-        Minimum value for clipping probabilities before taking logarithm
-        in get_log_probabilities(). Default is 1e-10.
+        Minimum value for clipping probabilities. Default is 1e-10.
     interaction_matrix_generator : Callable, optional
         Function to generate the interaction matrix for the mixture at a given
         temperature. Default is :func:`create_cosmo_sac_2010_matrices` with default
@@ -232,13 +231,13 @@ class Mixture:
             [self._components_dict[name].get_volume() for name in self._names]
         )
 
-    def get_log_probabilities(self) -> NDArray[np.float64]:
-        """Get log-probabilities of segment types for all components.
+    def get_probabilities(self) -> NDArray[np.float64]:
+        """Get probabilities of segment types for all components.
 
         Returns
         -------
         NDArray[np.float64]
-            Array of log-probabilities for each component.
+            Array of probabilities for each component.
             If merge=True: shape is (n_components, num_points).
             If merge=False: shape is (n_components, 3*num_points).
 
@@ -252,15 +251,15 @@ class Mixture:
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
         ... }
         >>> mixture = Mixture(components, merge=True)
-        >>> log_probs = mixture.get_log_probabilities()
-        >>> log_probs.shape
+        >>> probabilities = mixture.get_probabilities()
+        >>> probabilities.shape
         (2, 51)
-        >>> bool(np.all(log_probs <= 0))
+        >>> bool(np.all(probabilities <= 1))
         True
         """
         return np.stack(
             [
-                self._components_dict[name].get_log_probabilities(
+                self._components_dict[name].get_probabilities(
                     self._merge, self._regularize
                 )
                 for name in self._names
@@ -379,8 +378,8 @@ class CosmoSac2002Mixture(Mixture):
     >>> mixture = CosmoSac2002Mixture(components)
     >>> len(mixture)
     2
-    >>> log_probs = mixture.get_log_probabilities()
-    >>> log_probs.shape  # merge=True, so shape is (n_components, num_points)
+    >>> probabilities = mixture.get_probabilities()
+    >>> probabilities.shape  # merge=True, so shape is (n_components, num_points)
     (2, 51)
     >>> matrices = mixture.get_interaction_matrices(298.15)
     >>> len(matrices)  # COSMO-SAC 2002 returns single matrix (in tuple)
@@ -430,8 +429,8 @@ class CosmoSac2010Mixture(Mixture):
     >>> mixture = CosmoSac2010Mixture(components)
     >>> len(mixture)
     2
-    >>> log_probs = mixture.get_log_probabilities()
-    >>> log_probs.shape  # merge=False, so shape is (n_components, 3*num_points)
+    >>> probabilities = mixture.get_probabilities()
+    >>> probabilities.shape  # merge=False, so shape is (n_components, 3*num_points)
     (2, 153)
     >>> matrices = mixture.get_interaction_matrices(298.15)
     >>> len(matrices)  # COSMO-SAC 2010 returns two matrices

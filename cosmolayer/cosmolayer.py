@@ -277,9 +277,8 @@ class CosmoLayer(torch.nn.Module):
             Log-activity coefficients of segment types in pure compounds.
             Shape: (..., num_components, num_segment_types).
         """
-        logprobs = probs.log()
         log_gamma_pure: torch.Tensor = CosmoSpace.apply(
-            logprobs, scaled_interactions.unsqueeze(-3)
+            probs, scaled_interactions.unsqueeze(-3)
         ).log()
         return log_gamma_pure
 
@@ -314,7 +313,7 @@ class CosmoLayer(torch.nn.Module):
             Shape: (..., num_segment_types).
         """
         log_gamma_mix: torch.Tensor = CosmoSpace.apply(
-            self.mixture_probabilities(fracs, areas, probs).log(),
+            self.mixture_probabilities(fracs, areas, probs),
             scaled_interactions,
         ).log()
         return log_gamma_mix

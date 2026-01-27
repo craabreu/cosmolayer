@@ -379,9 +379,7 @@ def test_single_mixture_single_condition(
                 assert_close(ln_gamma_s, ln_gamma_mix)
 
                 ln_gamma_r_ref = ref["ln_gamma_r"][mix][comp][temp]
-                ln_gamma_r = cosmo_layer.log_residual_activity_coefficients(
-                    T, x, a, p
-                )
+                ln_gamma_r = cosmo_layer.log_residual_activity_coefficients(T, x, a, p)
                 assert_close(ln_gamma_r, ln_gamma_r_ref)
 
                 ln_gamma_ref = ln_gamma_c_ref + ln_gamma_r_ref

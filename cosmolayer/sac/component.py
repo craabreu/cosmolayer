@@ -421,3 +421,58 @@ class Component:
             probabilities.clip(min=regularize)
         )
         return log_probabilities
+
+    def get_probabilities(
+        self, merge: bool = False, regularize: float = 1e-10
+    ) -> NDArray[np.float64]:
+        """Get the probabilities of segment types in the molecule.
+
+        A segment type is defined by its hydrogen bonding class (NHB, OH, OT) and its
+        averaged charge density.
+
+        Parameters
+        ----------
+        merge : bool, optional
+            Whether to merge the segment groups (NHB, OH, OT) into a single profile.
+            Default is False.
+        regularize : float, optional
+            Minimum value for clipping probabilities before taking the logarithm
+            to avoid log(0) issues. Set to 0 to disable regularization.
+            Default is 1e-10.
+
+        Returns
+        -------
+        np.ndarray
+            Normalized distribution of segment groups.
+            If merge=True: shape is (num_points,) - log of total sigma
+            profile normalized.
+            If merge=False: shape is (3*num_points,) - log of concatenated
+            profiles.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from importlib.resources import files
+        >>> from cosmolayer.sac import Component
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> component = Component(path)
+        >>> probabilities = component.get_probabilities(merge=True)
+        >>> probabilities.shape
+        (51,)
+        >>> bool(np.all(probabilities <= 1))
+        True
+        >>> bool(np.isclose(probabilities.sum(), 1.0))
+        True
+        >>> probabilities_full = component.get_probabilities(merge=False)
+        >>> probabilities_full.shape
+        (153,)
+        >>> bool(np.isclose(probabilities_full.sum(), 1.0))
+        True
+        """
+        if regularize < 0:
+            raise ValueError("Regularization value must be non-negative.")
+        profiles = [self._sigma_profiles[segtype] for segtype in SEGMENT_GROUPS]
+        probabilities = (
+            np.sum(profiles, axis=0) if merge else np.concatenate(profiles)
+        ) / self._area
+        return probabilities.clip(min=regularize)
