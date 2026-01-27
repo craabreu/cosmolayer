@@ -70,7 +70,7 @@ class CosmoLayer(torch.nn.Module):
     >>> x = torch.tensor([0.235, 0.765], requires_grad=True)
     >>> a = torch.tensor(mixture.get_areas())
     >>> v = torch.tensor(mixture.get_volumes())
-    >>> ln_gamma_c = cosmo_layer.combinatorial_log_activity_coefficients(x, a, v)
+    >>> ln_gamma_c = cosmo_layer.log_combinatorial_activity_coefficients(x, a, v)
     >>> ln_gamma_c.tolist()
     [-0.27687..., -0.052266...]
 
@@ -145,7 +145,7 @@ class CosmoLayer(torch.nn.Module):
             f"n_types={self._n_types}"
         )
 
-    def combinatorial_log_activity_coefficients(
+    def log_combinatorial_activity_coefficients(
         self,
         molfracs: torch.Tensor,
         areas: torch.Tensor,
@@ -318,6 +318,50 @@ class CosmoLayer(torch.nn.Module):
         ).log()
         return log_gamma_mix
 
+    def log_residual_activity_coefficients(
+        self,
+        temperature: torch.Tensor,
+        molfracs: torch.Tensor,
+        areas: torch.Tensor,
+        logprobs: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute the logarithms of the residual activity coefficients.
+
+        Parameters
+        ----------
+        temperature : torch.Tensor
+            Temperature in the same units as the reference temperature.
+            Shape: (...,).
+        molfracs : torch.Tensor
+            Mole fractions of the components. Must sum to 1.
+            Shape: (..., num_components).
+        areas : torch.Tensor
+            Surface areas of the components.
+            Shape: (..., num_components).
+        logprobs : torch.Tensor
+            Log-probabilities of segment types per component.
+            Shape: (..., num_components, num_segment_types).
+
+        Returns
+        -------
+        torch.Tensor
+            Logarithms of the residual activity coefficients.
+            Shape: (..., num_components).
+        """
+        scaled_interactions = self.scaled_interactions(temperature)
+        log_gamma_pure = self.log_pure_segment_activity_coefficients(
+            scaled_interactions, logprobs
+        )
+        log_gamma_mix = self.log_mixture_segment_activity_coefficients(
+            scaled_interactions, molfracs, areas, logprobs
+        )
+        probs = torch.softmax(logprobs, dim=-1)
+        num_segments = areas / self._area_per_segment
+        log_gamma_res: torch.Tensor = num_segments * (
+            probs * (log_gamma_mix.unsqueeze(-2) - log_gamma_pure)
+        ).sum(dim=-1)
+        return log_gamma_res
+
     def forward(
         self,
         temp: torch.Tensor,
@@ -346,7 +390,7 @@ class CosmoLayer(torch.nn.Module):
         torch.Tensor
             Logarithms of the activity coefficients. Shape: (..., n).
         """
-        log_gamma_c = self.combinatorial_log_activity_coefficients(
+        log_gamma_c = self.log_combinatorial_activity_coefficients(
             molfracs, areas, volumes
         )
         return log_gamma_c
