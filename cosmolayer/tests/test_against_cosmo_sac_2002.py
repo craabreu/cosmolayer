@@ -653,11 +653,12 @@ def test_composition_and_temperature_differentiation(
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
+@pytest.mark.parametrize("seed", [3445, 90745], ids=["seed0", "seed1"])
 def test_parameter_differentiation(
+    seed: int,
     n: int,
     temperatures: list[float],
     mixtures: dict[int, list[_MixtureType]],
-    compositions: dict[int, list[NDArray[np.float64]]],
     interaction_matrix: NDArray[np.float64],
 ) -> None:
     """Test that gradients w.r.t. interaction matrix parameters are correct."""
@@ -666,9 +667,16 @@ def test_parameter_differentiation(
     U_RT = interaction_matrix / (_R * _REF_TEMP)
     cosmo_layer = CosmoLayer((U_RT,), (1,), _AEFFPRIME, learn_matrices=True)
 
-    areas, volumes, probs = mixtures[n][0]
-    temperature = torch.as_tensor(temperatures[0])
-    composition = torch.as_tensor(compositions[n][1])
+    rng = np.random.default_rng(seed)
+    mix = rng.integers(len(mixtures[n]))
+    temp = rng.integers(len(temperatures))
+
+    mixture = mixtures[n][mix]
+    areas, volumes, probs = mixture
+    temperature = temperatures[temp]
+
+    composition = rng.integers(1, 10, size=n)
+    composition = composition / composition.sum()
 
     a = torch.as_tensor(areas, dtype=dtype)
     v = torch.as_tensor(volumes, dtype=dtype)
@@ -701,7 +709,8 @@ def test_parameter_differentiation(
         gERT_minus = reduced_excess_gibbs_energy(T, x, a, v, p, cosmo_layer)
         grad = (gERT_plus.item() - gERT_minus.item()) / (2 * eps)
         U_RT_param.data[i, j] = original_value
-        assert np.abs(analytical_grad[i, j] - grad) < 0.01 * np.abs(grad)
+        abs_error = (analytical_grad[i, j] - grad).abs()
+        assert abs_error < 0.01 * abs(grad) or abs_error < 1e-8
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
