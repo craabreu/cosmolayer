@@ -5,6 +5,7 @@ Reference implementation:
     https://github.com/usnistgov/COSMOSAC/blob/master/COSMO-PurePython.ipynb
 """
 
+import functools
 import itertools
 import re
 from importlib.resources import files
@@ -175,6 +176,20 @@ def get_lngamma_comb_vector(
         ],
         dtype=np.float64,
     )
+
+
+def reduced_excess_gibbs_energy(
+    T: torch.Tensor,
+    x: torch.Tensor,
+    a: torch.Tensor,
+    v: torch.Tensor,
+    p: torch.Tensor,
+    cosmo_layer: CosmoLayer,
+) -> torch.Tensor:
+    """Scalar function for gradcheck: gERT = x^T @ ln_gamma."""
+    ln_gamma = cosmo_layer(T, x, a, v, p)
+    ge_RT: torch.Tensor = (x * ln_gamma).sum()
+    return ge_RT
 
 
 def get_compound_data(smiles: str) -> tuple[pd.DataFrame, float, float]:
@@ -598,6 +613,131 @@ def test_combinatorial_differentiation(
                     rtol=_RTOL,
                     atol=_ATOL,
                 )
+
+
+@pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
+def test_composition_and_temperature_differentiation(
+    n: int,
+    temperatures: list[float],
+    mixtures: dict[int, list[_MixtureType]],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    cosmo_layer: CosmoLayer,
+) -> None:
+    """Test that activity coefficients backpropagate correctly."""
+    # Use double precision for gradcheck
+    dtype = torch.float64
+
+    for areas, volumes, probs in mixtures[n]:
+        a = torch.as_tensor(areas, dtype=dtype)
+        v = torch.as_tensor(volumes, dtype=dtype)
+        p = torch.as_tensor(probs, dtype=dtype)
+
+        func = functools.partial(
+            reduced_excess_gibbs_energy, a=a, v=v, p=p, cosmo_layer=cosmo_layer
+        )
+
+        for temperature in temperatures:
+            T = torch.as_tensor(temperature, dtype=dtype).requires_grad_(True)
+
+            for composition in compositions[n]:
+                x = torch.as_tensor(composition, dtype=dtype).requires_grad_(True)
+
+                # Check that the gradients are computed correctly
+                assert torch.autograd.gradcheck(
+                    func,
+                    (T, x),
+                    atol=1e-6,
+                    rtol=1e-5,
+                    eps=1e-6,
+                )
+
+
+@pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
+def test_parameter_differentiation(
+    n: int,
+    temperatures: list[float],
+    mixtures: dict[int, list[_MixtureType]],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    interaction_matrix: NDArray[np.float64],
+) -> None:
+    """Test that gradients w.r.t. interaction matrix parameters are correct."""
+    dtype = torch.float64
+
+    U_RT = interaction_matrix / (_R * _REF_TEMP)
+    cosmo_layer = CosmoLayer((U_RT,), (1,), _AEFFPRIME, learn_matrices=True)
+
+    areas, volumes, probs = mixtures[n][0]
+    temperature = torch.as_tensor(temperatures[0])
+    composition = torch.as_tensor(compositions[n][1])
+
+    a = torch.as_tensor(areas, dtype=dtype)
+    v = torch.as_tensor(volumes, dtype=dtype)
+    p = torch.as_tensor(probs, dtype=dtype)
+    T = torch.as_tensor(temperature, dtype=dtype)
+
+    U_RT_param = next(cosmo_layer.parameters())
+    assert U_RT_param.requires_grad
+
+    x = torch.as_tensor(composition, dtype=dtype)
+    cosmo_layer.zero_grad()
+    gERT = reduced_excess_gibbs_energy(T, x, a, v, p, cosmo_layer)
+    gERT.backward()
+
+    assert U_RT_param.grad is not None
+    analytical_grad = U_RT_param.grad.clone()
+
+    assert torch.isfinite(U_RT_param.grad).all()
+    assert (U_RT_param.grad.abs() > 0).any()
+
+    m = U_RT_param.shape[0]
+    test_indices = [(i * m) // 5 for i in range(1, 5)]
+    eps = 1e-6
+
+    for i, j in itertools.combinations(test_indices, 2):
+        original_value = U_RT_param.data[i, j].item()
+        U_RT_param.data[i, j] = original_value + eps
+        gERT_plus = reduced_excess_gibbs_energy(T, x, a, v, p, cosmo_layer)
+        U_RT_param.data[i, j] = original_value - eps
+        gERT_minus = reduced_excess_gibbs_energy(T, x, a, v, p, cosmo_layer)
+        grad = (gERT_plus.item() - gERT_minus.item()) / (2 * eps)
+        U_RT_param.data[i, j] = original_value
+        assert np.abs(analytical_grad[i, j] - grad) < 0.01 * np.abs(grad)
+
+
+@pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
+def test_thermodynamic_consistency(
+    n: int,
+    temperatures: list[float],
+    mixtures: dict[int, list[_MixtureType]],
+    compositions: dict[int, list[NDArray[np.float64]]],
+    cosmo_layer: CosmoLayer,
+) -> None:
+    """Test that thermodynamic consistency is preserved."""
+    # Use double precision for gradcheck
+    dtype = torch.float64
+
+    for areas, volumes, probs in mixtures[n]:
+        a = torch.as_tensor(areas, dtype=dtype)
+        v = torch.as_tensor(volumes, dtype=dtype)
+        p = torch.as_tensor(probs, dtype=dtype)
+
+        for temperature in temperatures:
+            T = torch.as_tensor(temperature, dtype=dtype)
+
+            for composition in compositions[n]:
+                x = torch.as_tensor(composition, dtype=dtype).requires_grad_(True)
+
+                gERT = reduced_excess_gibbs_energy(T, x, a, v, p, cosmo_layer)
+                gERT.backward()
+                with torch.no_grad():
+                    log_gamma = cosmo_layer(T, x, a, v, p)
+                    x_grad = cast(torch.Tensor, x.grad)
+                    np.testing.assert_allclose(
+                        log_gamma,
+                        x_grad + gERT - (x * x_grad).sum(),
+                        rtol=_RTOL,
+                        atol=_ATOL,
+                    )
 
 
 def test_reduced_energy_matrix(
