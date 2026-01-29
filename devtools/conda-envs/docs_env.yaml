@@ -17,6 +17,12 @@ dependencies:
   - lightning
   - opt-einsum
 
+    # Build dependencies for COSMOSAC reference package
+  - cmake
+  - ninja
+  - c-compiler
+  - cxx-compiler
+
     # Testing
   - pytest
   - pytest-cov
