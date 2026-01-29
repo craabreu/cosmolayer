@@ -38,36 +38,49 @@ When PowerShell passed this through `micromamba run`, the command-line argument 
 
 ## Solution
 
+### Final Approach: Native Shell Operations
+
+After multiple iterations dealing with output capture issues, the solution is to use **native shell file operations** instead of running Python through `micromamba run`.
+
 ### PowerShell Script (`install_cosmosac.ps1`)
 
-1. **Write Python code to a temporary file** instead of passing it via `-c` flag:
+1. **Check for packaging files using native PowerShell**:
    ```powershell
-   $tempScript = [System.IO.Path]::GetTempFileName() + ".py"
-   Set-Content -Path $tempScript -Value $pythonScript -Encoding UTF8
+   if (Test-Path (Join-Path $cosmosacWorkdir "pyproject.toml")) {
+     $installDir = $cosmosacWorkdir
+   } elseif (Test-Path (Join-Path $cosmosacWorkdir "setup.py")) {
+     $installDir = $cosmosacWorkdir
+   } else {
+     # Search subdirectories using Get-ChildItem
+     $pyprojects = Get-ChildItem -Path $cosmosacWorkdir -Recurse -Filter "pyproject.toml"
+   }
    ```
 
-2. **Use file-based output redirection** instead of pipeline capture:
-   ```powershell
-   $tempOutput = [System.IO.Path]::GetTempFileName()
-   micromamba run -n test python $tempScript > $tempOutput 2>&1
-   $installDir = (Get-Content $tempOutput -Raw).Trim()
-   ```
-   
-   This avoids PowerShell pipeline issues with `micromamba run` that cause "tried to write to a nonexistent pipe" errors.
-
-3. **Add proper error handling**:
-   - Added `exit 1` after Write-Error to ensure script terminates on failure
-   - Wrapped installation logic in try-finally block to ensure cleanup
-
-4. **Add diagnostic output**:
-   - Added "Found Python package at: ..." message to help with debugging
-
-5. **Ensure cleanup** of both temporary files in finally block
+2. **Benefits**:
+   - No Python script execution required
+   - No output redirection issues
+   - No temporary file management
+   - Cleaner and more maintainable
+   - Avoids all `micromamba run` environment noise
 
 ### Bash Script (`install_cosmosac.sh`)
 
-- Added diagnostic output for consistency with PowerShell script
-- Script already had proper error handling with `exit 1`
+1. **Check for packaging files using native bash**:
+   ```bash
+   if [[ -f "${COSMOSAC_WORKDIR}/pyproject.toml" ]]; then
+     INSTALL_DIR="${COSMOSAC_WORKDIR}"
+   elif [[ -f "${COSMOSAC_WORKDIR}/setup.py" ]]; then
+     INSTALL_DIR="${COSMOSAC_WORKDIR}"
+   else
+     # Search using find
+     PYPROJECT_PATH="$(find "${COSMOSAC_WORKDIR}" -name "pyproject.toml" -type f -print -quit)"
+   fi
+   ```
+
+2. **Benefits**:
+   - Consistent approach with PowerShell version
+   - No Python dependency for the search logic
+   - More robust error handling
 
 ## Verification
 
@@ -88,14 +101,23 @@ The fix has been tested locally and should resolve the Windows CI failure. The n
 - `devtools/scripts/install_cosmosac.ps1` - Fixed Python script execution by using temp file + file-based output redirection instead of pipeline capture
 - `devtools/scripts/install_cosmosac.sh` - Added diagnostic output for consistency
 
-## Changes Summary
+## Evolution of the Fix
 
-### Commit 1 (Initial Fix)
+### Attempt 1 (Initial Fix)
 - Changed from `python -c $pythonCommand` to temp file approach
-- Added error handling and diagnostic output
 - **Result**: Fixed command parsing issue but encountered pipeline errors
 
-### Commit 2 (Pipeline Fix) 
+### Attempt 2 (Pipeline Fix) 
 - Changed from pipeline capture `| Select-Object` to file redirection `> $tempOutput`
-- Read output from file instead of capturing through pipeline
-- **Result**: Should resolve "tried to write to a nonexistent pipe" errors
+- **Result**: Output contaminated with Visual Studio compiler setup noise (300+ lines)
+- **Error**: `ERROR: Invalid requirement: 'D:\a\cosmolayer\cosmolayer>SET DISTUTILS_USE_SDK=1'`
+
+### Attempt 3 (Final Solution) ✅
+- **Eliminated Python script entirely** - use native PowerShell/bash file operations
+- Check for `pyproject.toml` and `setup.py` using `Test-Path`/`-f` conditionals
+- Search subdirectories using `Get-ChildItem`/`find` if not in root
+- **Benefits**:
+  - No output capture issues
+  - No temporary file management
+  - No micromamba environment activation noise
+  - Simpler, faster, more maintainable

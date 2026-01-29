@@ -37,66 +37,40 @@ if ($LASTEXITCODE -ne 0) {
   }
 }
 
-$pythonScript = @'
-import os
-from pathlib import Path
+# Check if COSMOSAC directory contains Python package metadata
+$installDir = $null
 
-root = Path(os.environ["COSMOSAC_WORKDIR"])
-candidates = []
-for path in [root] + list(root.glob("**/pyproject.toml")) + list(
-    root.glob("**/setup.py")
-):
-    if path.is_file():
-        candidates.append(path.parent)
-
-def score(path: Path) -> tuple[int, int]:
-    depth = len(path.relative_to(root).parts)
-    is_root = 0 if path == root else 1
-    return (is_root, depth)
-
-if candidates:
-    best = sorted(set(candidates), key=score)[0]
-    print(best)
-'@
-
-# Write Python script to temporary file to avoid argument parsing issues
-$tempScript = [System.IO.Path]::GetTempFileName() + ".py"
-$tempOutput = [System.IO.Path]::GetTempFileName()
-Set-Content -Path $tempScript -Value $pythonScript -Encoding UTF8
-
-try {
-  # Run Python script and redirect output to file to avoid pipeline issues
-  if (Get-Command micromamba -ErrorAction SilentlyContinue) {
-    micromamba run -n test python $tempScript > $tempOutput 2>&1
-  } else {
-    python $tempScript > $tempOutput 2>&1
+# Check root directory first
+if (Test-Path (Join-Path $cosmosacWorkdir "pyproject.toml")) {
+  $installDir = $cosmosacWorkdir
+  Write-Host "Found pyproject.toml at: $installDir"
+} elseif (Test-Path (Join-Path $cosmosacWorkdir "setup.py")) {
+  $installDir = $cosmosacWorkdir
+  Write-Host "Found setup.py at: $installDir"
+} else {
+  # Search subdirectories for Python package metadata
+  Write-Host "Searching for Python package metadata in subdirectories..."
+  $pyprojects = Get-ChildItem -Path $cosmosacWorkdir -Recurse -Filter "pyproject.toml" -ErrorAction SilentlyContinue | Select-Object -First 1
+  $setups = Get-ChildItem -Path $cosmosacWorkdir -Recurse -Filter "setup.py" -ErrorAction SilentlyContinue | Select-Object -First 1
+  
+  if ($pyprojects) {
+    $installDir = $pyprojects.DirectoryName
+    Write-Host "Found pyproject.toml at: $installDir"
+  } elseif ($setups) {
+    $installDir = $setups.DirectoryName
+    Write-Host "Found setup.py at: $installDir"
   }
+}
 
-  # Read the output from file
-  if (Test-Path $tempOutput) {
-    $installDir = (Get-Content $tempOutput -Raw).Trim()
-  } else {
-    $installDir = ""
-  }
+if ([string]::IsNullOrWhiteSpace($installDir)) {
+  Write-Error "No Python packaging metadata found in $cosmosacWorkdir."
+  exit 1
+}
 
-  if ([string]::IsNullOrWhiteSpace($installDir)) {
-    Write-Error "No Python packaging metadata found in $cosmosacWorkdir."
-    exit 1
-  }
+Write-Host "Installing COSMOSAC package from: $installDir"
 
-  Write-Host "Found Python package at: $installDir"
-
-  if (Get-Command micromamba -ErrorAction SilentlyContinue) {
-    micromamba run -n test python -m pip install $installDir --no-deps
-  } else {
-    python -m pip install $installDir --no-deps
-  }
-} finally {
-  # Clean up temporary files
-  if (Test-Path $tempScript) {
-    Remove-Item $tempScript -Force
-  }
-  if (Test-Path $tempOutput) {
-    Remove-Item $tempOutput -Force
-  }
+if (Get-Command micromamba -ErrorAction SilentlyContinue) {
+  micromamba run -n test python -m pip install $installDir --no-deps
+} else {
+  python -m pip install $installDir --no-deps
 }
