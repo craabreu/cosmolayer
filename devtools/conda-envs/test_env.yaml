@@ -12,6 +12,10 @@ dependencies:
   - pyyaml
   - scipy
   - typing-extensions
+  - cmake
+  - ninja
+  - c-compiler
+  - cxx-compiler
 
     # Testing
   - matplotlib
