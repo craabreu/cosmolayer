@@ -121,3 +121,16 @@ The fix has been tested locally and should resolve the Windows CI failure. The n
   - No temporary file management
   - No micromamba environment activation noise
   - Simpler, faster, more maintainable
+
+## Additional Improvements
+
+### Added COSMOSAC Import Tests
+- Created `test_cosmosac_installation.py` to verify COSMOSAC package (cCOSMO) can be imported
+- Tests check:
+  1. Package can be imported as `cCOSMO` without errors
+  2. Module has public attributes (not empty)
+  3. Key classes (COSMO1, VirginiaTechProfileDatabase) are present (informational only)
+- Added explicit verification step in CI workflows after installation
+  - Runs `python -c "import cCOSMO"` to catch installation issues early
+  - Provides immediate feedback before running full test suite
+- Note: The package is imported as `cCOSMO`, not `COSMOSAC` (per the reference notebooks)

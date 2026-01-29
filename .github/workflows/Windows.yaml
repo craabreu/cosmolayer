@@ -54,6 +54,11 @@ jobs:
         run: |
           devtools/scripts/install_cosmosac.ps1
 
+      - name: Verify COSMOSAC installation
+        shell: bash -l {0}
+        run: |
+          python -c "import cCOSMO; print('✓ cCOSMO package imported successfully')"
+
       - name: Run tests
         # conda setup requires this special shell
         shell: bash -l {0}
