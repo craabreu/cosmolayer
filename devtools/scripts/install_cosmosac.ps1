@@ -37,7 +37,7 @@ if ($LASTEXITCODE -ne 0) {
   }
 }
 
-$pythonCommand = @'
+$pythonScript = @'
 import os
 from pathlib import Path
 
@@ -59,18 +59,32 @@ if candidates:
     print(best)
 '@
 
-if (Get-Command micromamba -ErrorAction SilentlyContinue) {
-  $installDir = (micromamba run -n test python -c $pythonCommand | Select-Object -First 1).Trim()
-} else {
-  $installDir = (python -c $pythonCommand | Select-Object -First 1).Trim()
-}
+# Write Python script to temporary file to avoid argument parsing issues
+$tempScript = [System.IO.Path]::GetTempFileName() + ".py"
+Set-Content -Path $tempScript -Value $pythonScript -Encoding UTF8
 
-if ([string]::IsNullOrWhiteSpace($installDir)) {
-  Write-Error "No Python packaging metadata found in $cosmosacWorkdir."
-}
+try {
+  if (Get-Command micromamba -ErrorAction SilentlyContinue) {
+    $installDir = (micromamba run -n test python $tempScript | Select-Object -First 1).Trim()
+  } else {
+    $installDir = (python $tempScript | Select-Object -First 1).Trim()
+  }
 
-if (Get-Command micromamba -ErrorAction SilentlyContinue) {
-  micromamba run -n test python -m pip install $installDir --no-deps
-} else {
-  python -m pip install $installDir --no-deps
+  if ([string]::IsNullOrWhiteSpace($installDir)) {
+    Write-Error "No Python packaging metadata found in $cosmosacWorkdir."
+    exit 1
+  }
+
+  Write-Host "Found Python package at: $installDir"
+
+  if (Get-Command micromamba -ErrorAction SilentlyContinue) {
+    micromamba run -n test python -m pip install $installDir --no-deps
+  } else {
+    python -m pip install $installDir --no-deps
+  }
+} finally {
+  # Clean up temporary file
+  if (Test-Path $tempScript) {
+    Remove-Item $tempScript -Force
+  }
 }

@@ -48,6 +48,7 @@ PY
 INSTALL_DIR="$(echo "${INSTALL_DIR}" | head -n 1)"
 
 if [[ -n "${INSTALL_DIR}" ]]; then
+  echo "Found Python package at: ${INSTALL_DIR}"
   python -m pip install "${INSTALL_DIR}" --no-deps
 else
   echo "No Python packaging metadata found in ${COSMOSAC_WORKDIR}." >&2
