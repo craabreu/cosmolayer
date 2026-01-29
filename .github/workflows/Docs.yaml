@@ -49,7 +49,7 @@ jobs:
       - name: Verify COSMOSAC installation
         shell: bash -l {0}
         run: |
-          python -c "import cCOSMO; print('✓ cCOSMO package imported successfully')"
+          python -c "import cCOSMO; print('cCOSMO package imported successfully')"
 
       - name: Run tests
         shell: bash -l {0}

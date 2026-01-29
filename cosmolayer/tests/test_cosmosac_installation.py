@@ -20,7 +20,7 @@ def test_cCOSMO_imported() -> None:
         pytest.fail(f"Failed to import cCOSMO package: {e}")
 
     assert "cCOSMO" in sys.modules, "cCOSMO module should be in sys.modules"
-    print(f"✓ cCOSMO package successfully imported")
+    print("cCOSMO package successfully imported")
 
 
 def test_cCOSMO_has_basic_structure() -> None:
@@ -32,7 +32,7 @@ def test_cCOSMO_has_basic_structure() -> None:
     public_attrs = [a for a in attrs if not a.startswith("_")]
 
     assert len(public_attrs) > 0, "cCOSMO module should have public attributes"
-    print(f"✓ cCOSMO module has {len(public_attrs)} public attributes")
+    print(f"cCOSMO module has {len(public_attrs)} public attributes")
     print(f"  Available: {', '.join(public_attrs[:5])}{'...' if len(public_attrs) > 5 else ''}")
 
 
@@ -55,7 +55,7 @@ def test_cCOSMO_key_classes() -> None:
         else:
             missing_classes.append(class_name)
 
-    print(f"✓ Found {len(found_classes)} expected classes: {found_classes}")
+    print(f"Found {len(found_classes)} expected classes: {found_classes}")
     
     if missing_classes:
         print(f"  Warning: Missing expected classes: {missing_classes}")
