@@ -61,13 +61,22 @@ if candidates:
 
 # Write Python script to temporary file to avoid argument parsing issues
 $tempScript = [System.IO.Path]::GetTempFileName() + ".py"
+$tempOutput = [System.IO.Path]::GetTempFileName()
 Set-Content -Path $tempScript -Value $pythonScript -Encoding UTF8
 
 try {
+  # Run Python script and redirect output to file to avoid pipeline issues
   if (Get-Command micromamba -ErrorAction SilentlyContinue) {
-    $installDir = (micromamba run -n test python $tempScript | Select-Object -First 1).Trim()
+    micromamba run -n test python $tempScript > $tempOutput 2>&1
   } else {
-    $installDir = (python $tempScript | Select-Object -First 1).Trim()
+    python $tempScript > $tempOutput 2>&1
+  }
+
+  # Read the output from file
+  if (Test-Path $tempOutput) {
+    $installDir = (Get-Content $tempOutput -Raw).Trim()
+  } else {
+    $installDir = ""
   }
 
   if ([string]::IsNullOrWhiteSpace($installDir)) {
@@ -83,8 +92,11 @@ try {
     python -m pip install $installDir --no-deps
   }
 } finally {
-  # Clean up temporary file
+  # Clean up temporary files
   if (Test-Path $tempScript) {
     Remove-Item $tempScript -Force
+  }
+  if (Test-Path $tempOutput) {
+    Remove-Item $tempOutput -Force
   }
 }
