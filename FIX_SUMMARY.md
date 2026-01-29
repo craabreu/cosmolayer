@@ -134,3 +134,11 @@ The fix has been tested locally and should resolve the Windows CI failure. The n
   - Runs `python -c "import cCOSMO"` to catch installation issues early
   - Provides immediate feedback before running full test suite
 - Note: The package is imported as `cCOSMO`, not `COSMOSAC` (per the reference notebooks)
+
+### COSMOSAC Version Pinning
+- Scripts now default to commit `21dd92b`
+  - This commit builds cCOSMO version 1.0.3
+  - Uses modern pyproject.toml build system
+  - Compatible with current CMake versions
+- Can be overridden with `COSMOSAC_GIT_REF` environment variable
+- Note: Tagged releases v1.0 and v1.0.1 have CMake compatibility issues

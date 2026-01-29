@@ -10,13 +10,18 @@ if [[ -d "${COSMOSAC_WORKDIR}" ]]; then
   rm -rf "${COSMOSAC_WORKDIR}"
 fi
 
-if ! git clone --depth 1 --recurse-submodules "${COSMOSAC_GIT_URL}" "${COSMOSAC_WORKDIR}"; then
-  git clone --recurse-submodules "${COSMOSAC_GIT_URL}" "${COSMOSAC_WORKDIR}"
-fi
+# Determine what to checkout (default to specific commit)
+CHECKOUT_REF="${COSMOSAC_GIT_REF:-21dd92b}"
 
-if [[ -n "${COSMOSAC_GIT_REF}" ]]; then
-  git -C "${COSMOSAC_WORKDIR}" fetch --depth 1 origin "${COSMOSAC_GIT_REF}"
-  git -C "${COSMOSAC_WORKDIR}" checkout FETCH_HEAD
+# Try shallow clone with specific branch/tag
+if ! git clone --depth 1 --branch "${CHECKOUT_REF}" --recurse-submodules "${COSMOSAC_GIT_URL}" "${COSMOSAC_WORKDIR}"; then
+  # Fallback to full clone if shallow clone with branch/tag fails
+  if ! git clone --recurse-submodules "${COSMOSAC_GIT_URL}" "${COSMOSAC_WORKDIR}"; then
+    echo "Failed to clone ${COSMOSAC_GIT_URL}." >&2
+    exit 1
+  fi
+  # Checkout the specific ref
+  git -C "${COSMOSAC_WORKDIR}" checkout "${CHECKOUT_REF}"
 fi
 
 if ! git -C "${COSMOSAC_WORKDIR}" submodule update --init --recursive --depth 1; then

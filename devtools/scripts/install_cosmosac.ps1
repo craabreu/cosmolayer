@@ -16,17 +16,19 @@ if (Test-Path $cosmosacWorkdir) {
   Remove-Item -Recurse -Force $cosmosacWorkdir
 }
 
-git clone --depth 1 --recurse-submodules $cosmosacRepo $cosmosacWorkdir
+# Determine what to checkout (default to specific commit)
+$checkoutRef = if ([string]::IsNullOrWhiteSpace($cosmosacRef)) { "21dd92b" } else { $cosmosacRef }
+
+# Try shallow clone with specific branch/tag
+git clone --depth 1 --branch $checkoutRef --recurse-submodules $cosmosacRepo $cosmosacWorkdir
 if ($LASTEXITCODE -ne 0) {
+  # Fallback to full clone if shallow clone with branch/tag fails
   git clone --recurse-submodules $cosmosacRepo $cosmosacWorkdir
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to clone $cosmosacRepo"
   }
-}
-
-if (-not [string]::IsNullOrWhiteSpace($cosmosacRef)) {
-  git -C $cosmosacWorkdir fetch --depth 1 origin $cosmosacRef
-  git -C $cosmosacWorkdir checkout FETCH_HEAD
+  # Checkout the specific ref
+  git -C $cosmosacWorkdir checkout $checkoutRef
 }
 
 git -C $cosmosacWorkdir submodule update --init --recursive --depth 1
