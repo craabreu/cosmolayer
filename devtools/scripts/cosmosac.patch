@@ -1,0 +1,22 @@
+diff --git a/include/COSMO_SAC/COSMO.hpp b/include/COSMO_SAC/COSMO.hpp
+index 0000000..1111111 100644
+--- a/include/COSMO_SAC/COSMO.hpp
++++ b/include/COSMO_SAC/COSMO.hpp
+@@ -193,7 +193,7 @@ namespace COSMOSAC {
+             
+             auto toc = std::chrono::high_resolution_clock::now();
+             // The iterative loop for Gamma
+-            for (auto counter = 0; counter < 200; ++counter) {
++            for (auto counter = 0; counter < 1000; ++counter) {
+                 Gammanew.segment(ileft,w) = 1/(AA.matrix().block(ileft,ileft,w,w).array().rowwise()*Gamma.matrix().segment(ileft,w).array().transpose()).rowwise().sum();
+                 Gamma.segment(ileft, w) = (Gamma.segment(ileft, w) + Gammanew.segment(ileft, w)) / 2;
+                 double maxdiff = ((Gamma.segment(ileft, w) - Gammanew.segment(ileft, w)) / Gamma.segment(ileft, w)).cwiseAbs().real().maxCoeff();
+@@ -210,7 +210,7 @@ namespace COSMOSAC {
+             double R = m_consts.R;
+             EigenArray51 Gamma, Gammanew; Gamma.setOnes();
+             EigenMatrix5151 AA = Eigen::exp(-m_DELTAW / (R*T)).rowwise()*psigma.transpose();
+-            for (auto counter = 0; counter < 200; ++counter) {
++            for (auto counter = 0; counter < 1000; ++counter) {
+                 Gammanew = 1 / (AA.rowwise()*Gamma.transpose()).rowwise().sum();
+                 Gamma = (Gamma + Gammanew) / 2;
+                 double maxdiff = ((Gamma - Gammanew) / Gamma).cwiseAbs().real().maxCoeff();

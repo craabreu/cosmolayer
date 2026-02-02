@@ -16,27 +16,42 @@ if (Test-Path $cosmosacWorkdir) {
   Remove-Item -Recurse -Force $cosmosacWorkdir
 }
 
-# Determine what to checkout (default to specific commit)
-$checkoutRef = if ([string]::IsNullOrWhiteSpace($cosmosacRef)) { "21dd92b" } else { $cosmosacRef }
+# Determine what ref to use (default to specific commit)
+$gitRef = if ([string]::IsNullOrWhiteSpace($cosmosacRef)) { "21dd92b" } else { $cosmosacRef }
 
-# Try shallow clone with specific branch/tag
-git clone --depth 1 --branch $checkoutRef --recurse-submodules $cosmosacRepo $cosmosacWorkdir
+# Clone the repo
+git clone --recurse-submodules $cosmosacRepo $cosmosacWorkdir
 if ($LASTEXITCODE -ne 0) {
-  # Fallback to full clone if shallow clone with branch/tag fails
-  git clone --recurse-submodules $cosmosacRepo $cosmosacWorkdir
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to clone $cosmosacRepo"
-  }
-  # Checkout the specific ref
-  git -C $cosmosacWorkdir checkout $checkoutRef
+  throw "Failed to clone $cosmosacRepo"
 }
 
+# Reset to the desired ref (works for commits, branches, and tags)
+git -C $cosmosacWorkdir reset --hard $gitRef
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to reset to $gitRef"
+}
+
+# Ensure submodules are synced to the checked-out ref
 git -C $cosmosacWorkdir submodule update --init --recursive --depth 1
 if ($LASTEXITCODE -ne 0) {
   git -C $cosmosacWorkdir submodule update --init --recursive
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to initialize COSMOSAC submodules."
   }
+}
+
+# Apply patch to increase iteration count (post-clone, pre-build)
+$patchFile = Join-Path $PSScriptRoot "cosmosac.patch"
+if (Test-Path $patchFile) {
+  Write-Host "Applying patch from $patchFile..."
+  git -C $cosmosacWorkdir apply $patchFile
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host "Patch applied successfully"
+  } else {
+    Write-Warning "Failed to apply patch (may already be applied or incompatible)"
+  }
+} else {
+  Write-Warning "Patch file not found at $patchFile; skipping patch"
 }
 
 # Check if COSMOSAC directory contains Python package metadata
