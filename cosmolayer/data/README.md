@@ -13,21 +13,38 @@ Raw COSMO output from quantum mechanical calculations:
 - **`NCCO.cosmo`** – 2-Aminoethanol, **DMol-3**
 - **`O.cosmo`** – Water, **DMol-3**
 
-### Sigma profiles (`.sigma`) – COSMO-SAC 2002
+### COSMO-SAC 2002 Sigma profiles (`.sigma`)
 
-Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `cosmolayer.sac.CosmoSac2002Mixture` and `create_cosmo_sac_2002_matrix`). Used in reference and regression tests:
+Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `cosmolayer.sac.CosmoSac2002Mixture` and `create_cosmo_sac_2002_matrix`):
 
 - **`CF.sigma`** – Fluoromethane
 - **`NCCO.sigma`** – 2-Aminoethanol
 - **`O.sigma`** – Water
 
-### Sigma profiles (`.sigma3`) – COSMO-SAC 2010
+### COSMO-SAC 2010 Sigma profiles (`.sigma3`)
 
-Precomputed sigma profiles for the **COSMO-SAC 2010** model (see `cosmolayer.sac.CosmoSac2010Mixture` and `create_cosmo_sac_2010_matrices`). Used in DMol-3 parser integration tests:
+Precomputed sigma profiles for the **COSMO-SAC 2010** model (see `cosmolayer.sac.CosmoSac2010Mixture` and `create_cosmo_sac_2010_matrices`):
 
 - **`CF.sigma3`** – Fluoromethane
 - **`NCCO.sigma3`** – 2-Aminoethanol
 - **`O.sigma3`** – Water
+
+### NIST COSMOSAC reference data
+
+Data formatted for validation against the [NIST COSMOSAC reference implementation](https://github.com/usnistgov/COSMOSAC):
+
+#### `cosmo-sac-2002/` – Virginia Tech 2005 format
+
+Sigma profiles reformatted for compatibility with NIST COSMOSAC's COSMO-SAC 2002 implementation:
+
+- **`Sigma_Profile_Database_Index_v2.txt`** – Profile database index
+- **`VT2005-*.txt`** – Reformatted sigma profile files
+
+These files use the Virginia Tech 2005 format and are used to validate CosmoLayer against the NIST reference.
+
+#### `cosmo-sac-2010/` – COSMO-SAC 2010 format
+
+Symbolic links to `.sigma3` files with modified extensions (`.sigma3` → `.sigma`) for compatibility with NIST COSMOSAC's COSMO-SAC 2010 reader. Used in validation tests against the NIST reference implementation.
 
 ## Usage
 
