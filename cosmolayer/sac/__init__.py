@@ -1,5 +1,6 @@
 from .component import Component
 from .interaction_matrices import (
+    GAS_CONSTANT,
     create_cosmo_sac_2002_matrix,
     create_cosmo_sac_2010_matrices,
 )
@@ -9,6 +10,7 @@ __all__ = [
     "Component",
     "CosmoSac2002Mixture",
     "CosmoSac2010Mixture",
+    "GAS_CONSTANT",
     "Mixture",
     "create_cosmo_sac_2002_matrix",
     "create_cosmo_sac_2010_matrices",
