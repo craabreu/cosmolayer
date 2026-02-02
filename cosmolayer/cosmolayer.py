@@ -74,13 +74,13 @@ class CosmoLayer(torch.nn.Module):
     >>> P = torch.tensor(mixture.get_probabilities())
     >>> ln_gamma = cosmo_layer(T, x, a, v, P)
     >>> ln_gamma.tolist()
-    [0.805765..., 0.648046...]
+    [0.805800..., 0.648065...]
     >>> gE_RT = (x * ln_gamma).sum()
     >>> gE_RT.item()
-    0.726905...
+    0.726932...
     >>> gE_RT.backward()
     >>> x.grad.tolist()
-    [0.805765..., 0.648046...]
+    [0.805800..., 0.648065...]
     """
 
     def __init__(  # noqa: PLR0913

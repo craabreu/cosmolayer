@@ -84,8 +84,8 @@ class CosmoSpace(torch.autograd.Function):
     >>> loss = (gamma ** 2).sum()
     >>> loss.backward()
     >>> x.grad
-    tensor([[ 2.7...e+03,  6.0...e+02,  ... -4.8...e+04],
-            [-5.1...e+02, -5.0...e+02,  ...  6.3...e+02]])
+    tensor([[ 2.8...e+03,  6.0...e+02, ... -4.8...e+04],
+            [-5.1...e+02, -5.0...e+02, ...  6.3...e+02]])
     """
 
     @staticmethod

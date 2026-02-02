@@ -22,7 +22,6 @@ from cosmolayer import CosmoLayer
 from cosmolayer.sac import (
     COSMO_SAC_2002_EXPONENTS,
     COSMO_SAC_2002_REFERENCE_AREA,
-    GAS_CONSTANT,
     create_cosmo_sac_2002_matrix,
 )
 
@@ -179,9 +178,7 @@ def reference_results(
         )
         for mix, (smiles, _, _, _) in enumerate(mixtures_n):
             cosmo = get_cosmo_model(smiles)
-            constants = cosmo.get_mutable_COSMO_constants()
-            constants.R = GAS_CONSTANT
-            constants.fast_Gamma = True
+            cosmo.get_mutable_COSMO_constants().fast_Gamma = True
             results[n]["ln_gamma_c"][mix] = {}
             results[n]["ln_gamma_r"][mix] = {}
             for comp, composition in enumerate(compositions[n]):

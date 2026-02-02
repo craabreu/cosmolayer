@@ -20,13 +20,13 @@ from cosmolayer import CosmoLayer
 from cosmolayer.sac import (
     COSMO_SAC_2002_EXPONENTS,
     COSMO_SAC_2002_REFERENCE_AREA,
-    GAS_CONSTANT,
 )
 
 _NUM_POINTS = 3
 _RTOL = 1e-5
 _ATOL = 1e-7
 _REF_TEMP = 298.15
+_GAS_CONSTANT = 0.001987  # kcal/(mol·K)
 
 
 _MixtureType: TypeAlias = tuple[NDArray[np.float64], NDArray[np.float64]]
@@ -90,7 +90,7 @@ def get_Gamma(
     Get the value of Γ (capital gamma) for the given sigma profile
     """
     Gamma = np.ones_like(psigma)
-    AA = np.exp(-DELTAW / (GAS_CONSTANT * T)) * psigma
+    AA = np.exp(-DELTAW / (_GAS_CONSTANT * T)) * psigma
     for _ in range(1000):
         Gammanew = 1 / np.sum(AA * Gamma, axis=1)
         difference = np.abs((Gamma - Gammanew) / Gamma)
@@ -258,7 +258,7 @@ def reference_results(
 
 @pytest.fixture
 def cosmo_layer(interaction_matrix: NDArray[np.float64]) -> CosmoLayer:
-    U_RT = interaction_matrix / (GAS_CONSTANT * _REF_TEMP)
+    U_RT = interaction_matrix / (_GAS_CONSTANT * _REF_TEMP)
     return CosmoLayer((U_RT,), COSMO_SAC_2002_EXPONENTS, COSMO_SAC_2002_REFERENCE_AREA)
 
 
@@ -476,7 +476,7 @@ def test_parameter_differentiation(
     """Test that gradients w.r.t. interaction matrix parameters are correct."""
     dtype = torch.float64
 
-    U_RT = interaction_matrix / (GAS_CONSTANT * _REF_TEMP)
+    U_RT = interaction_matrix / (_GAS_CONSTANT * _REF_TEMP)
     cosmo_layer = CosmoLayer(
         (U_RT,),
         COSMO_SAC_2002_EXPONENTS,
@@ -582,7 +582,7 @@ def test_reduced_energy_matrix(
         T = torch.as_tensor(temperature)
         U_RT = cosmo_layer.scaled_interactions(T)
         assert U_RT.shape == (51, 51)
-        assert_close(U_RT, interaction_matrix / (GAS_CONSTANT * T))
+        assert_close(U_RT, interaction_matrix / (_GAS_CONSTANT * T))
 
 
 def test_reduced_energy_matrix_broadcasting(
@@ -593,4 +593,4 @@ def test_reduced_energy_matrix_broadcasting(
     T = torch.as_tensor(temperatures)
     U_RT = cosmo_layer.scaled_interactions(T)
     assert U_RT.shape == (len(temperatures), 51, 51)
-    assert_close(U_RT, interaction_matrix / (GAS_CONSTANT * T[:, None, None]))
+    assert_close(U_RT, interaction_matrix / (_GAS_CONSTANT * T[:, None, None]))

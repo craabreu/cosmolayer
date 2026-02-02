@@ -9,11 +9,9 @@ from collections import defaultdict
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy import constants as spc
 
 from .segment_groups import OH, OT, SEGMENT_GROUPS
 
-GAS_CONSTANT = spc.gas_constant / (spc.kilo * spc.calorie)  # kcal/(mol·K)
 COSMO_SAC_2002_EXPONENTS = (1,)
 COSMO_SAC_2010_EXPONENTS = (1, 3)
 COSMO_SAC_2002_REFERENCE_AREA = 7.5  # Å²
@@ -29,6 +27,7 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     sigma_hb: float = 0.0084,  # e/Å²
     alpha_prime: float = 16466.72,  # (kcal/mol)/(e/Å²)²
     c_hb: float = 85580.0,  # (kcal/mol)/(e/Å²)²
+    gas_constant: float = 0.001987,  # kcal/(mol·K)
 ) -> NDArray[np.float64]:
     r"""Create an interaction matrix for the COSMO-SAC 2002 model :cite:`Bell2020`.
 
@@ -59,6 +58,8 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     c_hb : float, optional
         Hydrogen bonding energy constant in (kcal/mol)/(e/Å²)². Controls the
         strength of hydrogen bonding interactions. Default is 85580.0 :cite:`Bell2020`.
+    gas_constant : float, optional
+        Universal gas constant in kcal/(mol·K). Default is 0.001987 :cite:`Bell2020`.
 
     Returns
     -------
@@ -100,7 +101,7 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     delta = (grid - sigma_hb).clip(min=0) + (grid + sigma_hb).clip(max=0)
     hb_block = np.outer(delta, delta).clip(max=0)
     energy_matrix = (alpha_prime / 2) * squared_sum_block + c_hb * hb_block
-    result: NDArray[np.float64] = energy_matrix / (GAS_CONSTANT * temperature)
+    result: NDArray[np.float64] = energy_matrix / (gas_constant * temperature)
     return result
 
 
@@ -115,6 +116,7 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
     c_oh_oh: float = 4013.78,  # kcal·Å^4·mol⁻¹·e⁻²
     c_ot_ot: float = 932.31,  # kcal·Å^4·mol⁻¹·e⁻²
     c_oh_ot: float = 3016.43,  # kcal·Å^4·mol⁻¹·e⁻²
+    gas_constant: float = 0.0019872043011606513,  # kcal/(mol·K)
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     r"""Create interaction matrices for the COSMO-SAC 2010 model :cite:`Bell2020`.
 
@@ -151,6 +153,9 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
     c_oh_ot : float, optional
         Hydrogen bonding energy constant in (kcal/mol)/(e/Å²)². Controls the
         strength of hydrogen bonding interactions. Default is 3016.43 :cite:`Bell2020`.
+    gas_constant : float, optional
+        Universal gas constant in kcal/(mol·K). Default is 0.0019872043011606513
+        :cite:`Bell2020`
 
     Returns
     -------
@@ -178,7 +183,7 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
         >>> _ = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
         >>> fig.tight_layout()
     """
-    RT = GAS_CONSTANT * temperature
+    RT = gas_constant * temperature
     c_hb: defaultdict[str, defaultdict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )
