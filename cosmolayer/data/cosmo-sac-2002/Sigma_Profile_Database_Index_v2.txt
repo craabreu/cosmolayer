@@ -1,0 +1,4 @@
+Index No.	Chemical Formula	Compound Name	CAS #	Chemical Family	"Vcosmo, A3"	COSMO Segments	Pre-opt tool	Temp. (K)	ln Pvap
+844	CH3F	CF	593-53-3	"C,H,F-compounds"	46.03004	256	None	194.82	11.1707
+898	C2H7NO	NCCO	141-43-5	Polyfunctional-amides/amines	86.10187	429	None	541.54	11.8591
+1076	H2O	O	7732-18-5	Other-inorganics	25.73454	136	None	373.15	11.8637
