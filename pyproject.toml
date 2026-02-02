@@ -30,7 +30,6 @@ dependencies = [
     "pandas",
     "periodictable",
     "pyyaml",
-    "scipy",
     "torch",
 ]
 

@@ -10,7 +10,6 @@ dependencies:
   - pandas
   - periodictable
   - pyyaml
-  - scipy
   - typing-extensions
 
     # Testing

@@ -10,7 +10,6 @@ dependencies:
   - pandas
   - periodictable
   - pyyaml
-  - scipy
 
     # Machine learning dependencies
   - pytorch
