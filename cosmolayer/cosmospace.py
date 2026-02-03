@@ -14,35 +14,46 @@ from torch.autograd.function import FunctionCtx, NestedIOFunction
 
 
 class CosmoSpace(torch.autograd.Function):
-    """Implicit COSMOspace layer.
+    r"""Implicit COSMOspace layer.
 
-    Solves the following implicit equation for the activity coefficient vector γ, given
-    the segment-type weight vector x (nonnegative, not necessarily normalized) and the
-    reduced interaction energy matrix U/RT:
+    Solves the following implicit equation for the activity coefficient vector
+    :math:`\boldsymbol{\gamma}`, given the segment-type weight vector :math:`\mathbf{x}`
+    (nonnegative, not necessarily normalized) and the reduced interaction energy matrix
+    :math:`\hat{\mathbf{U}}_T = {(RT)}^{-1}\mathbf{U}`:
 
-        γ ⊙ (B (x ⊙ γ)) = 𝟙ₘ sum(x),
+    .. math::
 
-    where m is the number of segment types and B = exp(-U/RT) is the matrix of Boltzmann
-    factors. For a physically meaningful solution, sum(x) must be equal to 1.
+        \boldsymbol{\gamma} \odot (\mathbf{B} (\mathbf{x} \odot \boldsymbol{\gamma})) =
+            s \mathbf{1},
 
-    Domain constraint:
-    - x >= 0 elementwise, with at least one strictly positive component
+    where :math:`\mathbf{B} = \exp(\hat{\mathbf{U}}_T)` is the matrix of Boltzmann
+    factors and :math:`s = \mathbf{1} \cdot \mathbf{x}` is the sum of the segment-type
+    weights. For a physically meaningful solution, :math:`s` must be equal to 1.
 
-    With sum(x)=1, the solution satisfies min(γ) > 0 and aᵀBa = 1, where a = x ⊙ γ
-    is the activity vector.
+    Domain constraint: :math:`\mathbf{x} \geq \mathbf{0}` elementwise, with at least one
+    strictly positive component.
 
-    Even though U/RT is usually symmetric, it is not assumed to be so.
+    With :math:`s = 1`, the solution satisfies :math:`\min(\boldsymbol{\gamma}) > 0` and
+    :math:`\mathbf{a}^T \mathbf{B} \mathbf{a} = 1`, where
+    :math:`\mathbf{a} = \mathbf{x} \odot \boldsymbol{\gamma}` is the activity vector.
+
+    Even though :math:`\hat{\mathbf{U}}_T` is usually symmetric, it is not assumed to be
+    so.
 
     .. note::
-        Supports batching, meaning that x and U/RT can have broadcastable leading
-        dimensions, and all computations are vectorized along these dimensions.
+        Supports batching, meaning that :math:`\mathbf{x}` and
+        :math:`\hat{\mathbf{U}}_T` can have broadcastable leading dimensions, and
+        all computations are vectorized along these dimensions.
 
     Parameters
     ----------
     x : torch.Tensor
-        Segment-type distribution vector. Shape: (..., m).
+        Segment-type distribution vector.
+        Shape: (..., num_segment_types).
     U_RT : torch.Tensor
-        Reduced interaction energy matrix U/RT. Shape: (..., m, m).
+        Reduced interaction energy matrix
+        :math:`\hat{\mathbf{U}}_T = {(RT)}^{-1}\mathbf{U}`.
+        Shape: (..., num_segment_types, num_segment_types).
     max_iter : int
         Maximum number of iterations.
 
@@ -50,6 +61,7 @@ class CosmoSpace(torch.autograd.Function):
     -------
     gamma : torch.Tensor
         The segment activity coefficient vector.
+        Shape: (..., num_segment_types).
 
     Raises
     ------
@@ -119,16 +131,19 @@ class CosmoSpace(torch.autograd.Function):
         Parameters
         ----------
         x : torch.Tensor
-            Segment-type weights (not necessarily normalized). Shape: (..., m).
+            Segment-type weights (not necessarily normalized).
+            Shape: (..., num_segment_types).
         U_RT : torch.Tensor
-            Reduced interaction energy matrix. Shape: (..., m, m).
+            Reduced interaction energy matrix.
+            Shape: (..., num_segment_types, num_segment_types).
         max_iter : int
             Maximum iterations for fixed-point solver.
 
         Returns
         -------
         gamma : torch.Tensor
-            Segment activity coefficient vector. Shape: broadcast(x, U_RT)[..., m]
+            Segment activity coefficient vector.
+            Shape: (..., num_segment_types).
         """
         # Save shapes for correct gradient reductions when broadcasting happened
         ctx_any: Any = ctx
@@ -148,10 +163,26 @@ class CosmoSpace(torch.autograd.Function):
         ctx: NestedIOFunction,
         grad_gamma: torch.Tensor | None,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None, None]:
-        """
-        Backward via implicit differentiation of:
+        r"""
+        Parameters
+        ----------
+        grad_gamma : torch.Tensor
+            Gradient of the output scalar function with respect to the segment activity
+            coefficient vector.
+            Shape: (..., num_segment_types).
 
-            F(γ; x, B) = γ ⊙ (B (x ⊙ γ)) - (sum(x))·1 = 0.
+        Returns
+        -------
+        grad_x : torch.Tensor
+            Gradient of the output scalar function with respect to the segment-type
+            weights.
+            Shape: (..., num_segment_types).
+        grad_U_RT : torch.Tensor
+            Gradient of the output scalar function with respect to the reduced
+            interaction energy matrix.
+            Shape: (..., num_segment_types, num_segment_types).
+        None : NoneType
+            Placeholder for the `max_iter` argument, which does not require a gradient.
         """
         if grad_gamma is None:
             return None, None, None

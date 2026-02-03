@@ -12,10 +12,10 @@ from numpy.typing import NDArray
 
 from .segment_groups import OH, OT, SEGMENT_GROUPS
 
-COSMO_SAC_2002_EXPONENTS : tuple[int, ...] = (1,)
-COSMO_SAC_2010_EXPONENTS : tuple[int, ...] = (1, 3)
-COSMO_SAC_2002_REFERENCE_AREA : float = 7.5  # Å²
-COSMO_SAC_2010_REFERENCE_AREA : float = 7.25  # Å²
+COSMO_SAC_2002_EXPONENTS: tuple[int, ...] = (1,)
+COSMO_SAC_2010_EXPONENTS: tuple[int, ...] = (1, 3)
+COSMO_SAC_2002_REFERENCE_AREA: float = 7.5  # Å²
+COSMO_SAC_2010_REFERENCE_AREA: float = 7.25  # Å²
 
 
 def create_cosmo_sac_2002_matrix(  # noqa: PLR0913

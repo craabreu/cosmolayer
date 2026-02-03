@@ -19,32 +19,39 @@ COORDINATION_NUMBER = 10
 class CosmoLayer(torch.nn.Module):
     r"""Differentiable COSMO-type activity coefficient layer.
 
-    The scaled interaction energy matrix at a given temperature is computed as:
+    This class assumes that the interaction energy matrix :math:`\mathbf{U}` can depend
+    on the temperature :math:`T` through the following relationship:
 
     .. math::
 
-        \boldsymbol{\Theta}_T = \frac{\mathbf{U}}{RT} = \sum_{n=1}^{N_m} \left(
-            \frac{T_{\rm ref}}{T}
-        \right)^{\alpha_n} \boldsymbol{\Theta}_n,
+        \frac{\mathbf{U}}{RT} = \sum_{n=1}^N \frac{\mathbf{U}_n}{RT^{\alpha_n}},
 
-    where :math:`T_{\rm ref}` is the reference temperature,
-    :math:`\boldsymbol{\Theta}_n = \mathbf{U}_n/(R T_{\rm ref}^{\alpha_n})` is the
-    n-th scaled interaction energy matrix at the reference temperature, and
-    :math:`\alpha_n` is the n-th temperature exponent.
+
+    where each :math:`\mathbf{U}_n` is a constant interaction energy matrix, and
+    :math:`\alpha_n` is a constant exponent.
+
+    To instantiate the class, the user must provide a reference temperature
+    :math:`T_{\rm ref}`, a tuple of exponents :math:`(\alpha_1, \ldots, \alpha_N)`, and
+    a tuple of scaled interaction energy matrices
+    :math:`(\hat{\mathbf{U}}_1, \ldots, \hat{\mathbf{U}}_N)`, defined as:
+
+    .. math::
+
+        \hat{\mathbf{U}}_n = \frac{\mathbf{U}_n}{RT_{\rm ref}^{\alpha_n}}
 
     Parameters
     ----------
     interaction_matrices : Sequence[NDArray[np.float64]]
         The scaled interaction energy matrices at the reference temperature
-        (:math:`\boldsymbol{\Theta}_1, \ldots, \boldsymbol{\Theta}_{N_m}`).
+        (:math:`\hat{\mathbf{U}}_1, \ldots, \hat{\mathbf{U}}_N`).
         Must be square matrices, all with the same shape.
     exponents : Sequence[int]
-        Temperature exponents. Must have the same length as the number of interaction
-        matrices.
+        The temperature exponents :math:`(\alpha_1, \ldots, \alpha_N)`. Must have the
+        same length as the number of interaction energy matrices.
     area_per_segment : float
         Area of each surface segment.
     reference_temperature : float, optional
-        Reference temperature. Default is 298.15 K.
+        Reference temperature :math:`T_{\rm ref}`. Default is 298.15 K.
     learn_matrices : bool, optional
         Whether to register all scaled interaction energy matrices as trainable
         parameters. Default is False.
@@ -66,7 +73,12 @@ class CosmoLayer(torch.nn.Module):
     >>> area_per_segment = mixture.get_area_per_segment()
     >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents, area_per_segment)
     >>> cosmo_layer
-    CosmoLayer(t_ref=298.15, aps=7.50, exponents=[1], n_types=51)
+    CosmoLayer(
+      reference_temperature=298.15
+      area_per_segment=7.50
+      exponents=(1,)
+      num_segment_types=51
+    )
     >>> T = torch.tensor(373.15)
     >>> x = torch.tensor([0.5, 0.5], requires_grad=True)
     >>> a = torch.tensor(mixture.get_areas())
@@ -123,17 +135,18 @@ class CosmoLayer(torch.nn.Module):
                 self.register_buffer(name, matrix)
                 self._matrices_and_exponents.append((matrix, exponents[idx]))
 
-        self._exponents = list(exponents)
+        self._exponents = tuple(exponents)
         self._ref_temp = reference_temperature
         self._area_per_segment = area_per_segment
         self._kappa = COORDINATION_NUMBER / (2 * AREA_PER_CONTACT)
 
     def extra_repr(self) -> str:
+        """Return a string representation of the CosmoLayer."""
         return (
-            f"t_ref={self._ref_temp:.2f}, "
-            f"aps={self._area_per_segment:.2f}, "
-            f"exponents={self._exponents}, "
-            f"n_types={self._n_types}"
+            f"reference_temperature={self._ref_temp:.2f}\n"
+            f"area_per_segment={self._area_per_segment:.2f}\n"
+            f"exponents={self._exponents}\n"
+            f"num_segment_types={self._n_types}"
         )
 
     def log_combinatorial_activity_coefficients(
@@ -143,31 +156,6 @@ class CosmoLayer(torch.nn.Module):
         volumes: torch.Tensor,
     ) -> torch.Tensor:
         r"""Compute the logarithms of the combinatorial activity coefficients.
-
-        This method evaluates the Staverman-Guggenheim model from the mole fractions
-        :math:`\mathbf{x}`, component volumes :math:`\mathbf{v}`, and surface areas
-        :math:`\mathbf{a}`:
-
-        .. math::
-
-            \ln {\boldsymbol \gamma}_c =
-            {\mathbf 1} - \hat{\mathbf v} + \ln \hat{\mathbf v}
-            - \frac{Z}{2 a_0} {\mathbf a} \odot \left(
-                {\mathbf 1} - \hat{\mathbf w} + \ln \hat{\mathbf w}
-            \right),
-
-        where:
-
-        - :math:`\hat{\mathbf v} = \mathbf v / (\mathbf x \cdot \mathbf v)` is the
-          scaled volume vector
-        - :math:`\hat{\mathbf a} = \mathbf a / (\mathbf x \cdot \mathbf a)` is the
-          scaled area vector
-        - :math:`\hat{\mathbf w} = \hat{\mathbf v} \oslash \hat{\mathbf a}` is the
-          scaled volume-to-area ratio vector
-        - :math:`Z = 10` is the coordination number
-        - :math:`a_0 = 79.53` Å² is the reference area per segment
-        - :math:`\odot`, :math:`\oslash` denote element-wise operations
-        - :math:`\mathbf 1` is the vector of ones
 
         Parameters
         ----------
