@@ -5,4 +5,5 @@ API Reference
     :maxdepth: 2
     :titlesonly:
 
-    main.rst
+    core.rst
+    cosmosac.rst
