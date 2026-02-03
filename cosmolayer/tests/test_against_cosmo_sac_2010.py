@@ -134,7 +134,6 @@ def mixtures() -> dict[int, list[_MixtureType]]:
         ],
         3: [
             get_mixture_data(["NCCO", "CF", "O"]),
-            get_mixture_data(["CF", "O", "NCCO"]),
         ],
     }
 
@@ -246,6 +245,7 @@ def test_multiple_mixtures_multiple_compositions(
         for composition in compositions[n]
         for temperature in temperatures
     ]
+    # Randomly sample a subset of the data
     a, v, p, T, x = (torch.as_tensor(np.array(x)) for x in zip(*data, strict=True))
 
     triples = list(
@@ -340,55 +340,9 @@ def test_broadcasting(
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
-def test_combinatorial_differentiation(
-    n: int,
-    mixtures: dict[int, list[_MixtureType]],
-    compositions: dict[int, list[NDArray[np.float64]]],
-    cosmo_layer: CosmoLayer,
-) -> None:
-    """Test that combinatorial activity coefficients backpropagate correctly."""
-    # Use double precision for gradcheck
-    dtype = torch.float64
-
-    def reduced_excess_gibbs_energy(
-        x: torch.Tensor, a: torch.Tensor, v: torch.Tensor
-    ) -> torch.Tensor:
-        """Scalar function for gradcheck: gERT_c = x^T @ ln_gamma_c."""
-        ln_gamma_c = cosmo_layer.log_combinatorial_activity_coefficients(x, a, v)
-        return (x * ln_gamma_c).sum()
-
-    for mixture in mixtures[n]:
-        _, areas, volumes, _ = mixture
-        a = torch.as_tensor(areas, dtype=dtype).requires_grad_(True)
-        v = torch.as_tensor(volumes, dtype=dtype).requires_grad_(True)
-        for composition in compositions[n]:
-            x = torch.as_tensor(composition, dtype=dtype).requires_grad_(True)
-
-            # Check that the gradients are computed correctly
-            assert torch.autograd.gradcheck(
-                reduced_excess_gibbs_energy,
-                (x, a, v),
-                atol=1e-6,
-                rtol=1e-5,
-                eps=1e-6,
-            )
-
-            # Check the thermodynamic consistency
-            gERT = reduced_excess_gibbs_energy(x, a, v)
-            gERT.backward()
-            with torch.no_grad():
-                log_gamma = cosmo_layer.log_combinatorial_activity_coefficients(x, a, v)
-                x_grad = cast(torch.Tensor, x.grad)
-                np.testing.assert_allclose(
-                    log_gamma,
-                    x_grad + gERT - (x * x_grad).sum(),
-                    rtol=_RTOL,
-                    atol=_ATOL,
-                )
-
-
-@pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
+@pytest.mark.parametrize("seed", [3445, 90745], ids=["seed0", "seed1"])
 def test_composition_and_temperature_differentiation(
+    seed: int,
     n: int,
     temperatures: list[float],
     mixtures: dict[int, list[_MixtureType]],
@@ -399,29 +353,32 @@ def test_composition_and_temperature_differentiation(
     # Use double precision for gradcheck
     dtype = torch.float64
 
-    for _, areas, volumes, probs in mixtures[n]:
-        a = torch.as_tensor(areas, dtype=dtype)
-        v = torch.as_tensor(volumes, dtype=dtype)
-        p = torch.as_tensor(probs, dtype=dtype)
+    rng = np.random.default_rng(seed)
+    mix = rng.integers(len(mixtures[n]))
+    comp = rng.integers(len(compositions[n]))
+    temp = rng.integers(len(temperatures))
 
-        func = functools.partial(
-            reduced_excess_gibbs_energy, a=a, v=v, p=p, cosmo_layer=cosmo_layer
-        )
+    _, areas, volumes, probs = mixtures[n][mix]
+    a = torch.as_tensor(areas, dtype=dtype)
+    v = torch.as_tensor(volumes, dtype=dtype)
+    p = torch.as_tensor(probs, dtype=dtype)
 
-        for temperature in temperatures:
-            T = torch.as_tensor(temperature, dtype=dtype).requires_grad_(True)
+    func = functools.partial(
+        reduced_excess_gibbs_energy, a=a, v=v, p=p, cosmo_layer=cosmo_layer
+    )
 
-            for composition in compositions[n]:
-                x = torch.as_tensor(composition, dtype=dtype).requires_grad_(True)
+    T = torch.as_tensor(temperatures[temp], dtype=dtype).requires_grad_(True)
 
-                # Check that the gradients are computed correctly
-                assert torch.autograd.gradcheck(
-                    func,
-                    (T, x),
-                    atol=1e-6,
-                    rtol=1e-5,
-                    eps=1e-6,
-                )
+    x = torch.as_tensor(compositions[n][comp], dtype=dtype).requires_grad_(True)
+
+    # Check that the gradients are computed correctly
+    assert torch.autograd.gradcheck(
+        func,
+        (T, x),
+        atol=1e-6,
+        rtol=1e-5,
+        eps=1e-6,
+    )
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])

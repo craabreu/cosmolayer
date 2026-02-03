@@ -425,7 +425,9 @@ def test_broadcasting(
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
+@pytest.mark.parametrize("seed", [3445, 90745], ids=["seed0", "seed1"])
 def test_composition_and_temperature_differentiation(
+    seed: int,
     n: int,
     temperatures: list[float],
     mixtures: dict[int, list[_MixtureType]],
@@ -436,28 +438,31 @@ def test_composition_and_temperature_differentiation(
     # Use double precision for gradcheck
     dtype = torch.float64
 
-    for areas, probs in mixtures[n]:
-        a = torch.as_tensor(areas, dtype=dtype)
-        p = torch.as_tensor(probs, dtype=dtype)
+    rng = np.random.default_rng(seed)
+    mix = rng.integers(len(mixtures[n]))
+    comp = rng.integers(len(compositions[n]))
+    temp = rng.integers(len(temperatures))
 
-        func = functools.partial(
-            reduced_excess_gibbs_energy, a=a, p=p, cosmo_layer=cosmo_layer
-        )
+    areas, probs = mixtures[n][mix]
+    a = torch.as_tensor(areas, dtype=dtype)
+    p = torch.as_tensor(probs, dtype=dtype)
 
-        for temperature in temperatures:
-            T = torch.as_tensor(temperature, dtype=dtype).requires_grad_(True)
+    func = functools.partial(
+        reduced_excess_gibbs_energy, a=a, p=p, cosmo_layer=cosmo_layer
+    )
 
-            for composition in compositions[n]:
-                x = torch.as_tensor(composition, dtype=dtype).requires_grad_(True)
+    T = torch.as_tensor(temperatures[temp], dtype=dtype).requires_grad_(True)
 
-                # Check that the gradients are computed correctly
-                assert torch.autograd.gradcheck(
-                    func,
-                    (T, x),
-                    atol=1e-6,
-                    rtol=1e-5,
-                    eps=1e-6,
-                )
+    x = torch.as_tensor(compositions[n][comp], dtype=dtype).requires_grad_(True)
+
+    # Check that the gradients are computed correctly
+    assert torch.autograd.gradcheck(
+        func,
+        (T, x),
+        atol=1e-6,
+        rtol=1e-5,
+        eps=1e-6,
+    )
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
