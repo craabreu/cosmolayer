@@ -68,56 +68,29 @@ def create_constant_rst_file(const_name, const_value, module_name="cosmolayer"):
         )
 
 
-def create_module_docs(module, module_name, output_dir="api", exclude=None):
-    module_all = getattr(module, "__all__", [])
-    if module_all:
-        module_all_set = set(module_all)
-        excluded_names = set()
-        if exclude:
-            for m in exclude:
-                excluded_names.update(set(getattr(m, "__all__", [])))
-        module_all_set -= excluded_names
+def select(func, module):
+    return [item for item in module.__dict__.values() if func(item)]
 
-        classes = [
-            item
-            for item in module.__dict__.values()
-            if inspect.isclass(item) and item.__name__ in module_all_set
-        ]
-        functions = [
-            item
-            for item in module.__dict__.values()
-            if inspect.isfunction(item) and item.__name__ in module_all_set
-        ]
 
-        constants = []
-        for name in module_all:
-            if name in excluded_names:
-                continue
-            if name not in {c.__name__ for c in classes} and name not in {
-                f.__name__ for f in functions
-            }:
-                if name in module.__dict__:
-                    const_value = getattr(module, name)
-                    constants.append((name, const_value))
-    else:
-        classes = [
-            item for item in module.__dict__.values() if inspect.isclass(item)
-        ]
-        functions = [
-            item for item in module.__dict__.values() if inspect.isfunction(item)
-        ]
-        constants = []
+def create_module_docs(module, module_name, title, output_dir="api"):
+    classes = select(inspect.isclass, module)
+    functions = select(inspect.isfunction, module)
+    submodules = select(inspect.ismodule, module)
+
+    constants = [
+        (name, value)
+        for name, value in module.__dict__.items()
+        if not (name.startswith("_") or value in (classes + functions + submodules))
+    ]
 
     if not classes and not functions and not constants:
         return None
 
     if module_name == "cosmolayer":
         toctree = "core.rst"
-        title = "Core API"
     else:
         module_short_name = module_name.split(".")[-1]
         toctree = f"{module_short_name}.rst"
-        title = module_short_name.capitalize()
 
     with open(f"{output_dir}/{toctree}", "w") as f:
         f.write(f"{title}\n" f"{'=' * len(title)}\n\n")
@@ -148,8 +121,8 @@ def create_module_docs(module, module_name, output_dir="api", exclude=None):
     return toctree
 
 
-main_toctree = create_module_docs(cosmolayer, "cosmolayer")
-sac_toctree = create_module_docs(cosmosac, "cosmolayer.cosmosac")
+main_toctree = create_module_docs(cosmolayer, "cosmolayer", "Core API")
+sac_toctree = create_module_docs(cosmosac, "cosmolayer.cosmosac", "COSMO-SAC")
 
 with open("api/index.rst", "w") as f:
     entries = []
