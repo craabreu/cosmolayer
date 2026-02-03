@@ -20,8 +20,8 @@ from numpy.typing import NDArray
 
 from cosmolayer import CosmoLayer
 from cosmolayer.cosmosac import (
+    COSMO_SAC_2002_AREA_PER_SEGMENT,
     COSMO_SAC_2002_EXPONENTS,
-    COSMO_SAC_2002_REFERENCE_AREA,
     create_cosmo_sac_2002_matrix,
 )
 
@@ -195,7 +195,7 @@ def cosmo_layer() -> CosmoLayer:
     return CosmoLayer(
         [create_cosmo_sac_2002_matrix(_REF_TEMP)],
         COSMO_SAC_2002_EXPONENTS,
-        COSMO_SAC_2002_REFERENCE_AREA,
+        COSMO_SAC_2002_AREA_PER_SEGMENT,
     )
 
 
@@ -445,7 +445,7 @@ def test_parameter_differentiation(
     cosmo_layer = CosmoLayer(
         [create_cosmo_sac_2002_matrix(_REF_TEMP)],
         COSMO_SAC_2002_EXPONENTS,
-        COSMO_SAC_2002_REFERENCE_AREA,
+        COSMO_SAC_2002_AREA_PER_SEGMENT,
         learn_matrices=True,
     )
 

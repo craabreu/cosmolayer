@@ -18,8 +18,8 @@ from numpy.typing import NDArray
 
 from cosmolayer import CosmoLayer
 from cosmolayer.cosmosac import (
+    COSMO_SAC_2002_AREA_PER_SEGMENT,
     COSMO_SAC_2002_EXPONENTS,
-    COSMO_SAC_2002_REFERENCE_AREA,
 )
 
 _NUM_POINTS = 3
@@ -170,7 +170,7 @@ def interaction_matrix() -> NDArray[np.float64]:
     EPS = 3.667  # (LIN AND SANDLER USE A CONSTANT FPOL WHICH YIELDS EPS=3.68)
     EO = 2.395e-4
     FPOL = (EPS - 1.0) / (EPS + 0.5)
-    ALPHA = (0.3 * COSMO_SAC_2002_REFERENCE_AREA ** (1.5)) / (EO)
+    ALPHA = (0.3 * COSMO_SAC_2002_AREA_PER_SEGMENT ** (1.5)) / (EO)
     alpha_prime = FPOL * ALPHA
     sigma_tabulated = np.linspace(-0.025, 0.025, 51)
     sigma_m = np.tile(sigma_tabulated, (len(sigma_tabulated), 1))
@@ -255,7 +255,9 @@ def reference_results(
 @pytest.fixture
 def cosmo_layer(interaction_matrix: NDArray[np.float64]) -> CosmoLayer:
     U_RT = interaction_matrix / (_GAS_CONSTANT * _REF_TEMP)
-    return CosmoLayer((U_RT,), COSMO_SAC_2002_EXPONENTS, COSMO_SAC_2002_REFERENCE_AREA)
+    return CosmoLayer(
+        (U_RT,), COSMO_SAC_2002_EXPONENTS, COSMO_SAC_2002_AREA_PER_SEGMENT
+    )
 
 
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
@@ -481,7 +483,7 @@ def test_parameter_differentiation(
     cosmo_layer = CosmoLayer(
         (U_RT,),
         COSMO_SAC_2002_EXPONENTS,
-        COSMO_SAC_2002_REFERENCE_AREA,
+        COSMO_SAC_2002_AREA_PER_SEGMENT,
         learn_matrices=True,
     )
 
