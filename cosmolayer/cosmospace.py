@@ -147,14 +147,14 @@ class CosmoSpace(torch.autograd.Function):
     def backward(
         ctx: NestedIOFunction,
         grad_gamma: torch.Tensor | None,
-    ) -> tuple[torch.Tensor | None, torch.Tensor | None, None, None]:
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None, None]:
         """
         Backward via implicit differentiation of:
 
             F(γ; x, B) = γ ⊙ (B (x ⊙ γ)) - (sum(x))·1 = 0.
         """
         if grad_gamma is None:
-            return None, None, None, None
+            return None, None, None
 
         gamma, x, B = ctx.saved_tensors  # (..., m), (..., m), (..., m, m)
 
