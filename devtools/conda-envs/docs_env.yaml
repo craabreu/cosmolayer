@@ -33,3 +33,4 @@ dependencies:
   - sphinx-copybutton
   - sphinx-design
   - sphinxext-opengraph
+  - pydata-sphinx-theme
