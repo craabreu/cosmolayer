@@ -114,7 +114,6 @@ class CosmoSpace(torch.autograd.Function):
         x: torch.Tensor,
         U_RT: torch.Tensor,
         max_iter: int = 1000,
-        validate_x: bool = True,
     ) -> torch.Tensor:
         """
         Parameters
@@ -193,4 +192,4 @@ class CosmoSpace(torch.autograd.Function):
         grad_x = grad_x.sum_to_size(ctx_any.x_shape)
         grad_U_RT = grad_U_RT.sum_to_size(ctx_any.u_shape)
 
-        return grad_x, grad_U_RT, None, None
+        return grad_x, grad_U_RT, None
