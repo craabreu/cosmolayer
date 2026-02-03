@@ -31,3 +31,5 @@ dependencies:
   - sphinx
   - sphinxcontrib-bibtex
   - sphinx-copybutton
+  - sphinx-design
+  - sphinxext-opengraph
