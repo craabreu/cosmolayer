@@ -53,7 +53,7 @@ class CosmoLayer(torch.nn.Module):
     --------
     >>> from importlib.resources import files
     >>> from cosmolayer import CosmoLayer
-    >>> from cosmolayer.sac import CosmoSac2002Mixture
+    >>> from cosmolayer.cosmosac import CosmoSac2002Mixture
     >>> import torch
     >>> T_ref = 298.15  # K
     >>> components = {

@@ -69,7 +69,7 @@ class Mixture:
     Examples
     --------
     >>> from importlib.resources import files
-    >>> from cosmolayer.sac import Mixture
+    >>> from cosmolayer.cosmosac import Mixture
     >>> components = {
     ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
     ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
@@ -191,7 +191,7 @@ class Mixture:
         Examples
         --------
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Mixture
+        >>> from cosmolayer.cosmosac import Mixture
         >>> components = {
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
@@ -217,7 +217,7 @@ class Mixture:
         Examples
         --------
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Mixture
+        >>> from cosmolayer.cosmosac import Mixture
         >>> components = {
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
@@ -244,7 +244,7 @@ class Mixture:
         Examples
         --------
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Mixture
+        >>> from cosmolayer.cosmosac import Mixture
         >>> import numpy as np
         >>> components = {
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
@@ -285,7 +285,7 @@ class Mixture:
         Examples
         --------
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Mixture
+        >>> from cosmolayer.cosmosac import Mixture
         >>> components = {
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
@@ -321,7 +321,7 @@ class Mixture:
         Examples
         --------
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Mixture
+        >>> from cosmolayer.cosmosac import Mixture
         >>> components = {
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
@@ -370,7 +370,7 @@ class CosmoSac2002Mixture(Mixture):
     Examples
     --------
     >>> from importlib.resources import files
-    >>> from cosmolayer.sac import CosmoSac2002Mixture
+    >>> from cosmolayer.cosmosac import CosmoSac2002Mixture
     >>> components = {
     ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
     ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
@@ -421,7 +421,7 @@ class CosmoSac2010Mixture(Mixture):
     Examples
     --------
     >>> from importlib.resources import files
-    >>> from cosmolayer.sac import CosmoSac2010Mixture
+    >>> from cosmolayer.cosmosac import CosmoSac2010Mixture
     >>> components = {
     ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
     ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",

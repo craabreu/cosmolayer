@@ -19,7 +19,7 @@ import torch
 from numpy.typing import NDArray
 
 from cosmolayer import CosmoLayer
-from cosmolayer.sac import (
+from cosmolayer.cosmosac import (
     COSMO_SAC_2002_EXPONENTS,
     COSMO_SAC_2002_REFERENCE_AREA,
     create_cosmo_sac_2002_matrix,

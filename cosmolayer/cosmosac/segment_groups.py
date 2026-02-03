@@ -1,5 +1,5 @@
 """
-.. module:: cosmolayer.sac.segment_groups
+.. module:: cosmolayer.cosmosac.segment_groups
    :synopsis: Define segment groups for COSMO-SAC activity coefficient calculations.
 
 .. functionauthor:: Charlles Abreu <craabreu@gmail.com>

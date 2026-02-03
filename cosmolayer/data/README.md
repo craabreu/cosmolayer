@@ -15,7 +15,7 @@ Raw COSMO output from quantum mechanical calculations:
 
 ### COSMO-SAC 2002 Sigma profiles (`.sigma`)
 
-Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `cosmolayer.sac.CosmoSac2002Mixture` and `create_cosmo_sac_2002_matrix`):
+Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `cosmolayer.cosmosac.CosmoSac2002Mixture` and `create_cosmo_sac_2002_matrix`):
 
 - **`CF.sigma`** – Fluoromethane
 - **`NCCO.sigma`** – 2-Aminoethanol
@@ -23,7 +23,7 @@ Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `cosmolayer.sac
 
 ### COSMO-SAC 2010 Sigma profiles (`.sigma3`)
 
-Precomputed sigma profiles for the **COSMO-SAC 2010** model (see `cosmolayer.sac.CosmoSac2010Mixture` and `create_cosmo_sac_2010_matrices`):
+Precomputed sigma profiles for the **COSMO-SAC 2010** model (see `cosmolayer.cosmosac.CosmoSac2010Mixture` and `create_cosmo_sac_2010_matrices`):
 
 - **`CF.sigma3`** – Fluoromethane
 - **`NCCO.sigma3`** – 2-Aminoethanol
@@ -52,7 +52,7 @@ COSMO files can be loaded with `importlib.resources` and used to build component
 
 ```python
 from importlib.resources import files
-from cosmolayer.sac import Component
+from cosmolayer.cosmosac import Component
 
 # Load a COSMO file
 component = Component(files("cosmolayer.data") / "C=C(N)O.cosmo")
@@ -62,7 +62,7 @@ Example with multiple components (e.g. for a Mixture):
 
 ```python
 from importlib.resources import files
-from cosmolayer.sac import CosmoSac2010Mixture
+from cosmolayer.cosmosac import CosmoSac2010Mixture
 
 components = {
     "fluoromethane": files("cosmolayer.data") / "CF.cosmo",
@@ -80,4 +80,4 @@ mixture = CosmoSac2010Mixture(components)
 - Surface areas
 - Atom assignments
 
-The parsers in `cosmolayer.parser` read these files and provide the data needed for COSMO-SAC activity coefficient calculations. The `.sigma` and `.sigma3` files store precomputed sigma profiles for the COSMO-SAC 2002 and COSMO-SAC 2010 models respectively (see `cosmolayer.sac`); they are used by tests and validation scripts.
+The parsers in `cosmolayer.parser` read these files and provide the data needed for COSMO-SAC activity coefficient calculations. The `.sigma` and `.sigma3` files store precomputed sigma profiles for the COSMO-SAC 2002 and COSMO-SAC 2010 models respectively (see `cosmolayer.cosmosac`); they are used by tests and validation scripts.

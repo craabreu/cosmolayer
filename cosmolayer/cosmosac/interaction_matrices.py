@@ -1,5 +1,5 @@
 """
-.. module:: cosmolayer.sac.interaction_matrices
+.. module:: cosmolayer.cosmosac.interaction_matrices
    :synopsis: Create interaction matrices for COSMO-SAC calculations.
 
 .. functionauthor:: Charlles Abreu <craabreu@gmail.com>
@@ -87,7 +87,7 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     .. plot::
         :context: close-figs
 
-        >>> from cosmolayer.sac import create_cosmo_sac_2002_matrix
+        >>> from cosmolayer.cosmosac import create_cosmo_sac_2002_matrix
         >>> from matplotlib import pyplot as plt
         >>> matrix = create_cosmo_sac_2002_matrix(298.15)
         >>> fig, ax = plt.subplots(figsize=(8, 6))
@@ -175,7 +175,7 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
     .. plot::
         :context: close-figs
 
-        >>> from cosmolayer.sac import create_cosmo_sac_2010_matrices
+        >>> from cosmolayer.cosmosac import create_cosmo_sac_2010_matrices
         >>> from matplotlib import pyplot as plt
         >>> delta_w_a, delta_w_b = create_cosmo_sac_2010_matrices(298.15)
         >>> fig, ax = plt.subplots(figsize=(8, 6))

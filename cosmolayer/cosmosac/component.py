@@ -50,7 +50,7 @@ class Component:
     --------
     >>> import numpy as np
     >>> from importlib.resources import files
-    >>> from cosmolayer.sac import Component
+    >>> from cosmolayer.cosmosac import Component
     >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
     >>> component = Component(path)
     >>> component.get_area()
@@ -76,7 +76,7 @@ class Component:
         :context: close-figs
 
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Component
+        >>> from cosmolayer.cosmosac import Component
         >>> from matplotlib import pyplot as plt
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path)
@@ -96,7 +96,7 @@ class Component:
         :context: close-figs
 
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Component
+        >>> from cosmolayer.cosmosac import Component
         >>> from matplotlib import pyplot as plt
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path)
@@ -308,7 +308,7 @@ class Component:
         Examples
         --------
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Component
+        >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path)
         >>> component.get_format()
@@ -394,7 +394,7 @@ class Component:
         --------
         >>> import numpy as np
         >>> from importlib.resources import files
-        >>> from cosmolayer.sac import Component
+        >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path)
         >>> probabilities = component.get_probabilities(merge=True)

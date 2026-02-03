@@ -59,7 +59,7 @@ class CosmoSpace(torch.autograd.Function):
     Examples
     --------
     >>> import numpy as np
-    >>> from cosmolayer import Component, create_cosmo_sac_2002_matrix
+    >>> from cosmolayer.cosmosac import Component, create_cosmo_sac_2002_matrix
     >>> from importlib.resources import files
     >>> components = [
     ...     Component(files("cosmolayer.data") / f"{species}.cosmo")

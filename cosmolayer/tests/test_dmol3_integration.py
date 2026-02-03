@@ -12,7 +12,7 @@ from importlib.resources import files
 import numpy as np
 import pytest
 
-from cosmolayer.sac import Component
+from cosmolayer.cosmosac import Component
 
 
 def load_reference_sigma_profiles(
