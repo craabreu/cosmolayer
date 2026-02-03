@@ -61,8 +61,9 @@ def create_constant_rst_file(const_name, const_value, module_name="cosmolayer"):
                 f"{const_name}\n",
                 "=" * len(const_name) + "\n\n",
                 f".. currentmodule:: {module_name}\n",
-                f".. py:data:: {const_name}\n",
-                "    :type: " + type(const_value).__name__ + "\n\n",
+                f".. py:data:: {const_name}\n\n",
+                f"**Type:** {type(const_value).__name__}\n\n",
+                f"**Value:** ``{const_value!r}``\n",
             ]
         )
 
@@ -96,9 +97,8 @@ def create_module_docs(module, module_name, output_dir="api", exclude=None):
                 f.__name__ for f in functions
             }:
                 if name in module.__dict__:
-                    const_value = module.__dict__[name]
-                    if not inspect.ismodule(const_value) and not name.startswith("_"):
-                        constants.append((name, const_value))
+                    const_value = getattr(module, name)
+                    constants.append((name, const_value))
     else:
         classes = [
             item for item in module.__dict__.values() if inspect.isclass(item)
@@ -120,26 +120,30 @@ def create_module_docs(module, module_name, output_dir="api", exclude=None):
         title = module_short_name.capitalize()
 
     with open(f"{output_dir}/{toctree}", "w") as f:
-        f.write(
-            f"{title}\n"
-            f"{'=' * len(title)}\n\n"
-            ".. toctree::\n"
-            "    :titlesonly:\n\n"
-        )
+        f.write(f"{title}\n" f"{'=' * len(title)}\n\n")
 
-        for item in sorted(classes, key=lambda x: x.__name__):
-            f.write(f"    {item.__name__}\n")
-            create_class_rst_file(item, module_name)
+        if classes:
+            f.write("Classes\n-------\n\n.. toctree::\n    :titlesonly:\n\n")
+            for item in sorted(classes, key=lambda x: x.__name__):
+                f.write(f"    {item.__name__}\n")
+                create_class_rst_file(item, module_name)
+            f.write("\n")
 
-        for item in sorted(functions, key=lambda x: x.__name__):
-            f.write(f"    {item.__name__}\n")
-            create_function_rst_file(item, module_name)
+        if functions:
+            f.write("Functions\n---------\n\n.. toctree::\n    :titlesonly:\n\n")
+            for item in sorted(functions, key=lambda x: x.__name__):
+                f.write(f"    {item.__name__}\n")
+                create_function_rst_file(item, module_name)
+            f.write("\n")
 
-        for const_name, const_value in sorted(constants, key=lambda x: x[0]):
-            f.write(f"    {const_name}\n")
-            create_constant_rst_file(const_name, const_value, module_name)
+        if constants:
+            f.write("Constants\n---------\n\n.. toctree::\n    :titlesonly:\n\n")
+            for const_name, const_value in sorted(constants, key=lambda x: x[0]):
+                f.write(f"    {const_name}\n")
+                create_constant_rst_file(const_name, const_value, module_name)
+            f.write("\n")
 
-        f.write("\n.. testsetup::\n\n    from cosmolayer import *")
+        f.write(".. testsetup::\n\n    from cosmolayer import *")
 
     return toctree
 
@@ -169,7 +173,7 @@ with open("api/index.rst", "w") as f:
 
 version = os.getenv("COSMOLAYER_VERSION", cosmolayer.__version__)
 project = f"CosmoLayer {version}"
-copyright = r"2024 C. Abreu"
+copyright = r"2026 C. Abreu"
 author = "Charlles Abreu"
 release = ""
 
