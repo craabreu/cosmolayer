@@ -1,6 +1,10 @@
 import os
-from importlib.resources.abc import Traversable
-from typing import TextIO
+from typing import Any, TextIO
+
+try:
+    from importlib.resources.abc import Traversable
+except (ImportError, AttributeError):
+    Traversable = Any  # fallback when Traversable not available (e.g. Python < 3.9)
 
 import numpy as np
 import pandas as pd
@@ -316,8 +320,7 @@ class Component:
         Parameters
         ----------
         file_path : path-like or Traversable
-            Path to the COSMO output file (e.g. from
-            :func:`importlib.resources.files`).
+            Path to the COSMO output file.
 
         Returns
         -------
