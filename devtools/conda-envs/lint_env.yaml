@@ -12,12 +12,6 @@ dependencies:
   - pyyaml
   - typing-extensions
 
-    # Testing
-  - matplotlib
-  - pytest
-  - pytest-cov
-
-    # Machine learning dependencies
-  - pytorch
-  - lightning
-  - opt-einsum
+    # Linting
+  - ruff
+  - mypy
