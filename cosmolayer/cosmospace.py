@@ -74,7 +74,7 @@ class CosmoSpace(torch.autograd.Function):
     >>> from cosmolayer.cosmosac import Component, create_cosmo_sac_2002_matrix
     >>> from importlib.resources import files
     >>> components = [
-    ...     Component(files("cosmolayer.data") / f"{species}.cosmo")
+    ...     Component.from_file(files("cosmolayer.data") / f"{species}.cosmo")
     ...     for species in ("C=C(N)O", "NCCO")
     ... ]
     >>> probabilities = [
@@ -158,7 +158,7 @@ class CosmoSpace(torch.autograd.Function):
         return gamma
 
     @staticmethod
-    @torch.autograd.function.once_differentiable  # type: ignore[untyped-decorator]
+    @torch.autograd.function.once_differentiable
     def backward(
         ctx: NestedIOFunction,
         grad_gamma: torch.Tensor | None,

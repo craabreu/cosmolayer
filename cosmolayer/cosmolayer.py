@@ -4,7 +4,6 @@
 """
 
 from collections.abc import Sequence
-from typing import cast
 
 import numpy as np
 import torch
@@ -67,7 +66,7 @@ class CosmoLayer(torch.nn.Module):
     ...     "fluoromethane": files("cosmolayer.data") / "CF.cosmo",
     ...     "water": files("cosmolayer.data") / "O.cosmo",
     ... }
-    >>> mixture = CosmoSac2002Mixture(components)
+    >>> mixture = CosmoSac2002Mixture.from_files(components)
     >>> interaction_matrices = mixture.get_interaction_matrices(T_ref)
     >>> exponents = mixture.get_temperature_exponents()
     >>> area_per_segment = mixture.get_area_per_segment()
@@ -181,7 +180,7 @@ class CosmoLayer(torch.nn.Module):
         ln_gamma_c = (
             1 - v_hat + v_hat.log() - self._kappa * areas * (1 - w_hat + w_hat.log())
         )
-        return cast(torch.Tensor, ln_gamma_c)
+        return ln_gamma_c
 
     def mixture_probabilities(
         self,

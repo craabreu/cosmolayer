@@ -1,4 +1,6 @@
 import os
+from importlib.resources.abc import Traversable
+from typing import TextIO
 
 import numpy as np
 import pandas as pd
@@ -16,8 +18,8 @@ class Component:
 
     Parameters
     ----------
-    cosmo_file_path : str or os.PathLike
-        Path to the COSMO output file from quantum mechanical calculations.
+    cosmo_string : str
+        Contents of a COSMO output file from quantum mechanical calculations.
 
     Keyword Arguments
     -----------------
@@ -39,10 +41,8 @@ class Component:
 
     Raises
     ------
-    FileNotFoundError
-        If the specified file does not exist.
     ValueError
-        If the file contents are not in the expected format.
+        If the COSMO string is not in any supported format.
     ValueError
         If averaged charge densities fall outside the specified sigma range.
 
@@ -52,7 +52,7 @@ class Component:
     >>> from importlib.resources import files
     >>> from cosmolayer.cosmosac import Component
     >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
-    >>> component = Component(path)
+    >>> component = Component(path.read_text())
     >>> component.get_area()
     97.34554...
     >>> component.get_volume()
@@ -79,7 +79,7 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> from matplotlib import pyplot as plt
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
-        >>> component = Component(path)
+        >>> component = Component(path.read_text())
         >>> fig, ax = plt.subplots(figsize=(8, 4))
         >>> grid = component.get_sigma_grid()
         >>> for s in ["NHB", "OH", "OT"]:
@@ -99,7 +99,7 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> from matplotlib import pyplot as plt
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
-        >>> component = Component(path)
+        >>> component = Component(path.read_text())
         >>> fig, ax = plt.subplots(figsize=(8, 4))
         >>> p = component.get_probabilities()
         >>> _ = ax.bar(range(len(p)), p)
@@ -110,7 +110,7 @@ class Component:
 
     def __init__(  # noqa: PLR0913
         self,
-        cosmo_file_path: str | os.PathLike[str],
+        cosmo_string: str,
         *,
         min_sigma: float = -0.025,  # e/A^2
         max_sigma: float = 0.025,  # e/A^2
@@ -128,7 +128,7 @@ class Component:
         self._sigma_0 = sigma_0
 
         self._format, self._atom_data, self._segment_data, self._volume = (
-            parse_cosmo_file(cosmo_file_path)
+            parse_cosmo_file(cosmo_string)
         )
         averaged_sigmas = self._average_sigmas()
         if (averaged_sigmas < min_sigma).any() or (averaged_sigmas > max_sigma).any():
@@ -276,6 +276,70 @@ class Component:
             OT: profile_ot * hb_probability,
         }
 
+    @classmethod
+    def from_text_reader(cls, text_reader: TextIO) -> "Component":
+        """Create a component from a text reader.
+
+        .. note::
+            This method creates a component with default parameters.
+
+        Parameters
+        ----------
+        text_reader : io.TextIO
+            Text reader to read the COSMO output file from.
+
+        Returns
+        -------
+        Component
+            Component object.
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from cosmolayer.cosmosac import Component
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> with open(path, encoding="utf-8") as file:
+        ...     component = Component.from_text_reader(file)
+        >>> component.get_area(), component.get_volume()
+        (97.34554..., 80.07160...)
+
+        """
+        return cls(text_reader.read())
+
+    @classmethod
+    def from_file(cls, file_path: os.PathLike[str] | Traversable) -> "Component":
+        """Create a component from a COSMO output file.
+
+        .. note::
+            This method creates a component with default parameters.
+
+        Parameters
+        ----------
+        file_path : path-like or Traversable
+            Path to the COSMO output file (e.g. from
+            :func:`importlib.resources.files`).
+
+        Returns
+        -------
+        Component
+            Component object.
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from cosmolayer.cosmosac import Component
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> component = Component.from_file(path)
+        >>> component.get_area(), component.get_volume()
+        (97.34554..., 80.07160...)
+
+        """
+        if isinstance(file_path, os.PathLike):
+            with open(file_path, encoding="utf-8") as file:
+                return cls.from_text_reader(file)
+        with file_path.open("r", encoding="utf-8") as file:
+            return cls.from_text_reader(file)
+
     def get_area(self) -> float:
         """Get the cavity surface area of the molecule in Å².
 
@@ -310,11 +374,11 @@ class Component:
         >>> from importlib.resources import files
         >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
-        >>> component = Component(path)
+        >>> component = Component.from_file(path)
         >>> component.get_format()
         'TURBOMOLE'
         >>> path = files("cosmolayer.data") / "NCCO.cosmo"
-        >>> component = Component(path)
+        >>> component = Component.from_file(path)
         >>> component.get_format()
         'DMol-3'
         """
@@ -396,7 +460,7 @@ class Component:
         >>> from importlib.resources import files
         >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
-        >>> component = Component(path)
+        >>> component = Component.from_file(path)
         >>> probabilities = component.get_probabilities(merge=True)
         >>> probabilities.shape
         (51,)

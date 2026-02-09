@@ -1,5 +1,6 @@
 import os
 from collections.abc import Callable
+from typing import TextIO
 
 import numpy as np
 from numpy.typing import NDArray
@@ -27,8 +28,9 @@ class Mixture:
 
     Parameters
     ----------
-    components : dict[str, str | os.PathLike]
-        Dictionary mapping component names to paths of COSMO output files.
+    components : dict[str, str]
+        Dictionary mapping component names to COSMO strings (i.e., contents of COSMO
+        output files from quantum mechanical calculations).
     min_sigma : float, optional
         Minimum screening charge density in e/Å². Default is -0.025 e/Å².
     max_sigma : float, optional
@@ -74,7 +76,7 @@ class Mixture:
     ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
     ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
     ... }
-    >>> mixture = Mixture(components)
+    >>> mixture = Mixture.from_files(components)
     >>> len(mixture)
     2
     >>> mixture["1-aminoethenol"].get_area()
@@ -107,16 +109,23 @@ class Mixture:
         regularize: float = 1e-10,
         interaction_matrix_generator: Callable[
             [float], tuple[NDArray[np.float64], ...]
-        ] = lambda temperature: create_cosmo_sac_2010_matrices(temperature),
+        ] = create_cosmo_sac_2010_matrices,
         temperature_exponents: tuple[float, ...] = COSMO_SAC_2010_EXPONENTS,
     ) -> None:
         if not components:
             raise ValueError("At least one component must be provided.")
 
         self._names = list(components.keys())
+
+        def _read_content(val: str | os.PathLike[str]) -> str:
+            if isinstance(val, os.PathLike):
+                with open(val, encoding="utf-8") as f:
+                    return f.read()
+            return val
+
         self._components_dict = {
             name: Component(
-                path,
+                _read_content(cosmo_string),
                 min_sigma=min_sigma,
                 max_sigma=max_sigma,
                 num_points=num_points,
@@ -124,7 +133,7 @@ class Mixture:
                 f_decay=f_decay,
                 sigma_0=sigma_0,
             )
-            for name, path in components.items()
+            for name, cosmo_string in components.items()
         }
         self._area_per_segment = area_per_segment
         self._merge = merge
@@ -159,6 +168,56 @@ class Mixture:
         if isinstance(key, str):
             return self._components_dict[key]
         return self._components_dict[self._names[key]]
+
+    @classmethod
+    def from_text_readers(cls, text_readers: dict[str, TextIO]) -> "Mixture":
+        """Create a mixture from a dictionary of text readers.
+
+        .. note::
+            This method creates a mixture with default parameters. To create a mixture
+            with custom parameters, use the :meth:`__init__` method instead.
+
+        Parameters
+        ----------
+        text_readers : dict[str, io.TextIO]
+            Dictionary mapping component names to text readers from which to read the
+            COSMO strings.
+
+        Returns
+        -------
+        Mixture
+            Mixture object.
+        """
+        return cls(
+            {name: text_reader.read() for name, text_reader in text_readers.items()}
+        )
+
+    @classmethod
+    def from_files(cls, files: dict[str, os.PathLike[str]]) -> "Mixture":
+        """Create a mixture from a dictionary of file paths.
+
+        .. note::
+            This method creates a mixture with default parameters. To create a mixture
+            with custom parameters, use the :meth:`__init__` method instead.
+
+        Parameters
+        ----------
+        files : dict[str, os.PathLike]
+            Dictionary mapping component names to output files from COSMO quantum
+            mechanical calculations.
+
+        Returns
+        -------
+        Mixture
+            Mixture object.
+
+        """
+        return cls.from_text_readers(
+            {
+                name: open(file_path, encoding="utf-8")
+                for name, file_path in files.items()
+            }
+        )
 
     def get_area_per_segment(self) -> float:
         """Get the area per segment for the mixture.
@@ -197,7 +256,7 @@ class Mixture:
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
         ... }
-        >>> mixture = Mixture(components)
+        >>> mixture = Mixture.from_files(components)
         >>> areas = mixture.get_areas()
         >>> areas.shape
         (2,)
@@ -223,7 +282,7 @@ class Mixture:
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
         ... }
-        >>> mixture = Mixture(components)
+        >>> mixture = Mixture.from_files(components)
         >>> volumes = mixture.get_volumes()
         >>> volumes.shape
         (2,)
@@ -247,9 +306,10 @@ class Mixture:
         >>> from importlib.resources import files
         >>> from cosmolayer.cosmosac import Mixture
         >>> import numpy as np
+        >>> source = files("cosmolayer.data")
         >>> components = {
-        ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
-        ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
+        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
         ... }
         >>> mixture = Mixture(components, merge=True)
         >>> probabilities = mixture.get_probabilities()
@@ -291,7 +351,7 @@ class Mixture:
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
         ... }
-        >>> mixture = Mixture(components)
+        >>> mixture = Mixture.from_files(components)
         >>> profiles = mixture.get_sigma_profiles()
         >>> profiles.shape
         (2, 51)
@@ -327,7 +387,7 @@ class Mixture:
         ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
         ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
         ... }
-        >>> mixture = Mixture(components)
+        >>> mixture = Mixture.from_files(components)
         >>> matrices = mixture.get_interaction_matrices(298.15)
         >>> isinstance(matrices, tuple)
         True
@@ -376,7 +436,7 @@ class CosmoSac2002Mixture(Mixture):
     ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
     ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
     ... }
-    >>> mixture = CosmoSac2002Mixture(components)
+    >>> mixture = CosmoSac2002Mixture.from_files(components)
     >>> len(mixture)
     2
     >>> probabilities = mixture.get_probabilities()
@@ -427,7 +487,7 @@ class CosmoSac2010Mixture(Mixture):
     ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
     ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
     ... }
-    >>> mixture = CosmoSac2010Mixture(components)
+    >>> mixture = CosmoSac2010Mixture.from_files(components)
     >>> len(mixture)
     2
     >>> probabilities = mixture.get_probabilities()

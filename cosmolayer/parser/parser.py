@@ -5,7 +5,6 @@
 .. classauthor:: Charlles Abreu <craabreu@gmail.com>
 """
 
-import os
 from types import ModuleType
 
 import pandas as pd
@@ -46,19 +45,19 @@ def get_volume(module: ModuleType, file_contents: str) -> float:
 
 
 def parse_cosmo_file(
-    path: str | os.PathLike[str],
+    contents: str,
 ) -> tuple[str, pd.DataFrame, pd.DataFrame, float]:
-    """Parse a COSMO output file.
+    """Parse the contents of a COSMO output file.
 
-    This function reads a COSMO (Conductor-like Screening Model) output file
-    and extracts atomic coordinates, segment information, and molecular volume.
-    It automatically detects the file format (TURBOMOLE or DMol-3) and uses
-    the appropriate parser.
+    This function reads the contents of a COSMO (Conductor-like Screening Model) output
+    file and extracts atomic coordinates, segment information, and molecular volume.
+    It automatically detects the file format (TURBOMOLE or DMol-3) and uses the
+    appropriate parser.
 
     Parameters
     ----------
-    path : str or os.PathLike
-        Path to the COSMO output file to parse.
+    contents : str
+        Contents of the COSMO output file to parse.
 
     Returns
     -------
@@ -92,7 +91,8 @@ def parse_cosmo_file(
 
     >>> from importlib.resources import files
     >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
-    >>> fmt, atoms, segments, volume = parse_cosmo_file(path)
+    >>> contents = path.read_text(encoding="utf-8", errors="replace")
+    >>> fmt, atoms, segments, volume = parse_cosmo_file(contents)
     >>> print(fmt)
     TURBOMOLE
     >>> atoms.tail(3)
@@ -111,7 +111,8 @@ def parse_cosmo_file(
     Parse a DMol-3 COSMO file:
 
     >>> path = files("cosmolayer.data") / "NCCO.cosmo"
-    >>> fmt, atoms, segments, volume = parse_cosmo_file(path)
+    >>> contents = path.read_text(encoding="utf-8", errors="replace")
+    >>> fmt, atoms, segments, volume = parse_cosmo_file(contents)
     >>> print(fmt)
     DMol-3
     >>> len(atoms)
@@ -121,9 +122,6 @@ def parse_cosmo_file(
     >>> volume
     86.10187...
     """
-    with open(path, encoding="utf-8", errors="replace") as file:
-        contents = file.read()
-
     module: ModuleType
     if "DMol3/COSMO Results" in contents:
         format = "DMol-3"
@@ -133,7 +131,7 @@ def parse_cosmo_file(
         module = turbomole
     else:
         raise ValueError(
-            "Could not parse COSMO file. Supported formats: TURBOMOLE, DMol-3"
+            "Could not parse COSMO file contents. Supported formats: TURBOMOLE, DMol-3"
         )
     return (
         format,
