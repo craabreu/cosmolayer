@@ -4,7 +4,6 @@
 """
 
 from collections.abc import Sequence
-from typing import cast
 
 import numpy as np
 import torch
@@ -181,7 +180,7 @@ class CosmoLayer(torch.nn.Module):
         ln_gamma_c = (
             1 - v_hat + v_hat.log() - self._kappa * areas * (1 - w_hat + w_hat.log())
         )
-        return cast(torch.Tensor, ln_gamma_c)
+        return ln_gamma_c
 
     def mixture_probabilities(
         self,

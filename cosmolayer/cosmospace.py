@@ -158,7 +158,7 @@ class CosmoSpace(torch.autograd.Function):
         return gamma
 
     @staticmethod
-    @torch.autograd.function.once_differentiable  # type: ignore[untyped-decorator]
+    @torch.autograd.function.once_differentiable
     def backward(
         ctx: NestedIOFunction,
         grad_gamma: torch.Tensor | None,

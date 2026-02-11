@@ -95,19 +95,20 @@ class Mixture:
     def __init__(  # noqa: PLR0913
         self,
         components: dict[str, str | os.PathLike[str]],
-        min_sigma: float = -0.025,  # e/A^2
-        max_sigma: float = 0.025,  # e/A^2
+        min_sigma: float = -0.025,  # e/Å²
+        max_sigma: float = 0.025,  # e/Å²
         num_points: int = 51,
         area_per_segment: float = COSMO_SAC_2010_AREA_PER_SEGMENT,  # Å²
-        averaging_squared_radius: float = COSMO_SAC_2010_AREA_PER_SEGMENT
-        / np.pi,  # A^2
+        averaging_squared_radius: float = (
+            COSMO_SAC_2010_AREA_PER_SEGMENT / np.pi
+        ),  # Å²
         f_decay: float = 3.57,
-        sigma_0: float = 0.007,  # e/A^2
+        sigma_0: float = 0.007,  # e/Å²
         merge: bool = False,
         regularize: float = 1e-10,
         interaction_matrix_generator: Callable[
             [float], tuple[NDArray[np.float64], ...]
-        ] = lambda temperature: create_cosmo_sac_2010_matrices(temperature),
+        ] = create_cosmo_sac_2010_matrices,
         temperature_exponents: tuple[float, ...] = COSMO_SAC_2010_EXPONENTS,
     ) -> None:
         if not components:
