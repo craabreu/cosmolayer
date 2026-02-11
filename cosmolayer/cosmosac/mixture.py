@@ -394,7 +394,7 @@ class CosmoSac2002Mixture(Mixture):
         super().__init__(
             components,
             area_per_segment=COSMO_SAC_2002_AREA_PER_SEGMENT,
-            averaging_squared_radius=0.81764**2,  # ≈ 0.6685 Å²
+            averaging_squared_radius=0.8176300195**2,  # ≈ 0.6685 Å²
             f_decay=1.0,
             merge=True,
             interaction_matrix_generator=lambda temperature: (
