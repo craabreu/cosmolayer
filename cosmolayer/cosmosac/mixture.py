@@ -1,6 +1,4 @@
-import os
 from collections.abc import Callable
-from typing import TextIO
 
 import numpy as np
 from numpy.typing import NDArray
@@ -77,19 +75,18 @@ class Mixture:
     --------
     >>> from importlib.resources import files
     >>> from cosmolayer.cosmosac import Mixture
+    >>> source = files("cosmolayer.data")
     >>> components = {
-    ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
-    ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+    ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
+    ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
     ... }
-    >>> mixture = Mixture.from_files(components)
+    >>> mixture = Mixture(components)
     >>> len(mixture)
     2
     >>> mixture["1-aminoethenol"].get_area()
     97.34554...
     >>> mixture["2-aminoethanol"].get_area()
     103.51765...
-    >>> mixture[0].get_area()
-    97.34554...
     >>> mixture.get_component_names()
     ('1-aminoethenol', '2-aminoethanol')
     >>> areas = mixture.get_areas()
@@ -101,7 +98,7 @@ class Mixture:
 
     def __init__(  # noqa: PLR0913
         self,
-        components: dict[str, str | os.PathLike[str]],
+        components: dict[str, str],
         min_sigma: float = -0.025,  # e/Å²
         max_sigma: float = 0.025,  # e/Å²
         num_points: int = 51,
@@ -109,8 +106,6 @@ class Mixture:
         averaging_radius: float = COSMO_SAC_2010_AVERAGING_RADIUS,  # Å
         f_decay: float = COSMO_SAC_2010_F_DECAY,
         sigma_0: float = COSMO_SAC_2010_SIGMA_0,  # e/Å²
-        merge: bool = False,
-        regularize: float = 1e-10,
         interaction_matrix_generator: Callable[
             [float], tuple[NDArray[np.float64], ...]
         ] = create_cosmo_sac_2010_matrices,
@@ -119,17 +114,9 @@ class Mixture:
         if not components:
             raise ValueError("At least one component must be provided.")
 
-        self._names = list(components.keys())
-
-        def _read_content(val: str | os.PathLike[str]) -> str:
-            if isinstance(val, os.PathLike):
-                with open(val, encoding="utf-8") as f:
-                    return f.read()
-            return val
-
-        self._components_dict = {
+        self._components = {
             name: Component(
-                _read_content(cosmo_string),
+                cosmo_string,
                 min_sigma=min_sigma,
                 max_sigma=max_sigma,
                 num_points=num_points,
@@ -139,23 +126,27 @@ class Mixture:
             )
             for name, cosmo_string in components.items()
         }
+        self._min_sigma = min_sigma
+        self._max_sigma = max_sigma
+        self._num_points = num_points
         self._area_per_segment = area_per_segment
-        self._merge = merge
-        self._regularize = regularize
+        self._averaging_radius = averaging_radius
+        self._f_decay = f_decay
+        self._sigma_0 = sigma_0
         self._interaction_matrix_generator = interaction_matrix_generator
         self._temperature_exponents = temperature_exponents
 
     def __len__(self) -> int:
         """Return the number of components in the mixture."""
-        return len(self._names)
+        return len(self._components)
 
-    def __getitem__(self, key: str | int) -> Component:
+    def __getitem__(self, name: str) -> Component:
         """Get a component by name or index.
 
         Parameters
         ----------
-        key : str or int
-            Component name or integer index.
+        name : str
+            Component name.
 
         Returns
         -------
@@ -166,62 +157,8 @@ class Mixture:
         ------
         KeyError
             If component name not found.
-        IndexError
-            If index out of range.
         """
-        if isinstance(key, str):
-            return self._components_dict[key]
-        return self._components_dict[self._names[key]]
-
-    @classmethod
-    def from_text_readers(cls, text_readers: dict[str, TextIO]) -> "Mixture":
-        """Create a mixture from a dictionary of text readers.
-
-        .. note::
-            This method creates a mixture with default parameters. To create a mixture
-            with custom parameters, use the :meth:`__init__` method instead.
-
-        Parameters
-        ----------
-        text_readers : dict[str, io.TextIO]
-            Dictionary mapping component names to text readers from which to read the
-            COSMO strings.
-
-        Returns
-        -------
-        Mixture
-            Mixture object.
-        """
-        return cls(
-            {name: text_reader.read() for name, text_reader in text_readers.items()}
-        )
-
-    @classmethod
-    def from_files(cls, files: dict[str, os.PathLike[str]]) -> "Mixture":
-        """Create a mixture from a dictionary of file paths.
-
-        .. note::
-            This method creates a mixture with default parameters. To create a mixture
-            with custom parameters, use the :meth:`__init__` method instead.
-
-        Parameters
-        ----------
-        files : dict[str, os.PathLike]
-            Dictionary mapping component names to output files from COSMO quantum
-            mechanical calculations.
-
-        Returns
-        -------
-        Mixture
-            Mixture object.
-
-        """
-        return cls.from_text_readers(
-            {
-                name: open(file_path, encoding="utf-8")
-                for name, file_path in files.items()
-            }
-        )
+        return self._components[name]
 
     def get_area_per_segment(self) -> float:
         """Get the area per segment for the mixture.
@@ -241,7 +178,7 @@ class Mixture:
         tuple[str, ...]
             Tuple of component names in the order they were provided.
         """
-        return tuple(self._names)
+        return tuple(self._components.keys())
 
     def get_areas(self) -> NDArray[np.float64]:
         """Get cavity surface areas for all components.
@@ -256,17 +193,18 @@ class Mixture:
         --------
         >>> from importlib.resources import files
         >>> from cosmolayer.cosmosac import Mixture
+        >>> source = files("cosmolayer.data")
         >>> components = {
-        ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
-        ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
+        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
         ... }
-        >>> mixture = Mixture.from_files(components)
+        >>> mixture = Mixture(components)
         >>> areas = mixture.get_areas()
         >>> areas.shape
         (2,)
         """
         return np.array(
-            [self._components_dict[name].get_area() for name in self._names]
+            [component.get_area() for component in self._components.values()]
         )
 
     def get_volumes(self) -> NDArray[np.float64]:
@@ -282,21 +220,34 @@ class Mixture:
         --------
         >>> from importlib.resources import files
         >>> from cosmolayer.cosmosac import Mixture
+        >>> source = files("cosmolayer.data")
         >>> components = {
-        ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
-        ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
+        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
         ... }
-        >>> mixture = Mixture.from_files(components)
+        >>> mixture = Mixture(components)
         >>> volumes = mixture.get_volumes()
         >>> volumes.shape
         (2,)
         """
         return np.array(
-            [self._components_dict[name].get_volume() for name in self._names]
+            [component.get_volume() for component in self._components.values()]
         )
 
-    def get_probabilities(self) -> NDArray[np.float64]:
+    def get_probabilities(
+        self, merge: bool = False, regularize: float = 1e-10
+    ) -> NDArray[np.float64]:
         """Get probabilities of segment types for all components.
+
+        Parameters
+        ----------
+        merge : bool, optional
+            Whether to merge the segment groups (NHB, OH, OT) into a single profile.
+            Default is False.
+        regularize : float, optional
+            Minimum value for clipping probabilities. Set to 0 to disable
+            regularization. Default is 1e-10. If clipping occurs, the returned
+            distribution is renormalized to sum to 1.
 
         Returns
         -------
@@ -315,20 +266,19 @@ class Mixture:
         ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
         ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
         ... }
-        >>> mixture = Mixture(components, merge=True)
+        >>> mixture = Mixture(components)
         >>> probabilities = mixture.get_probabilities()
         >>> probabilities.shape
-        (2, 51)
+        (2, 153)
         >>> bool(np.all(probabilities <= 1))
         True
         """
         return np.stack(
             [
-                self._components_dict[name].get_probabilities(
-                    self._merge, self._regularize
-                )
-                for name in self._names
-            ]
+                component.get_probabilities(merge=merge, regularize=regularize)
+                for component in self._components.values()
+            ],
+            axis=0,
         )
 
     def get_sigma_profiles(
@@ -351,20 +301,22 @@ class Mixture:
         --------
         >>> from importlib.resources import files
         >>> from cosmolayer.cosmosac import Mixture
+        >>> source = files("cosmolayer.data")
         >>> components = {
-        ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
-        ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
+        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
         ... }
-        >>> mixture = Mixture.from_files(components)
+        >>> mixture = Mixture(components)
         >>> profiles = mixture.get_sigma_profiles()
         >>> profiles.shape
         (2, 51)
         """
         return np.stack(
             [
-                self._components_dict[name].get_sigma_profile(segment_class)
-                for name in self._names
-            ]
+                component.get_sigma_profile(segment_class)
+                for component in self._components.values()
+            ],
+            axis=0,
         )
 
     def get_interaction_matrices(
@@ -387,11 +339,12 @@ class Mixture:
         --------
         >>> from importlib.resources import files
         >>> from cosmolayer.cosmosac import Mixture
+        >>> source = files("cosmolayer.data")
         >>> components = {
-        ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
-        ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
+        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
         ... }
-        >>> mixture = Mixture.from_files(components)
+        >>> mixture = Mixture(components)
         >>> matrices = mixture.get_interaction_matrices(298.15)
         >>> isinstance(matrices, tuple)
         True
@@ -429,18 +382,19 @@ class CosmoSac2002Mixture(Mixture):
 
     Parameters
     ----------
-    components : dict[str, str | os.PathLike]
+    components : dict[str, str]
         Dictionary mapping component names to paths of COSMO output files.
 
     Examples
     --------
     >>> from importlib.resources import files
     >>> from cosmolayer.cosmosac import CosmoSac2002Mixture
+    >>> source = files("cosmolayer.data")
     >>> components = {
-    ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
-    ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+    ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
+    ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
     ... }
-    >>> mixture = CosmoSac2002Mixture.from_files(components)
+    >>> mixture = CosmoSac2002Mixture(components)
     >>> len(mixture)
     2
     >>> probabilities = mixture.get_probabilities()
@@ -453,18 +407,22 @@ class CosmoSac2002Mixture(Mixture):
     (51, 51)
     """
 
-    def __init__(self, components: dict[str, str | os.PathLike[str]]) -> None:
+    def __init__(self, components: dict[str, str]) -> None:
         super().__init__(
             components,
             area_per_segment=COSMO_SAC_2002_AREA_PER_SEGMENT,
-            averaging_radius=COSMO_SAC_2002_AVERAGING_RADIUS,  # Å
+            averaging_radius=COSMO_SAC_2002_AVERAGING_RADIUS,
             f_decay=COSMO_SAC_2002_F_DECAY,
-            merge=True,
             interaction_matrix_generator=lambda temperature: (
                 create_cosmo_sac_2002_matrix(temperature),
             ),
             temperature_exponents=COSMO_SAC_2002_EXPONENTS,
         )
+
+    def get_probabilities(
+        self, merge: bool = True, regularize: float = 1e-10
+    ) -> NDArray[np.float64]:
+        return super().get_probabilities(merge=merge, regularize=regularize)
 
 
 class CosmoSac2010Mixture(Mixture):
@@ -487,11 +445,12 @@ class CosmoSac2010Mixture(Mixture):
     --------
     >>> from importlib.resources import files
     >>> from cosmolayer.cosmosac import CosmoSac2010Mixture
+    >>> source = files("cosmolayer.data")
     >>> components = {
-    ...     "1-aminoethenol": files("cosmolayer.data") / "C=C(N)O.cosmo",
-    ...     "2-aminoethanol": files("cosmolayer.data") / "NCCO.cosmo",
+    ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
+    ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
     ... }
-    >>> mixture = CosmoSac2010Mixture.from_files(components)
+    >>> mixture = CosmoSac2010Mixture(components)
     >>> len(mixture)
     2
     >>> probabilities = mixture.get_probabilities()
@@ -504,5 +463,5 @@ class CosmoSac2010Mixture(Mixture):
     True
     """
 
-    def __init__(self, components: dict[str, str | os.PathLike[str]]) -> None:
+    def __init__(self, components: dict[str, str]) -> None:
         super().__init__(components)

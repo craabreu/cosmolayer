@@ -62,11 +62,12 @@ class CosmoLayer(torch.nn.Module):
     >>> from cosmolayer.cosmosac import CosmoSac2002Mixture
     >>> import torch
     >>> T_ref = 298.15  # K
+    >>> source = files("cosmolayer.data")
     >>> components = {
-    ...     "fluoromethane": files("cosmolayer.data") / "CF.cosmo",
-    ...     "water": files("cosmolayer.data") / "O.cosmo",
+    ...     "fluoromethane": (source / "CF.cosmo").read_text(),
+    ...     "water": (source / "O.cosmo").read_text(),
     ... }
-    >>> mixture = CosmoSac2002Mixture.from_files(components)
+    >>> mixture = CosmoSac2002Mixture(components)
     >>> interaction_matrices = mixture.get_interaction_matrices(T_ref)
     >>> exponents = mixture.get_temperature_exponents()
     >>> area_per_segment = mixture.get_area_per_segment()
