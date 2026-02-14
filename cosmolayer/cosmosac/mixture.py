@@ -1,3 +1,5 @@
+import collections
+from collections import OrderedDict
 from collections.abc import Callable
 
 import numpy as np
@@ -114,18 +116,7 @@ class Mixture:
         if not components:
             raise ValueError("At least one component must be provided.")
 
-        self._components = {
-            name: Component(
-                cosmo_string,
-                min_sigma=min_sigma,
-                max_sigma=max_sigma,
-                num_points=num_points,
-                averaging_radius=averaging_radius,
-                f_decay=f_decay,
-                sigma_0=sigma_0,
-            )
-            for name, cosmo_string in components.items()
-        }
+        self._components: OrderedDict[str, Component] = OrderedDict()
         self._min_sigma = min_sigma
         self._max_sigma = max_sigma
         self._num_points = num_points
@@ -135,6 +126,9 @@ class Mixture:
         self._sigma_0 = sigma_0
         self._interaction_matrix_generator = interaction_matrix_generator
         self._temperature_exponents = temperature_exponents
+
+        for name, cosmo_string in components.items():
+            self.add_component(name, cosmo_string)
 
     def __len__(self) -> int:
         """Return the number of components in the mixture."""
@@ -159,6 +153,58 @@ class Mixture:
             If component name not found.
         """
         return self._components[name]
+
+    def add_component(self, name: str, cosmo_string: str) -> None:
+        """Add a component to the mixture.
+
+        Parameters
+        ----------
+        name : str
+            Component name.
+        cosmo_string : str
+            COSMO string.
+        """
+        self._components[name] = Component(
+            cosmo_string,
+            min_sigma=self._min_sigma,
+            max_sigma=self._max_sigma,
+            num_points=self._num_points,
+            averaging_radius=self._averaging_radius,
+            f_decay=self._f_decay,
+            sigma_0=self._sigma_0,
+        )
+
+    def remove_component(self, name: str) -> None:
+        """Remove a component from the mixture.
+
+        Parameters
+        ----------
+        name : str
+            Component name.
+        """
+        del self._components[name]
+
+    def replace_component(
+        self, old_name: str, new_name: str, new_cosmo_string: str
+    ) -> None:
+        """Replace a component in the mixture.
+
+        Parameters
+        ----------
+        old_name : str
+            Name of the component to replace.
+        new_name : str
+            Name of the new component.
+        new_cosmo_string : str
+            New component's COSMO string.
+        """
+        old_components = self._components
+        self._components = collections.OrderedDict()
+        for name, component in old_components.items():
+            if name == old_name:
+                self.add_component(new_name, new_cosmo_string)
+            else:
+                self._components[name] = component
 
     def get_area_per_segment(self) -> float:
         """Get the area per segment for the mixture.
