@@ -48,6 +48,7 @@ jobs:
         shell: bash -l {0}
         run: |
           ruff check cosmolayer
+          ruff check --select I cosmolayer
 
       - name: Run type checker (mypy)
         shell: bash -l {0}

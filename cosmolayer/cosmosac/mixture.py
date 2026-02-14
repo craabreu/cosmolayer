@@ -8,9 +8,14 @@ from numpy.typing import NDArray
 from .component import Component
 from .interaction_matrices import (
     COSMO_SAC_2002_AREA_PER_SEGMENT,
+    COSMO_SAC_2002_AVERAGING_RADIUS,
     COSMO_SAC_2002_EXPONENTS,
+    COSMO_SAC_2002_F_DECAY,
     COSMO_SAC_2010_AREA_PER_SEGMENT,
+    COSMO_SAC_2010_AVERAGING_RADIUS,
     COSMO_SAC_2010_EXPONENTS,
+    COSMO_SAC_2010_F_DECAY,
+    COSMO_SAC_2010_SIGMA_0,
     create_cosmo_sac_2002_matrix,
     create_cosmo_sac_2010_matrices,
 )
@@ -39,9 +44,9 @@ class Mixture:
         Number of discrete points in the sigma profile. Default is 51.
     area_per_segment : float, optional
         Reference area in Å². Default is 7.25 Å².
-    averaging_squared_radius : float, optional
-        Effective squared radius for distance-weighted sigma averaging in Å².
-        Default is (7.25 / π) Å².
+    averaging_radius : float, optional
+        Effective radius for distance-weighted sigma averaging in Å.
+        Default is √(7.25 / π) Å.
     f_decay : float, optional
         Decay factor for exponential distance weighting. Default is 3.57.
     sigma_0 : float, optional
@@ -101,11 +106,9 @@ class Mixture:
         max_sigma: float = 0.025,  # e/Å²
         num_points: int = 51,
         area_per_segment: float = COSMO_SAC_2010_AREA_PER_SEGMENT,  # Å²
-        averaging_squared_radius: float = (
-            COSMO_SAC_2010_AREA_PER_SEGMENT / np.pi
-        ),  # Å²
-        f_decay: float = 3.57,
-        sigma_0: float = 0.007,  # e/Å²
+        averaging_radius: float = COSMO_SAC_2010_AVERAGING_RADIUS,  # Å
+        f_decay: float = COSMO_SAC_2010_F_DECAY,
+        sigma_0: float = COSMO_SAC_2010_SIGMA_0,  # e/Å²
         merge: bool = False,
         regularize: float = 1e-10,
         interaction_matrix_generator: Callable[
@@ -130,7 +133,7 @@ class Mixture:
                 min_sigma=min_sigma,
                 max_sigma=max_sigma,
                 num_points=num_points,
-                averaging_squared_radius=averaging_squared_radius,
+                averaging_radius=averaging_radius,
                 f_decay=f_decay,
                 sigma_0=sigma_0,
             )
@@ -417,7 +420,7 @@ class CosmoSac2002Mixture(Mixture):
 
     This class is pre-configured with COSMO-SAC 2002 model parameters:
 
-    - averaging_squared_radius = (0.81764 Å)²
+    - averaging_radius = 0.8176300195 Å
     - f_decay = 1.0
     - merge = True (single segment type distribution)
     - Interaction matrix from :func:`create_cosmo_sac_2002_matrix` with default
@@ -454,8 +457,8 @@ class CosmoSac2002Mixture(Mixture):
         super().__init__(
             components,
             area_per_segment=COSMO_SAC_2002_AREA_PER_SEGMENT,
-            averaging_squared_radius=0.8176300195**2,  # ≈ 0.6685 Å²
-            f_decay=1.0,
+            averaging_radius=COSMO_SAC_2002_AVERAGING_RADIUS,  # Å
+            f_decay=COSMO_SAC_2002_F_DECAY,
             merge=True,
             interaction_matrix_generator=lambda temperature: (
                 create_cosmo_sac_2002_matrix(temperature),
@@ -469,7 +472,7 @@ class CosmoSac2010Mixture(Mixture):
 
     This class is pre-configured with COSMO-SAC 2010 model parameters:
 
-    - averaging_squared_radius = 7.25/π Å²
+    - averaging_radius = √(7.25 / π) Å
     - f_decay = 3.57
     - merge = False (separate segment type distributions for NHB, OH, OT)
     - Interaction matrices from :func:`create_cosmo_sac_2010_matrices` with default

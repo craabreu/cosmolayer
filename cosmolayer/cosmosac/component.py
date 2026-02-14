@@ -12,6 +12,11 @@ import periodictable as pt
 from numpy.typing import NDArray
 
 from ..parser import parse_cosmo_file
+from .interaction_matrices import (
+    COSMO_SAC_2010_AVERAGING_RADIUS,
+    COSMO_SAC_2010_F_DECAY,
+    COSMO_SAC_2010_SIGMA_0,
+)
 from .segment_groups import NHB, OH, OT, SEGMENT_GROUPS
 
 COVALENT_FACTOR = 1.3  # Same as in RDKit
@@ -33,9 +38,9 @@ class Component:
         Maximum screening charge density in e/Å². Default is 0.025 e/Å².
     num_points : int, optional
         Number of discrete points in the sigma profile. Default is 51.
-    averaging_squared_radius : float, optional
-        Effective squared radius for distance-weighted sigma averaging in Å².
-        Default is (7.25 / π) Å² :cite:`Bell2020`.
+    averaging_radius : float, optional
+        Effective radius for distance-weighted sigma averaging in Å.
+        Default is √(7.25 / π) Å :cite:`Bell2020`.
     f_decay : float, optional
         Decay factor for exponential distance weighting in the sigma averaging
         procedure. Default is 3.57 :cite:`Bell2020`.
@@ -116,18 +121,18 @@ class Component:
         self,
         cosmo_string: str,
         *,
-        min_sigma: float = -0.025,  # e/A^2
-        max_sigma: float = 0.025,  # e/A^2
+        min_sigma: float = -0.025,  # e/Å²
+        max_sigma: float = 0.025,  # e/Å²
         num_points: int = 51,
-        averaging_squared_radius: float = 7.25 / np.pi,  # A^2
-        f_decay: float = 3.57,
-        sigma_0: float = 0.007,  # e/A^2
+        averaging_radius: float = COSMO_SAC_2010_AVERAGING_RADIUS,  # Å
+        f_decay: float = COSMO_SAC_2010_F_DECAY,
+        sigma_0: float = COSMO_SAC_2010_SIGMA_0,  # e/Å²
     ):
         self._min_sigma = min_sigma
         self._grid = np.linspace(min_sigma, max_sigma, num_points)
         self._bin_width = (max_sigma - min_sigma) / (num_points - 1)
 
-        self._averaging_squared_radius = averaging_squared_radius
+        self._averaging_radius = averaging_radius
         self._f_decay = f_decay
         self._sigma_0 = sigma_0
 
@@ -202,8 +207,8 @@ class Component:
         squared_distances = np.square(coords[:, None, :] - coords).sum(axis=-1)
         squared_radii = self._segment_data["area"].values / np.pi
 
-        sums = squared_radii + self._averaging_squared_radius
-        prods = squared_radii * self._averaging_squared_radius
+        sums = squared_radii + self._averaging_radius**2
+        prods = squared_radii * self._averaging_radius**2
         weights = np.exp(-self._f_decay * squared_distances / sums) * prods / sums
         result: NDArray[np.float64] = np.sum(weights * sigmas, axis=1) / np.sum(
             weights, axis=1
