@@ -34,6 +34,7 @@ def get_segment_dataframe(module: ModuleType, file_contents: str) -> pd.DataFram
     )
     for axis in "xyz":
         df[axis] *= module.SEGMENT_CONVERSION_FACTOR
+    df["atom"] = df["atom"] - 1
     return df
 
 
@@ -102,9 +103,9 @@ def parse_cosmo_file(
     8  H5  0.624747  0.700154 -0.227811       H
     >>> segments.tail(3)
          atom         x         y         z    charge      area
-    468     9  1.003395  2.214518 -1.389667 -0.002498  0.193147
-    469     9  1.068201  0.923523 -1.695803 -0.002131  0.130985
-    470     9  2.133636  1.152865  0.489697 -0.001817  0.145681
+    468     8  1.003395  2.214518 -1.389667 -0.002498  0.193147
+    469     8  1.068201  0.923523 -1.695803 -0.002131  0.130985
+    470     8  2.133636  1.152865  0.489697 -0.001817  0.145681
     >>> volume
     80.07160...
 

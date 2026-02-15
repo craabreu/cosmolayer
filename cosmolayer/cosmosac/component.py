@@ -139,12 +139,15 @@ class Component:
         self._format, self._atom_data, self._segment_data, self._volume = (
             parse_cosmo_file(cosmo_string)
         )
-        averaged_sigmas = self._average_sigmas()
+
+        sigmas, averaged_sigmas = self._average_sigmas()
         if (averaged_sigmas < min_sigma).any() or (averaged_sigmas > max_sigma).any():
             raise ValueError("Averaged charge densities out of range.")
+        self._segment_data["sigma"] = sigmas
+        self._segment_data["sigma_avg"] = averaged_sigmas
 
+        self._bonds = self._detect_bonds()
         self._area = float(self._segment_data["area"].sum())
-
         self._sigma_profiles = self._compute_sigma_profiles(averaged_sigmas)
 
     @staticmethod
@@ -164,34 +167,38 @@ class Component:
         radius: float = float(pt.elements.symbol(element).covalent_radius)
         return COVALENT_FACTOR * radius
 
+    def _detect_bonds(self) -> list[tuple[int, int]]:
+        """Determines bonds from interatomic distances."""
+        df = self._atom_data
+        coords = df[["x", "y", "z"]].values
+        distances = np.sqrt(np.square(coords[:, None, :] - coords).sum(axis=-1))
+        radii = df["element"].apply(self._get_covalent_radius).values
+        adjacency_matrix = distances < (radii[:, None] + radii[None, :])
+        bond_indices = np.nonzero(np.triu(adjacency_matrix, k=1))
+        return [(int(i), int(j)) for i, j in zip(*bond_indices, strict=True)]
+
     def _get_hydrogen_bonding_classes(self) -> pd.Series:
         """Classify atoms into hydrogen bonding types (OH, OT, NHB).
 
-        Determines bonds from interatomic distances and assigns hydrogen bonding
-        classes: OH (O-H bonds), OT (N-H, F-H bonds or isolated N/F/O), and
-        NHB (all other atoms).
+        Assigns hydrogen bonding classes: OH (O-H bonds), OT (N-H, F-H bonds or
+        isolated N/F/O), and NHB (all other atoms).
 
         Returns
         -------
         pd.Series
             Hydrogen bonding class label for each atom.
         """
-        df = self._atom_data.copy()
-        coords = df[["x", "y", "z"]].values
-        distances = np.sqrt(np.square(coords[:, None, :] - coords).sum(axis=-1))
-        elements = df["element"]
-        radii = elements.apply(self._get_covalent_radius).values
-        bonds = np.nonzero(np.triu(distances < (radii[:, None] + radii[None, :]), k=1))
-        hb_class = df["element"].apply(
+        elements = self._atom_data["element"]
+        hb_class = elements.apply(
             lambda element: OT if element in ["N", "F", "O"] else NHB
         )
-        for i, j in zip(*bonds, strict=True):
+        for i, j in self._bonds:
             elements_ij = set(elements.iloc[[i, j]])
             if elements_ij in [{"O", "H"}, {"N", "H"}, {"F", "H"}]:
                 hb_class.at[i] = hb_class.at[j] = OH if "O" in elements_ij else OT
         return hb_class
 
-    def _average_sigmas(self) -> NDArray[np.float64]:
+    def _average_sigmas(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Apply distance-weighted averaging to segment charge densities.
 
         Smooths raw screening charge densities (σ = q/A) using exponentially
@@ -210,10 +217,11 @@ class Component:
         sums = squared_radii + self._averaging_radius**2
         prods = squared_radii * self._averaging_radius**2
         weights = np.exp(-self._f_decay * squared_distances / sums) * prods / sums
-        result: NDArray[np.float64] = np.sum(weights * sigmas, axis=1) / np.sum(
-            weights, axis=1
-        )
-        return result
+        averaged_sigmas: NDArray[np.float64] = np.sum(
+            weights * sigmas, axis=1
+        ) / np.sum(weights, axis=1)
+
+        return sigmas, averaged_sigmas
 
     def _compute_sigma_profile(
         self, averaged_sigmas: NDArray[np.float64], areas: NDArray[np.float64]
@@ -261,13 +269,13 @@ class Component:
             Dictionary with keys "NHB", "OH", "OT" and values as sigma profile
             arrays. Each profile has shape (num_points,).
         """
-        atom_indices = self._segment_data["atom"] - 1
+        atom_indices = self._segment_data["atom"]
         element = atom_indices.map(self._atom_data["element"])
         is_hb_candidate = (element == "H") == (averaged_sigmas < 0.0)
         hb_class = atom_indices.map(self._get_hydrogen_bonding_classes())
         mask_oh = is_hb_candidate & (hb_class == OH)
         mask_ot = is_hb_candidate & (hb_class == OT)
-        mask_nhb = ~(mask_oh | mask_ot)
+        mask_nhb = np.logical_not(mask_oh | mask_ot)
         areas = self._segment_data["area"].values
         profile_oh = self._compute_sigma_profile(
             averaged_sigmas[mask_oh], areas[mask_oh]
@@ -392,13 +400,105 @@ class Component:
         """
         return self._format
 
+    def get_atom_data(self) -> pd.DataFrame:
+        """Get the atom data.
+
+        Get a pandas DataFrame containing the following columns:
+        - id: atom identifier (str)
+        - x, y, z: Cartesian coordinates in Å (float)
+        - element: chemical element symbol (str)
+
+        Returns
+        -------
+        pd.DataFrame
+            Atom data.
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from cosmolayer.cosmosac import Component
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> component = Component(path.read_text())
+        >>> component.get_atom_data()
+           id         x         y         z element
+        0  C1 -0.742... -0.150...  0.004...       C
+        1  C2 -0.049...  0.002...  0.002...       C
+        ...
+        8  H5  0.624...  0.700... -0.227...       H
+
+        """
+        return self._atom_data
+
+    def get_segment_data(self) -> pd.DataFrame:
+        """Get the segment data.
+
+        Get a pandas DataFrame containing the following columns:
+        - atom: index of the atom associated with the segment (int)
+        - x, y, z: segment coordinates in Å² (float)
+        - charge: segment charge in e (float)
+        - area: segment surface area in Å² (float)
+        - sigma: screening charge density in e/Å² (float)
+        - sigma_avg: smoothed charge density in e/Å² (float)
+
+        Returns
+        -------
+        pd.DataFrame
+            Segment data.
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from cosmolayer.cosmosac import Component
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> component = Component(path.read_text())
+        >>> component.get_segment_data()
+             atom         x         y  ...      area     sigma  sigma_avg
+        0       0 -0.867... -1.196...  ...  0.206...  0.010...   0.007...
+        1       0 -1.504... -1.502...  ...  0.218...  0.007...   0.005...
+        ...
+        470     8  2.133...  1.152...  ...  0.145... -0.012...  -0.009...
+        <BLANKLINE>
+        [471 rows x 8 columns]
+
+        """
+        return self._segment_data
+
+    def get_bonds(self) -> list[tuple[int, int]]:
+        """Get the bonds between atoms.
+
+        Returns
+        -------
+        list[tuple[int, int]]
+            List of bonds between atoms. Each bond is represented as a tuple of two
+            integers, the indices of the atoms in the bond.
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from cosmolayer.cosmosac import Component
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> component = Component(path.read_text())
+        >>> component.get_bonds()
+        [(0, 1), (0, 2), (0, 3), ..., (2, 8), (3, 8)]
+        """
+        return self._bonds
+
     def get_sigma_grid(self) -> NDArray[np.float64]:
-        """Get the charge density grid in e/Å².
+        """Get the screening charge density grid in e/Å².
 
         Returns
         -------
         np.ndarray
-            Charge density grid in e/Å².
+            Charge density vector in e/Å².
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from cosmolayer.cosmosac import Component
+        >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+        >>> component = Component(path.read_text())
+        >>> component.get_sigma_grid()
+        array([-0.025, -0.024, -0.023, ... 0.023,  0.024,  0.025])
         """
         return self._grid
 
