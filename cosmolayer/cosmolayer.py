@@ -178,7 +178,7 @@ class CosmoLayer(torch.nn.Module):
         v_hat = volumes / (fracs * volumes).sum(dim=-1, keepdim=True)
         a_hat = areas / (fracs * areas).sum(dim=-1, keepdim=True)
         w_hat = v_hat / a_hat
-        ln_gamma_c = (
+        ln_gamma_c: torch.Tensor = (
             1 - v_hat + v_hat.log() - self._kappa * areas * (1 - w_hat + w_hat.log())
         )
         return ln_gamma_c

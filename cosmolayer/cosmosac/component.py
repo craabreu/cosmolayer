@@ -150,6 +150,11 @@ class Component:
         self._area = float(self._segment_data["area"].sum())
         self._sigma_profiles = self._compute_sigma_profiles(averaged_sigmas)
 
+    def __repr__(self) -> str:
+        num_atoms = len(self._atom_data)
+        num_segments = len(self._segment_data)
+        return f"Component({num_atoms} atoms, {num_segments} segments)"
+
     @staticmethod
     def _get_covalent_radius(element: str) -> float:
         """Get scaled covalent radius for bond detection.
