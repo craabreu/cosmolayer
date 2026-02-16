@@ -26,6 +26,7 @@ requires-python = ">=3.10"
 dependencies = [
     "cmap",
     "lightning",
+    "networkx",
     "numpy",
     "open3d",
     "opt-einsum",

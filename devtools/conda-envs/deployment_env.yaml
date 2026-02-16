@@ -21,6 +21,7 @@ dependencies:
 
   # Visualization (for CLI)
   - cmap
+  - networkx
   - open3d
 
   # PyPI build

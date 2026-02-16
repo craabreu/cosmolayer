@@ -9,6 +9,7 @@ import argparse
 import pathlib
 
 import cmap
+import networkx as nx
 import numpy as np
 import open3d as o3d
 
@@ -50,6 +51,32 @@ def ball_pivoting_algorithm(
     return mesh_bpa
 
 
+def find_loops(mesh: o3d.geometry.TriangleMesh) -> list[o3d.geometry.LineSet]:
+    graph = nx.Graph()
+    for triangle in mesh.triangles:
+        _, j, k = map(int, triangle)
+        graph.add_edge(j, k)
+    loops = nx.cycle_basis(graph)
+
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    linesets: list[o3d.geometry.LineSet] = []
+
+    for loop in loops:
+        idx = np.asarray(loop + [loop[0]], dtype=int)
+        pts = vertices[idx]
+        lines = np.column_stack(
+            [np.arange(len(idx) - 1), np.arange(1, len(idx))]
+        ).astype(np.int32)
+        linesets.append(
+            o3d.geometry.LineSet(
+                points=o3d.utility.Vector3dVector(pts),
+                lines=o3d.utility.Vector2iVector(lines),
+            )
+        )
+
+    return linesets
+
+
 def surface_tessellation(
     component: Component,
     original_charge_densities: bool = False,
@@ -81,7 +108,7 @@ def surface_tessellation(
         return mesh_bpa
 
     vertices = np.asarray(mesh_bpa.vertices, dtype=float)
-    triangles = np.asarray(mesh_bpa.triangles, dtype=np.int64)
+    triangles = np.asarray(mesh_bpa.triangles, dtype=int)
     colors = np.asarray(mesh_bpa.vertex_colors, dtype=float)
 
     new_vertices = vertices.tolist()
@@ -93,9 +120,9 @@ def surface_tessellation(
         new_colors.append(c)
         return idx
 
-    midpoint_cache: dict[tuple[np.int64, np.int64], int] = {}
+    midpoint_cache: dict[tuple[int, int], int] = {}
 
-    def midpoint_vertices(i: np.int64, j: np.int64) -> tuple[int, int]:
+    def midpoint_vertices(i: int, j: int) -> tuple[int, int]:
         if (i, j) in midpoint_cache:
             return midpoint_cache[(i, j)], midpoint_cache[(j, i)]
         midpoint = (vertices[i] + vertices[j]) / 2
@@ -105,7 +132,8 @@ def surface_tessellation(
 
     new_triangles = []
 
-    for i, j, k in triangles:
+    for triangle in triangles:
+        i, j, k = map(int, triangle)
         mij, mji = midpoint_vertices(i, j)
         mjk, mkj = midpoint_vertices(j, k)
         mik, mki = midpoint_vertices(i, k)
@@ -147,9 +175,14 @@ def main() -> None:
         help="Show original charge densities instead of smoothed ones",
     )
     parser.add_argument(
-        "--interpolate-colors",
+        "--continuous-colors",
         action="store_true",
-        help="Use interpolated colors instead of uniform segment colors",
+        help="Use continuous colors instead of uniformly colored segments",
+    )
+    parser.add_argument(
+        "--hide-segment-edges",
+        action="store_true",
+        help="Hide edges between segments in the surface tessellation",
     )
     parser.add_argument(
         "--colormap",
@@ -162,10 +195,18 @@ def main() -> None:
     mesh = surface_tessellation(
         component,
         args.show_original_charge_densities,
-        args.interpolate_colors,
+        args.continuous_colors,
         args.colormap,
     )
-    o3d.visualization.draw_geometries([mesh], mesh_show_back_face=True)
+    if args.hide_segment_edges or args.continuous_colors:
+        loops = []
+    else:
+        loops = find_loops(mesh)
+    o3d.visualization.draw_geometries(
+        [mesh, *loops],
+        mesh_show_back_face=True,
+        window_name=f"Surface Segments from {args.cosmo_file.name}",
+    )
 
 
 if __name__ == "__main__":

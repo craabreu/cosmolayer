@@ -29,6 +29,7 @@ dependencies:
   # Docs building & visualization
   - cmap
   - matplotlib
+  - networkx
   - open3d
   - sphinx
   - sphinxcontrib-bibtex

@@ -19,6 +19,7 @@ dependencies:
     # Testing & visualization
   - cmap
   - matplotlib
+  - networkx
   - open3d
   - pytest
   - pytest-cov
