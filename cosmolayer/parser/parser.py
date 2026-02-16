@@ -21,7 +21,7 @@ def get_atom_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
         module.ATOM_INFO_SCHEMA,
     )
     for axis in "xyz":
-        df[axis] *= module.ATOM_CONVERSION_FACTOR
+        df[axis] *= module.ATOM_POSITION_CONVERSION_FACTOR
     return df
 
 
@@ -33,7 +33,8 @@ def get_segment_dataframe(module: ModuleType, file_contents: str) -> pd.DataFram
         module.SEGMENT_INFO_SCHEMA,
     )
     for axis in "xyz":
-        df[axis] *= module.SEGMENT_CONVERSION_FACTOR
+        df[axis] *= module.SEGMENT_POSITION_CONVERSION_FACTOR
+    df["atom"] -= 1
     return df
 
 
@@ -96,15 +97,15 @@ def parse_cosmo_file(
     >>> print(fmt)
     TURBOMOLE
     >>> atoms.tail(3)
-       id         x         y         z element
-    6  H3  0.338091 -0.995118 -0.082975       H
-    7  H4  0.862400 -0.435830  0.356083       H
-    8  H5  0.624747  0.700154 -0.227811       H
+       id       x       y       z element
+    6  H3  0.6389 -1.8805 -0.1568       H
+    7  H4  1.6297 -0.8236  0.6729       H
+    8  H5  1.1806  1.3231 -0.4305       H
     >>> segments.tail(3)
          atom         x         y         z    charge      area
-    468     9  1.003395  2.214518 -1.389667 -0.002498  0.193147
-    469     9  1.068201  0.923523 -1.695803 -0.002131  0.130985
-    470     9  2.133636  1.152865  0.489697 -0.001817  0.145681
+    468     8  1.003395  2.214518 -1.389667 -0.002498  0.193147
+    469     8  1.068201  0.923523 -1.695803 -0.002131  0.130985
+    470     8  2.133636  1.152865  0.489697 -0.001817  0.145681
     >>> volume
     80.07160...
 

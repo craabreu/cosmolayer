@@ -147,6 +147,11 @@ class Component:
 
         self._sigma_profiles = self._compute_sigma_profiles(averaged_sigmas)
 
+    def __repr__(self) -> str:
+        num_atoms = len(self._atom_data)
+        num_segments = len(self._segment_data)
+        return f"Component({num_atoms} atoms, {num_segments} segments)"
+
     @staticmethod
     def _get_covalent_radius(element: str) -> float:
         """Get scaled covalent radius for bond detection.
@@ -261,13 +266,13 @@ class Component:
             Dictionary with keys "NHB", "OH", "OT" and values as sigma profile
             arrays. Each profile has shape (num_points,).
         """
-        atom_indices = self._segment_data["atom"] - 1
+        atom_indices = self._segment_data["atom"]
         element = atom_indices.map(self._atom_data["element"])
         is_hb_candidate = (element == "H") == (averaged_sigmas < 0.0)
         hb_class = atom_indices.map(self._get_hydrogen_bonding_classes())
         mask_oh = is_hb_candidate & (hb_class == OH)
         mask_ot = is_hb_candidate & (hb_class == OT)
-        mask_nhb = ~(mask_oh | mask_ot)
+        mask_nhb = np.logical_not(mask_oh | mask_ot)
         areas = self._segment_data["area"].values
         profile_oh = self._compute_sigma_profile(
             averaged_sigmas[mask_oh], areas[mask_oh]
