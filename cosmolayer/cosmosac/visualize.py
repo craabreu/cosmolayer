@@ -134,7 +134,7 @@ def surface_tessellation(
     return mesh
 
 
-if __name__ == "__main__":
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "cosmo_file",
@@ -152,9 +152,11 @@ if __name__ == "__main__":
         help="Use interpolated colors instead of uniform segment colors",
     )
     args = parser.parse_args()
-
     component = Component(args.cosmo_file.read_text())
     mesh = surface_tessellation(
         component, args.show_original_charge_densities, args.interpolate_colors
     )
     o3d.visualization.draw_geometries([mesh], mesh_show_back_face=True)
+
+if __name__ == "__main__":
+    main()
