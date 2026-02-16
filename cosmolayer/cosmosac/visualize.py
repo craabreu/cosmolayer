@@ -12,10 +12,48 @@ import cmap
 import networkx as nx
 import numpy as np
 import open3d as o3d
+import periodictable as pt
 
 from cosmolayer.cosmosac import Component
 
 RADII_MULTIPLIERS: tuple[float, float, float] = (1.5, 2.5, 4.0)
+
+ELEMENT_COLORS = {  # https://pymolwiki.org/Color_Values
+    "Br": (0.650980392, 0.160784314, 0.160784314),
+    "C": (0.2, 1.0, 0.2),
+    "Cl": (0.121568627, 0.941176471, 0.121568627),
+    "F": (0.701960784, 1.0, 1.0),
+    "H": (0.9, 0.9, 0.9),
+    "I": (0.580392157, 0.0, 0.580392157),
+    "N": (0.2, 0.2, 1.0),
+    "O": (1.0, 0.3, 0.3),
+    "P": (1.0, 0.501960784, 0.0),
+    "Si": (0.941176471, 0.784313725, 0.627450980),
+    "S": (0.9, 0.775, 0.25),
+}
+
+
+def atom_spheres(
+    component: Component,
+    radius_scale: float = 1.0,
+    resolution: int = 100,
+    default_color: tuple[float, float, float] = (0.7, 0.7, 0.7),
+) -> list[o3d.geometry.TriangleMesh]:
+    atom_df = component.get_atom_data()
+    spheres: list[o3d.geometry.TriangleMesh] = []
+    for item in atom_df.itertuples(index=False):
+        element = str(item.element).strip()
+        radius = float(pt.elements.symbol(element).covalent_radius) * radius_scale
+        sphere = o3d.geometry.TriangleMesh.create_sphere(
+            radius=radius,
+            resolution=resolution,
+        )
+        sphere.compute_vertex_normals()
+        sphere.translate((item.x, item.y, item.z))
+        rgb = np.array(ELEMENT_COLORS.get(element, default_color))
+        sphere.paint_uniform_color(rgb)
+        spheres.append(sphere)
+    return spheres
 
 
 def ball_pivoting_algorithm(
@@ -207,8 +245,10 @@ def main() -> None:
         loops = []
     else:
         loops = find_loops(mesh, args.segment_edge_color)
+    atoms = atom_spheres(component)
+
     o3d.visualization.draw_geometries(
-        [mesh, *loops],
+        [mesh, *loops, *atoms],
         mesh_show_back_face=True,
         window_name=f"Surface Segments from {args.cosmo_file.name}",
     )
