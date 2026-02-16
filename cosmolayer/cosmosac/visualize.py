@@ -8,7 +8,7 @@
 import argparse
 import pathlib
 
-import matplotlib
+import cmap
 import numpy as np
 import open3d as o3d
 
@@ -71,9 +71,9 @@ def surface_tessellation(
     displacements = pts - atom_coords
     normals = displacements / np.linalg.norm(displacements, axis=1, keepdims=True)
 
-    normalizer = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax, clip=True)
-    mapper = matplotlib.colormaps.get_cmap(colormap)
-    vertex_rgb = mapper(normalizer(sigmas))[:, :3]
+    normalized_sigmas = (sigmas.clip(vmin, vmax) - vmin) / (vmax - vmin)
+    mapper = cmap.Colormap(colormap)
+    vertex_rgb = mapper(normalized_sigmas)[:, :3]
 
     mesh_bpa = ball_pivoting_algorithm(pts, normals, vertex_rgb, RADII_MULTIPLIERS)
 
@@ -151,12 +151,22 @@ def main() -> None:
         action="store_true",
         help="Use interpolated colors instead of uniform segment colors",
     )
+    parser.add_argument(
+        "--colormap",
+        type=str,
+        default="jet",
+        help="Matplotlib colormap name (default: jet)",
+    )
     args = parser.parse_args()
     component = Component(args.cosmo_file.read_text())
     mesh = surface_tessellation(
-        component, args.show_original_charge_densities, args.interpolate_colors
+        component,
+        args.show_original_charge_densities,
+        args.interpolate_colors,
+        args.colormap,
     )
     o3d.visualization.draw_geometries([mesh], mesh_show_back_face=True)
+
 
 if __name__ == "__main__":
     main()
