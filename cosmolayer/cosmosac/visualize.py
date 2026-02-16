@@ -51,7 +51,9 @@ def ball_pivoting_algorithm(
     return mesh_bpa
 
 
-def find_loops(mesh: o3d.geometry.TriangleMesh) -> list[o3d.geometry.LineSet]:
+def find_loops(
+    mesh: o3d.geometry.TriangleMesh, edge_color: str
+) -> list[o3d.geometry.LineSet]:
     graph = nx.Graph()
     for triangle in mesh.triangles:
         _, j, k = map(int, triangle)
@@ -67,12 +69,14 @@ def find_loops(mesh: o3d.geometry.TriangleMesh) -> list[o3d.geometry.LineSet]:
         lines = np.column_stack(
             [np.arange(len(idx) - 1), np.arange(1, len(idx))]
         ).astype(np.int32)
-        linesets.append(
-            o3d.geometry.LineSet(
-                points=o3d.utility.Vector3dVector(pts),
-                lines=o3d.utility.Vector2iVector(lines),
-            )
+        lineset = o3d.geometry.LineSet(
+            points=o3d.utility.Vector3dVector(pts),
+            lines=o3d.utility.Vector2iVector(lines),
         )
+        if edge_color is not None:
+            rgb = np.asarray(cmap.Color(edge_color))[:3]
+            lineset.paint_uniform_color(rgb)
+        linesets.append(lineset)
 
     return linesets
 
@@ -180,9 +184,10 @@ def main() -> None:
         help="Use continuous colors instead of uniformly colored segments",
     )
     parser.add_argument(
-        "--hide-segment-edges",
-        action="store_true",
-        help="Hide edges between segments in the surface tessellation",
+        "--segment-edge-color",
+        type=str,
+        default=None,
+        help="Color of the edges between segments (default: None)",
     )
     parser.add_argument(
         "--colormap",
@@ -198,10 +203,10 @@ def main() -> None:
         args.continuous_colors,
         args.colormap,
     )
-    if args.hide_segment_edges or args.continuous_colors:
+    if args.segment_edge_color is None or args.continuous_colors:
         loops = []
     else:
-        loops = find_loops(mesh)
+        loops = find_loops(mesh, args.segment_edge_color)
     o3d.visualization.draw_geometries(
         [mesh, *loops],
         mesh_show_back_face=True,
