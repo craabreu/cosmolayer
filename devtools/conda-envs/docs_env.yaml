@@ -32,6 +32,7 @@ dependencies:
   - networkx
   - open3d
   - sphinx
+  - sphinx-argparse
   - sphinxcontrib-bibtex
   - sphinx-copybutton
   - sphinx-design

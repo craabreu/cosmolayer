@@ -157,6 +157,7 @@ release = ""
 needs_sphinx = "4.4"
 
 extensions = [
+    "sphinxarg.ext",
     "sphinx.ext.autosummary",
     "sphinx.ext.autodoc",
     "sphinx.ext.doctest",
@@ -229,6 +230,7 @@ html_theme_options = {
 html_sidebars = {
     "api/**": ["sidebar-nav-bs"],
     "getting_started": [],
+    "visualization": [],
     "references": [],
 }
 

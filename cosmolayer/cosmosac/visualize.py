@@ -299,8 +299,12 @@ def surface_tessellation(
     return mesh
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
+def get_parser() -> argparse.ArgumentParser:
+    """Return the argument parser for cosmoview (used by sphinx-argparse)."""
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="Visualize COSMO files",
+    )
     parser.add_argument(
         "cosmo_file",
         type=pathlib.Path,
@@ -328,7 +332,11 @@ def main() -> None:
         default="jet",
         help="Matplotlib colormap name (default: jet)",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = get_parser().parse_args()
     component = Component(args.cosmo_file.read_text())
     mesh = surface_tessellation(
         component,
