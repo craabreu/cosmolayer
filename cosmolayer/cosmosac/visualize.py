@@ -61,7 +61,7 @@ def ball_pivoting_algorithm(
     normals: np.ndarray,
     vertex_rgb: np.ndarray,
     radii_multipliers: tuple[float, float, float],
-) -> o3d.geometry.TriangleMesh:
+) -> tuple[o3d.geometry.TriangleMesh, np.ndarray]:
     pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(points))
     pcd.normals = o3d.utility.Vector3dVector(normals)
 
@@ -86,7 +86,7 @@ def ball_pivoting_algorithm(
     vertex_rgb = vertex_rgb[indices]
     mesh_bpa.vertex_colors = o3d.utility.Vector3dVector(vertex_rgb)
 
-    return mesh_bpa
+    return mesh_bpa, indices
 
 
 def find_loops(
@@ -119,6 +119,16 @@ def find_loops(
     return linesets
 
 
+def geodesic_centroid(center: np.ndarray, *vertices: np.ndarray) -> np.ndarray:
+    num_vertices = len(vertices)
+    vectors = [v - center for v in vertices]
+    norms = [np.linalg.norm(v) for v in vectors]
+    radius = sum(norms) / num_vertices
+    mean_vector = sum(vectors) / num_vertices
+    centroid: np.ndarray = center + radius * mean_vector / np.linalg.norm(mean_vector)
+    return centroid
+
+
 def surface_tessellation(
     component: Component,
     original_charge_densities: bool = False,
@@ -144,7 +154,9 @@ def surface_tessellation(
     mapper = cmap.Colormap(colormap)
     vertex_rgb = mapper(normalized_sigmas)[:, :3]
 
-    mesh_bpa = ball_pivoting_algorithm(pts, normals, vertex_rgb, RADII_MULTIPLIERS)
+    mesh_bpa, indices = ball_pivoting_algorithm(
+        pts, normals, vertex_rgb, RADII_MULTIPLIERS
+    )
 
     if interpolated_colors:
         return mesh_bpa
@@ -152,6 +164,7 @@ def surface_tessellation(
     vertices = np.asarray(mesh_bpa.vertices, dtype=float)
     triangles = np.asarray(mesh_bpa.triangles, dtype=int)
     colors = np.asarray(mesh_bpa.vertex_colors, dtype=float)
+    atoms = segment_data["atom"].values[indices]
 
     new_vertices = vertices.tolist()
     new_colors = colors.tolist()
@@ -167,7 +180,14 @@ def surface_tessellation(
     def midpoint_vertices(i: int, j: int) -> tuple[int, int]:
         if (i, j) in midpoint_cache:
             return midpoint_cache[(i, j)], midpoint_cache[(j, i)]
-        midpoint = (vertices[i] + vertices[j]) / 2
+
+        if atoms[i] == atoms[j]:
+            midpoint = geodesic_centroid(
+                atom_coords[atoms[i]], vertices[i], vertices[j]
+            )
+        else:
+            midpoint = (vertices[i] + vertices[j]) / 2
+
         mij = midpoint_cache[(i, j)] = add_vertex(midpoint, colors[i])
         mji = midpoint_cache[(j, i)] = add_vertex(midpoint, colors[j])
         return mij, mji
@@ -180,7 +200,13 @@ def surface_tessellation(
         mjk, mkj = midpoint_vertices(j, k)
         mik, mki = midpoint_vertices(i, k)
 
-        centroid = (vertices[i] + vertices[j] + vertices[k]) / 3
+        if atoms[i] == atoms[j] == atoms[k]:
+            centroid = geodesic_centroid(
+                atom_coords[atoms[i]], vertices[i], vertices[j], vertices[k]
+            )
+        else:
+            centroid = (vertices[i] + vertices[j] + vertices[k]) / 3
+
         mijk = add_vertex(centroid, colors[i])
         mjki = add_vertex(centroid, colors[j])
         mkij = add_vertex(centroid, colors[k])
