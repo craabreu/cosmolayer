@@ -35,7 +35,7 @@ ELEMENT_COLORS = {  # https://pymolwiki.org/Color_Values
 
 def atom_spheres(
     component: Component,
-    radius_scale: float = 1.0,
+    radius_scale: float = 1.3,
     resolution: int = 100,
     default_color: tuple[float, float, float] = (0.7, 0.7, 0.7),
 ) -> list[o3d.geometry.TriangleMesh]:
