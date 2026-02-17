@@ -425,11 +425,12 @@ class Component:
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path.read_text())
         >>> component.get_atom_data()
-           id         x         y         z element
-        0  C1 -0.742... -0.150...  0.004...       C
-        1  C2 -0.049...  0.002...  0.002...       C
+           id       x       y       z element
+        0  C1 -1.4... -0.2...  0.0...       C
+        1  C2 -0.0...  0.0...  0.0...       C
+        2  N1  0.9... -0.9... -0.0...       N
         ...
-        8  H5  0.624...  0.700... -0.227...       H
+        8  H5  1.1...  1.3... -0.4...       H
 
         """
         return self._atom_data
@@ -484,7 +485,7 @@ class Component:
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path.read_text())
         >>> component.get_bonds()
-        [(0, 1), (0, 2), (0, 3), ..., (2, 8), (3, 8)]
+        [(0, 1), (0, 4), (0, 5), ... (2, 7), (3, 8)]
         """
         return self._bonds
 
