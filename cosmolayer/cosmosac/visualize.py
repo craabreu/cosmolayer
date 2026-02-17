@@ -33,17 +33,28 @@ ELEMENT_COLORS = {  # https://pymolwiki.org/Color_Values
 }
 
 
-def atom_spheres(
+TOLERANCE: float = 1e-10
+DOT_PRODUCT_TOLERANCE: float = 0.9
+X_AXIS: np.ndarray = np.array([1.0, 0.0, 0.0])
+Y_AXIS: np.ndarray = np.array([0.0, 1.0, 0.0])
+Z_AXIS: np.ndarray = np.array([0.0, 0.0, 1.0])
+
+
+def estimate_vdw_radius(element: str) -> float:
+    return float(pt.elements.symbol(element).covalent_radius) + 0.8  # Å
+
+
+def create_atom_spheres(
     component: Component,
-    radius_scale: float = 1.3,
-    resolution: int = 100,
+    radius_scale: float,
+    resolution: int = 40,
     default_color: tuple[float, float, float] = (0.7, 0.7, 0.7),
 ) -> list[o3d.geometry.TriangleMesh]:
     atom_df = component.get_atom_data()
     spheres: list[o3d.geometry.TriangleMesh] = []
     for item in atom_df.itertuples(index=False):
         element = str(item.element).strip()
-        radius = float(pt.elements.symbol(element).covalent_radius) * radius_scale
+        radius = estimate_vdw_radius(element) * radius_scale
         sphere = o3d.geometry.TriangleMesh.create_sphere(
             radius=radius,
             resolution=resolution,
@@ -54,6 +65,64 @@ def atom_spheres(
         sphere.paint_uniform_color(rgb)
         spheres.append(sphere)
     return spheres
+
+
+def compute_rotation_matrix(
+    original_axis: np.ndarray, target_axis: np.ndarray, normalize: bool = False
+) -> np.ndarray:
+    """Rodrigues' rotation formula between two unit-direction vectors."""
+    if normalize:
+        original_axis = original_axis / np.linalg.norm(original_axis)
+        target_axis = target_axis / np.linalg.norm(target_axis)
+    v = np.cross(original_axis, target_axis)
+    c = original_axis.dot(target_axis)
+    s2 = v.dot(v)
+    if s2 < TOLERANCE:
+        if c > 0:
+            return np.eye(3)  # Parallel (c ≈ 1) → identity
+        arbitrary = X_AXIS if abs(original_axis[0]) < DOT_PRODUCT_TOLERANCE else Y_AXIS
+        arbitrary -= original_axis * original_axis.dot(arbitrary)
+        orthogonal = arbitrary / np.linalg.norm(arbitrary)
+        return 2.0 * np.outer(orthogonal, orthogonal) - np.eye(3)
+    kmat = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    rotation: np.ndarray = np.eye(3) + kmat + ((1 - c) / s2) * kmat @ kmat
+    return rotation
+
+
+def create_bond_sticks(
+    component: Component,
+    atom_radius_scale: float,
+    bond_radius: float,
+    resolution: int = 100,
+    default_color: tuple[float, float, float] = (0.7, 0.7, 0.7),
+) -> list[o3d.geometry.TriangleMesh]:
+    atom_df = component.get_atom_data()
+    coords = atom_df[["x", "y", "z"]].values
+    elements = atom_df["element"].values
+    radii = atom_df["element"].apply(estimate_vdw_radius).values * atom_radius_scale
+    bonds = component.get_bonds()
+    cylinders: list[o3d.geometry.TriangleMesh] = []
+    for i, j in bonds:
+        vector = coords[j] - coords[i]
+        length = np.linalg.norm(vector)
+        if length < radii[i] + radii[j]:
+            continue
+        axis = vector / length
+        rotation = compute_rotation_matrix(Z_AXIS, axis)
+        midpoint = (coords[i] + coords[j] + (radii[i] - radii[j]) * axis) / 2
+        for k in (i, j):
+            cylinder = o3d.geometry.TriangleMesh.create_cylinder(
+                radius=bond_radius,
+                height=np.linalg.norm(coords[k] - midpoint),
+                resolution=resolution,
+            )
+            cylinder.rotate(rotation, center=np.zeros(3))
+            cylinder.translate((coords[k] + midpoint) / 2)
+            cylinder.compute_vertex_normals()
+            rgb = np.array(ELEMENT_COLORS.get(elements[k], default_color))
+            cylinder.paint_uniform_color(rgb)
+            cylinders.append(cylinder)
+    return cylinders
 
 
 def ball_pivoting_algorithm(
@@ -271,10 +340,11 @@ def main() -> None:
         loops = []
     else:
         loops = find_loops(mesh, args.segment_edge_color)
-    atoms = atom_spheres(component)
+    atom_spheres = create_atom_spheres(component, 0.25)
+    bond_sticks = create_bond_sticks(component, 0.25, 0.1)
 
     o3d.visualization.draw_geometries(
-        [mesh, *loops, *atoms],
+        [mesh, *loops, *atom_spheres, *bond_sticks],
         mesh_show_back_face=True,
         window_name=f"Surface Segments from {args.cosmo_file.name}",
     )
