@@ -123,17 +123,15 @@ class CosmoLayer(torch.nn.Module):
             raise ValueError("Interaction matrices must be square")
         self._n_types = rows
 
-        self._matrices_and_exponents: list[tuple[torch.Tensor, int]] = []
+        self._matrix_names_and_exponents: list[tuple[str, int]] = []
         for idx, input_matrix in enumerate(interaction_matrices):
             matrix = torch.as_tensor(input_matrix)
             name = f"interaction_matrix_{idx}"
             if learn_matrices:
-                param = torch.nn.Parameter(matrix)
-                self.register_parameter(name, param)
-                self._matrices_and_exponents.append((param, exponents[idx]))
+                self.register_parameter(name, torch.nn.Parameter(matrix))
             else:
                 self.register_buffer(name, matrix)
-                self._matrices_and_exponents.append((matrix, exponents[idx]))
+            self._matrix_names_and_exponents.append((name, exponents[idx]))
 
         self._exponents = tuple(exponents)
         self._ref_temp = reference_temperature
@@ -231,7 +229,8 @@ class CosmoLayer(torch.nn.Module):
         """
         beta = (self._ref_temp / temp).unsqueeze(-1).unsqueeze(-1)
         matrices = [
-            matrix * beta**exponent for matrix, exponent in self._matrices_and_exponents
+            getattr(self, name) * beta**exponent
+            for name, exponent in self._matrix_names_and_exponents
         ]
         return torch.stack(matrices).sum(dim=0)
 

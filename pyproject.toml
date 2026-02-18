@@ -150,6 +150,9 @@ line-ending = "auto"
 minversion = "7.0"
 addopts = "-v -ra --doctest-modules --cov=cosmolayer --cov-report=term --cov-report=html"
 testpaths = ["cosmolayer"]
+markers = [
+    "cuda: mark test as requiring a CUDA GPU",
+]
 
 [tool.mypy]
 python_version = "3.10"
