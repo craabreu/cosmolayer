@@ -6,19 +6,14 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .component import Component
-from .interaction_matrices import (
-    COSMO_SAC_2002_AREA_PER_SEGMENT,
-    COSMO_SAC_2002_AVERAGING_RADIUS,
-    COSMO_SAC_2002_EXPONENTS,
-    COSMO_SAC_2002_F_DECAY,
+from .constants import (
     COSMO_SAC_2010_AREA_PER_SEGMENT,
     COSMO_SAC_2010_AVERAGING_RADIUS,
     COSMO_SAC_2010_EXPONENTS,
     COSMO_SAC_2010_F_DECAY,
     COSMO_SAC_2010_SIGMA_0,
-    create_cosmo_sac_2002_matrix,
-    create_cosmo_sac_2010_matrices,
 )
+from .interaction_matrices import create_cosmo_sac_2010_matrices
 
 
 class Mixture:
@@ -28,8 +23,7 @@ class Mixture:
     a COSMO output file from quantum mechanical calculations.
 
     .. note::
-        With all default parameters, this class is equivalent to
-        :class:`CosmoSac2010Mixture`.
+        The default parameters correspond to the COSMO-SAC 2010 model :cite:`Bell2020`.
 
     Parameters
     ----------
@@ -54,7 +48,7 @@ class Mixture:
         a hydrogen bond in e/Å².  Set to ``None`` to disable hydrogen-bond
         splitting (all surface area is assigned to the NHB class).
         Default is 0.007 e/Å².
-    merge : bool, optional
+    merge_profiles : bool, optional
         Whether to merge segment groups (NHB, OH, OT) into a single profile
         when calling get_probabilities(). Default is False.
     regularize : float, optional
@@ -110,6 +104,7 @@ class Mixture:
         averaging_radius: float = COSMO_SAC_2010_AVERAGING_RADIUS,  # Å
         f_decay: float = COSMO_SAC_2010_F_DECAY,
         sigma_0: float | None = COSMO_SAC_2010_SIGMA_0,  # e/Å²
+        merge_profiles: bool = False,
         interaction_matrix_generator: Callable[
             [float], tuple[NDArray[np.float64], ...]
         ] = create_cosmo_sac_2010_matrices,
@@ -126,6 +121,7 @@ class Mixture:
         self._averaging_radius = averaging_radius
         self._f_decay = f_decay
         self._sigma_0 = sigma_0
+        self._merge_profiles = merge_profiles
         self._interaction_matrix_generator = interaction_matrix_generator
         self._temperature_exponents = temperature_exponents
 
@@ -282,16 +278,11 @@ class Mixture:
             [component.get_volume() for component in self._components.values()]
         )
 
-    def get_probabilities(
-        self, merge: bool = False, regularize: float = 1e-10
-    ) -> NDArray[np.float64]:
+    def get_probabilities(self, regularize: float = 1e-10) -> NDArray[np.float64]:
         """Get probabilities of segment types for all components.
 
         Parameters
         ----------
-        merge : bool, optional
-            Whether to merge the segment groups (NHB, OH, OT) into a single profile.
-            Default is False.
         regularize : float, optional
             Minimum value for clipping probabilities. Set to 0 to disable
             regularization. Default is 1e-10. If clipping occurs, the returned
@@ -323,7 +314,9 @@ class Mixture:
         """
         return np.stack(
             [
-                component.get_probabilities(merge=merge, regularize=regularize)
+                component.get_probabilities(
+                    merge=self._merge_profiles, regularize=regularize
+                )
                 for component in self._components.values()
             ],
             axis=0,
@@ -414,103 +407,3 @@ class Mixture:
             Tuple of temperature exponents.
         """
         return self._temperature_exponents
-
-
-class CosmoSac2002Mixture(Mixture):
-    """Mixture of molecular components for COSMO-SAC 2002 calculations.
-
-    This class is pre-configured with COSMO-SAC 2002 model parameters:
-
-    - averaging_radius = 0.8176300195 Å
-    - f_decay = 1.0
-    - merge = True (single segment type distribution)
-    - Interaction matrix from :func:`create_cosmo_sac_2002_matrix` with default
-      parameters.
-    - temperature_exponents = (1,)
-
-    Parameters
-    ----------
-    components : dict[str, str]
-        Dictionary mapping component names to paths of COSMO output files.
-
-    Examples
-    --------
-    >>> from importlib.resources import files
-    >>> from cosmolayer.cosmosac import CosmoSac2002Mixture
-    >>> source = files("cosmolayer.data")
-    >>> components = {
-    ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
-    ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
-    ... }
-    >>> mixture = CosmoSac2002Mixture(components)
-    >>> len(mixture)
-    2
-    >>> probabilities = mixture.get_probabilities()
-    >>> probabilities.shape  # merge=True, so shape is (n_components, num_points)
-    (2, 51)
-    >>> matrices = mixture.get_interaction_matrices(298.15)
-    >>> len(matrices)  # COSMO-SAC 2002 returns single matrix (in tuple)
-    1
-    >>> matrices[0].shape
-    (51, 51)
-    """
-
-    def __init__(self, components: dict[str, str]) -> None:
-        super().__init__(
-            components,
-            area_per_segment=COSMO_SAC_2002_AREA_PER_SEGMENT,
-            averaging_radius=COSMO_SAC_2002_AVERAGING_RADIUS,
-            f_decay=COSMO_SAC_2002_F_DECAY,
-            sigma_0=None,
-            interaction_matrix_generator=lambda temperature: (
-                create_cosmo_sac_2002_matrix(temperature),
-            ),
-            temperature_exponents=COSMO_SAC_2002_EXPONENTS,
-        )
-
-    def get_probabilities(
-        self, merge: bool = True, regularize: float = 1e-10
-    ) -> NDArray[np.float64]:
-        return super().get_probabilities(merge=merge, regularize=regularize)
-
-
-class CosmoSac2010Mixture(Mixture):
-    """Mixture of molecular components for COSMO-SAC 2010 calculations.
-
-    This class is pre-configured with COSMO-SAC 2010 model parameters:
-
-    - averaging_radius = √(7.25 / π) Å
-    - f_decay = 3.57
-    - merge = False (separate segment type distributions for NHB, OH, OT)
-    - Interaction matrices from :func:`create_cosmo_sac_2010_matrices` with default
-      parameters.
-
-    Parameters
-    ----------
-    components : dict[str, str | os.PathLike]
-        Dictionary mapping component names to paths of COSMO output files.
-
-    Examples
-    --------
-    >>> from importlib.resources import files
-    >>> from cosmolayer.cosmosac import CosmoSac2010Mixture
-    >>> source = files("cosmolayer.data")
-    >>> components = {
-    ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
-    ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
-    ... }
-    >>> mixture = CosmoSac2010Mixture(components)
-    >>> len(mixture)
-    2
-    >>> probabilities = mixture.get_probabilities()
-    >>> probabilities.shape  # merge=False, so shape is (n_components, 3*num_points)
-    (2, 153)
-    >>> matrices = mixture.get_interaction_matrices(298.15)
-    >>> len(matrices)  # COSMO-SAC 2010 returns two matrices
-    2
-    >>> all(mat.shape == (153, 153) for mat in matrices)
-    True
-    """
-
-    def __init__(self, components: dict[str, str]) -> None:
-        super().__init__(components)

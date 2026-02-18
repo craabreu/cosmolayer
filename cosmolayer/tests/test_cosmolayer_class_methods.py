@@ -17,7 +17,7 @@ import torch
 from numpy.typing import NDArray
 
 from cosmolayer import CosmoLayer
-from cosmolayer.cosmosac.interaction_matrices import (
+from cosmolayer.cosmosac.constants import (
     COSMO_SAC_2002_AREA_PER_SEGMENT,
     COSMO_SAC_2002_EXPONENTS,
 )
