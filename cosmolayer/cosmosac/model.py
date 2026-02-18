@@ -91,9 +91,9 @@ class CosmoSacModel:
     sigma_0: float | None
     merge_profiles: bool
     temperature_exponents: tuple[int, ...]
-    interaction_matrix_generator: Callable[
-        [float], tuple[NDArray[np.float64], ...]
-    ] = field(repr=False)
+    interaction_matrix_generator: Callable[[float], tuple[NDArray[np.float64], ...]] = (
+        field(repr=False)
+    )
 
     def create_interaction_matrices(
         self, temperature: float
