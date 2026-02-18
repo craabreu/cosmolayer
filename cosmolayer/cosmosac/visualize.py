@@ -306,6 +306,56 @@ def generate_geometries(
     colormap: str = "jet",
     segment_edge_color: str | None = None,
 ) -> tuple[o3d.geometry.Geometry3D, ...]:
+    """Build Open3D geometries for visualizing a component's COSMO surface.
+
+    Returns a tuple of Open3D geometries:
+
+    (1) a tessellated surface mesh colored by screening charge density;
+    (2) optionally, segment-boundary loop line sets when ``segment_edge_color`` is set;
+    (3) atom spheres; and
+    (4) bond sticks.
+
+    Parameters
+    ----------
+    component : Component
+        The molecular component whose COSMO surface is to be visualized.
+    original_charge_densities : bool, optional
+        If ``True``, color the surface using the original (unsmoothed) segment
+        charge densities instead of the distance-weighted averages. Default is
+        ``False``.
+    use_continuous_colors : bool, optional
+        If ``True``, use interpolated colors across the surface; otherwise,
+        segments are uniformly colored. Default is ``False``.
+    colormap : str, optional
+        Name of the colormap used to map charge density to color (e.g.
+        ``"jet"``, ``"viridis"``). Default is ``"jet"``.
+    segment_edge_color : str or None, optional
+        Color name for the edges between segments (e.g. ``"black"``).
+        If ``None`` or if ``use_continuous_colors`` is ``True``, no edge
+        loops are drawn. Default is ``None``.
+
+    Returns
+    -------
+    tuple of Geometry3D
+        A sequence of Open3D geometries: mesh, loops (if any), atom spheres,
+        and bond sticks.
+
+    Examples
+    --------
+    >>> from importlib.resources import files
+    >>> from cosmolayer.cosmosac import Component
+    >>> from cosmolayer.cosmosac.visualize import generate_geometries
+    >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
+    >>> component = Component(path.read_text())
+    >>> geometries = generate_geometries(component)
+    >>> len(geometries) >= 1
+    True
+    >>> type(geometries[0]).__name__
+    'TriangleMesh'
+    >>> geometries_loops = generate_geometries(component, segment_edge_color="black")
+    >>> len(geometries_loops) > len(geometries)
+    True
+    """
     mesh = surface_tessellation(
         component,
         original_charge_densities,
