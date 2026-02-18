@@ -15,7 +15,7 @@ Raw COSMO output from quantum mechanical calculations:
 
 ### COSMO-SAC 2002 Sigma profiles (`.sigma`)
 
-Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `cosmolayer.cosmosac.CosmoSac2002Mixture` and `create_cosmo_sac_2002_matrix`):
+Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `CosmoSac2002Model.create_mixture` and `create_cosmo_sac_2002_matrix`):
 
 - **`CF.sigma`** – Fluoromethane
 - **`NCCO.sigma`** – 2-Aminoethanol
@@ -23,7 +23,7 @@ Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `cosmolayer.cos
 
 ### COSMO-SAC 2010 Sigma profiles (`.sigma3`)
 
-Precomputed sigma profiles for the **COSMO-SAC 2010** model (see `cosmolayer.cosmosac.CosmoSac2010Mixture` and `create_cosmo_sac_2010_matrices`):
+Precomputed sigma profiles for the **COSMO-SAC 2010** model (see `CosmoSac2010Model.create_mixture` and `create_cosmo_sac_2010_matrices`):
 
 - **`CF.sigma3`** – Fluoromethane
 - **`NCCO.sigma3`** – 2-Aminoethanol
@@ -62,13 +62,14 @@ Example with multiple components (e.g. for a Mixture):
 
 ```python
 from importlib.resources import files
-from cosmolayer.cosmosac import CosmoSac2010Mixture
+from cosmolayer.cosmosac import CosmoSac2010Model
 
+source = files("cosmolayer.data")
 components = {
-    "fluoromethane": files("cosmolayer.data") / "CF.cosmo",
-    "water": files("cosmolayer.data") / "O.cosmo",
+    "fluoromethane": (source / "CF.cosmo").read_text(),
+    "water": (source / "O.cosmo").read_text(),
 }
-mixture = CosmoSac2010Mixture(components)
+mixture = CosmoSac2010Model.create_mixture(components)
 ```
 
 ## File formats

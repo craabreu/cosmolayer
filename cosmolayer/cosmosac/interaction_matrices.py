@@ -12,19 +12,6 @@ from numpy.typing import NDArray
 
 from .segment_groups import OH, OT, SEGMENT_GROUPS
 
-COSMO_SAC_2002_EXPONENTS: tuple[int, ...] = (1,)
-COSMO_SAC_2010_EXPONENTS: tuple[int, ...] = (1, 3)
-COSMO_SAC_2002_AREA_PER_SEGMENT: float = 7.5  # Å²
-COSMO_SAC_2010_AREA_PER_SEGMENT: float = 7.25  # Å²
-COSMO_SAC_2002_AVERAGING_RADIUS: float = 0.8176300195  # Å
-COSMO_SAC_2010_AVERAGING_RADIUS: float = np.sqrt(
-    COSMO_SAC_2010_AREA_PER_SEGMENT / np.pi
-)
-COSMO_SAC_2002_F_DECAY: float = 1.0
-COSMO_SAC_2010_F_DECAY: float = 3.57
-COSMO_SAC_2002_SIGMA_0: None = None
-COSMO_SAC_2010_SIGMA_0: float = 0.007  # e/Å²
-
 
 def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     temperature: float,  # K
@@ -74,34 +61,6 @@ def create_cosmo_sac_2002_matrix(  # noqa: PLR0913
     np.ndarray
         Dimensionless interaction energy matrix ΔW(σ,σ') / (RT).
         Shape: (num_points, num_points).
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from matplotlib import pyplot as plt
-    >>> T = 298.15  # K
-    >>> matrix = create_cosmo_sac_2002_matrix(T)
-    >>> matrix.shape
-    (51, 51)
-    >>> print(np.all(np.isfinite(matrix)))
-    True
-    >>> print(matrix.min() < 0)  # H-bonding can be favorable (negative)
-    True
-    >>> print(matrix.max() > 0)  # Misfit interactions are unfavorable
-    True
-
-    Plotting the interaction matrix:
-
-    .. plot::
-        :context: close-figs
-
-        >>> from cosmolayer.cosmosac import create_cosmo_sac_2002_matrix
-        >>> from matplotlib import pyplot as plt
-        >>> matrix = create_cosmo_sac_2002_matrix(298.15)
-        >>> fig, ax = plt.subplots(figsize=(8, 6))
-        >>> im = ax.imshow(matrix, cmap="Spectral")
-        >>> _ = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
-        >>> fig.tight_layout()
     """
 
     grid = np.linspace(min_sigma, max_sigma, num_points)
@@ -170,26 +129,6 @@ def create_cosmo_sac_2010_matrices(  # noqa: PLR0913
     tuple[np.ndarray, np.ndarray]
         Dimensionless interaction energy matrices ΔW(σ,σ') / (RT).
         Shape: (num_points, num_points).
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from matplotlib import pyplot as plt
-    >>> T = 298.15  # K
-    >>> delta_w_a, delta_w_b = create_cosmo_sac_2010_matrices(T)
-
-    Plotting the interaction matrix:
-
-    .. plot::
-        :context: close-figs
-
-        >>> from cosmolayer.cosmosac import create_cosmo_sac_2010_matrices
-        >>> from matplotlib import pyplot as plt
-        >>> delta_w_a, delta_w_b = create_cosmo_sac_2010_matrices(298.15)
-        >>> fig, ax = plt.subplots(figsize=(8, 6))
-        >>> im = ax.imshow(delta_w_a + delta_w_b, cmap="Spectral")
-        >>> _ = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
-        >>> fig.tight_layout()
     """
     RT = gas_constant * temperature
     c_hb: defaultdict[str, defaultdict[str, float]] = defaultdict(

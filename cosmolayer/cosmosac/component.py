@@ -12,7 +12,7 @@ import periodictable as pt
 from numpy.typing import NDArray
 
 from ..parser import parse_cosmo_file
-from .interaction_matrices import (
+from .constants import (
     COSMO_SAC_2010_AVERAGING_RADIUS,
     COSMO_SAC_2010_F_DECAY,
     COSMO_SAC_2010_SIGMA_0,

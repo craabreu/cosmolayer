@@ -71,7 +71,7 @@ class CosmoSpace(torch.autograd.Function):
     Examples
     --------
     >>> import numpy as np
-    >>> from cosmolayer.cosmosac import Component, create_cosmo_sac_2002_matrix
+    >>> from cosmolayer.cosmosac import Component, CosmoSac2002Model
     >>> from importlib.resources import files
     >>> components = [
     ...     Component.from_file(files("cosmolayer.data") / f"{species}.cosmo")
@@ -85,7 +85,7 @@ class CosmoSpace(torch.autograd.Function):
     ...     [torch.tensor(p, dtype=torch.float32) for p in probabilities],
     ... ).requires_grad_(True)
     >>> U_RT = torch.tensor(
-    ...     create_cosmo_sac_2002_matrix(298.15),
+    ...     CosmoSac2002Model.create_interaction_matrices(298.15)[0],
     ...     dtype=torch.float32,
     ...     requires_grad=True,
     ... )

@@ -7,32 +7,32 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .component import Component
-from .interaction_matrices import (
+from .constants import (
     COSMO_SAC_2002_AREA_PER_SEGMENT,
     COSMO_SAC_2002_AVERAGING_RADIUS,
     COSMO_SAC_2002_EXPONENTS,
     COSMO_SAC_2002_F_DECAY,
+    COSMO_SAC_2002_SIGMA_0,
     COSMO_SAC_2010_AREA_PER_SEGMENT,
     COSMO_SAC_2010_AVERAGING_RADIUS,
     COSMO_SAC_2010_EXPONENTS,
     COSMO_SAC_2010_F_DECAY,
     COSMO_SAC_2010_SIGMA_0,
+)
+from .interaction_matrices import (
     create_cosmo_sac_2002_matrix,
     create_cosmo_sac_2010_matrices,
 )
-
-if TYPE_CHECKING:
-    from .mixture import Mixture
+from .mixture import Mixture
 
 
 @dataclass(frozen=True)
-class CosmoSacModel:
+class Model:
     r"""Immutable configuration for a COSMO-SAC model variant.
 
     Bundles all model-specific parameters into a single object, ensuring that
@@ -91,9 +91,9 @@ class CosmoSacModel:
     sigma_0: float | None
     merge_profiles: bool
     temperature_exponents: tuple[int, ...]
-    interaction_matrix_generator: Callable[
-        [float], tuple[NDArray[np.float64], ...]
-    ] = field(repr=False)
+    interaction_matrix_generator: Callable[[float], tuple[NDArray[np.float64], ...]] = (
+        field(repr=False)
+    )
 
     def create_interaction_matrices(
         self, temperature: float
@@ -113,15 +113,33 @@ class CosmoSacModel:
 
         Examples
         --------
-        >>> from cosmolayer.cosmosac.model import CosmoSac2002Model, CosmoSac2010Model
+        >>> from cosmolayer.cosmosac import CosmoSac2002Model, CosmoSac2010Model
 
         COSMO-SAC 2002 produces a single interaction matrix:
 
         >>> matrices = CosmoSac2002Model.create_interaction_matrices(298.15)
         >>> len(matrices)
         1
-        >>> matrices[0].shape
+        >>> matrix = matrices[0]
+        >>> matrix.shape
         (51, 51)
+        >>> print(matrix.min() < 0)  # H-bonding can be favorable (negative)
+        True
+        >>> print(matrix.max() > 0)  # Misfit interactions are unfavorable
+        True
+
+        Plotting the COSMO-SAC 2002 interaction matrix:
+
+        .. plot::
+            :context: close-figs
+
+            >>> from cosmolayer.cosmosac import CosmoSac2002Model
+            >>> from matplotlib import pyplot as plt
+            >>> matrices = CosmoSac2002Model.create_interaction_matrices(298.15)
+            >>> fig, ax = plt.subplots(figsize=(8, 6))
+            >>> im = ax.imshow(matrices[0], cmap="Spectral")
+            >>> _ = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
+            >>> fig.tight_layout()
 
         COSMO-SAC 2010 produces two matrices (one per temperature exponent):
 
@@ -130,6 +148,20 @@ class CosmoSacModel:
         2
         >>> all(m.shape == (153, 153) for m in matrices)
         True
+
+        Plotting the COSMO-SAC 2010 interaction matrix:
+
+        .. plot::
+            :context: close-figs
+
+            >>> from cosmolayer.cosmosac import CosmoSac2010Model
+            >>> from matplotlib import pyplot as plt
+            >>> matrices = CosmoSac2010Model.create_interaction_matrices(298.15)
+            >>> fig, ax = plt.subplots(figsize=(8, 6))
+            >>> im = ax.imshow(sum(matrices), cmap="Spectral")
+            >>> _ = fig.colorbar(im, ax=ax, label="ΔW/(RT)")
+            >>> fig.tight_layout()
+
         """
         return self.interaction_matrix_generator(temperature)
 
@@ -236,7 +268,6 @@ class CosmoSacModel:
         >>> all(m.shape == (153, 153) for m in matrices)
         True
         """
-        from .mixture import Mixture
 
         return Mixture(
             components,
@@ -247,60 +278,23 @@ class CosmoSacModel:
             averaging_radius=self.averaging_radius,
             f_decay=self.f_decay,
             sigma_0=self.sigma_0,
+            merge_profiles=self.merge_profiles,
             interaction_matrix_generator=self.interaction_matrix_generator,
             temperature_exponents=self.temperature_exponents,
         )
 
 
-CosmoSac2002Model = CosmoSacModel(
+CosmoSac2002Model = Model(
     area_per_segment=COSMO_SAC_2002_AREA_PER_SEGMENT,
     averaging_radius=COSMO_SAC_2002_AVERAGING_RADIUS,
     f_decay=COSMO_SAC_2002_F_DECAY,
-    sigma_0=None,
+    sigma_0=COSMO_SAC_2002_SIGMA_0,
     merge_profiles=True,
     temperature_exponents=COSMO_SAC_2002_EXPONENTS,
     interaction_matrix_generator=lambda T: (create_cosmo_sac_2002_matrix(T),),
 )
-r"""Pre-built :class:`CosmoSacModel` for **COSMO-SAC 2002** :cite:`Bell2020`.
 
-Key settings:
-
-- ``area_per_segment = 7.5`` Å²
-- ``averaging_radius ≈ 0.818`` Å
-- ``f_decay = 1.0``
-- ``sigma_0 = None`` (no hydrogen-bond splitting)
-- ``merge_profiles = True`` (single sigma profile)
-- ``temperature_exponents = (1,)``
-- Single interaction matrix per temperature
-
-Examples
---------
->>> from importlib.resources import files
->>> from cosmolayer.cosmosac.model import CosmoSac2002Model
-
->>> CosmoSac2002Model.area_per_segment
-7.5
->>> CosmoSac2002Model.sigma_0 is None
-True
->>> CosmoSac2002Model.merge_profiles
-True
-
->>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
->>> component = CosmoSac2002Model.create_component(path.read_text())
->>> component.get_area()
-97.34554...
->>> component.get_probabilities(merge=CosmoSac2002Model.merge_profiles).shape
-(51,)
-
->>> matrices = CosmoSac2002Model.create_interaction_matrices(298.15)
->>> len(matrices)
-1
->>> matrices[0].shape
-(51, 51)
-"""
-
-
-CosmoSac2010Model = CosmoSacModel(
+CosmoSac2010Model = Model(
     area_per_segment=COSMO_SAC_2010_AREA_PER_SEGMENT,
     averaging_radius=COSMO_SAC_2010_AVERAGING_RADIUS,
     f_decay=COSMO_SAC_2010_F_DECAY,
@@ -309,40 +303,3 @@ CosmoSac2010Model = CosmoSacModel(
     temperature_exponents=COSMO_SAC_2010_EXPONENTS,
     interaction_matrix_generator=create_cosmo_sac_2010_matrices,
 )
-r"""Pre-built :class:`CosmoSacModel` for **COSMO-SAC 2010** :cite:`Bell2020`.
-
-Key settings:
-
-- ``area_per_segment = 7.25`` Å²
-- ``averaging_radius = √(7.25 / π)`` Å
-- ``f_decay = 3.57``
-- ``sigma_0 = 0.007`` e/Å²
-- ``merge_profiles = False`` (separate NHB / OH / OT profiles)
-- ``temperature_exponents = (1, 3)``
-- Two interaction matrices per temperature
-
-Examples
---------
->>> from importlib.resources import files
->>> from cosmolayer.cosmosac.model import CosmoSac2010Model
-
->>> CosmoSac2010Model.area_per_segment
-7.25
->>> CosmoSac2010Model.sigma_0
-0.007
->>> CosmoSac2010Model.merge_profiles
-False
-
->>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
->>> component = CosmoSac2010Model.create_component(path.read_text())
->>> component.get_area()
-97.34554...
->>> component.get_probabilities(merge=CosmoSac2010Model.merge_profiles).shape
-(153,)
-
->>> matrices = CosmoSac2010Model.create_interaction_matrices(298.15)
->>> len(matrices)
-2
->>> all(m.shape == (153, 153) for m in matrices)
-True
-"""

@@ -19,11 +19,7 @@ import torch
 from numpy.typing import NDArray
 
 from cosmolayer import CosmoLayer
-from cosmolayer.cosmosac import create_cosmo_sac_2002_matrix
-from cosmolayer.cosmosac.interaction_matrices import (
-    COSMO_SAC_2002_AREA_PER_SEGMENT,
-    COSMO_SAC_2002_EXPONENTS,
-)
+from cosmolayer.cosmosac import CosmoSac2002Model
 
 _NUM_POINTS = 3
 _RTOL = 1e-6
@@ -193,9 +189,9 @@ def reference_results(
 @pytest.fixture
 def cosmo_layer() -> CosmoLayer:
     return CosmoLayer(
-        [create_cosmo_sac_2002_matrix(_REF_TEMP)],
-        COSMO_SAC_2002_EXPONENTS,
-        COSMO_SAC_2002_AREA_PER_SEGMENT,
+        [CosmoSac2002Model.create_interaction_matrices(_REF_TEMP)[0]],
+        CosmoSac2002Model.temperature_exponents,
+        CosmoSac2002Model.area_per_segment,
     )
 
 
@@ -443,9 +439,9 @@ def test_parameter_differentiation(
     dtype = torch.float64
 
     cosmo_layer = CosmoLayer(
-        [create_cosmo_sac_2002_matrix(_REF_TEMP)],
-        COSMO_SAC_2002_EXPONENTS,
-        COSMO_SAC_2002_AREA_PER_SEGMENT,
+        [CosmoSac2002Model.create_interaction_matrices(_REF_TEMP)[0]],
+        CosmoSac2002Model.temperature_exponents,
+        CosmoSac2002Model.area_per_segment,
         learn_matrices=True,
     )
 
