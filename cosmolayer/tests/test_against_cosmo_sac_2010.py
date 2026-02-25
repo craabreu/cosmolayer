@@ -5,7 +5,6 @@ Reference implementation:
     https://github.com/usnistgov/COSMOSAC
 """
 
-import functools
 import itertools
 import re
 from importlib.resources import files
@@ -359,18 +358,19 @@ def test_composition_and_temperature_differentiation(
     v = torch.as_tensor(volumes, dtype=dtype)
     p = torch.as_tensor(probs, dtype=dtype)
 
-    func = functools.partial(
-        reduced_excess_gibbs_energy, a=a, v=v, p=p, cosmo_layer=cosmo_layer
-    )
+    def func(T: torch.Tensor, pm_sqrt_x: torch.Tensor) -> torch.Tensor:
+        x = pm_sqrt_x**2
+        return reduced_excess_gibbs_energy(T, x, a, v, p, cosmo_layer)
 
     T = torch.as_tensor(temperatures[temp], dtype=dtype).requires_grad_(True)
 
     x = torch.as_tensor(compositions[n][comp], dtype=dtype).requires_grad_(True)
+    pm_sqrt_x = torch.sqrt(x)
 
     # Check that the gradients are computed correctly
     assert torch.autograd.gradcheck(
         func,
-        (T, x),
+        (T, pm_sqrt_x),
         atol=1e-6,
         rtol=1e-5,
         eps=1e-6,

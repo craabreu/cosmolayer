@@ -12,6 +12,8 @@ from typing import Any
 import torch
 from torch.autograd.function import FunctionCtx, NestedIOFunction
 
+from .utils import log_matmul_exp
+
 
 class CosmoSpace(torch.autograd.Function):
     r"""Implicit COSMOspace layer.
@@ -101,23 +103,29 @@ class CosmoSpace(torch.autograd.Function):
     """
 
     @staticmethod
-    def _fixed_point_solver(
-        x: torch.Tensor, B: torch.Tensor, max_iter: int
+    def _logspace_newton_solver(
+        p: torch.Tensor,
+        neg_U_RT: torch.Tensor,
+        max_iter: int,
     ) -> torch.Tensor:
-        tol = 10 * torch.finfo(x.dtype).eps
+        tol = 1e-12 if p.dtype == torch.float64 else 1e-6
         with torch.no_grad():
-            x = x.unsqueeze(-1)
-            gamma = (B @ x).reciprocal()
+            p = p.unsqueeze(-1)
+            log_p = p.log() - p.sum(dim=-2, keepdim=True).log()
+            log_gamma = -log_matmul_exp(neg_U_RT, log_p)
             for _ in range(max_iter):
-                gamma_prev = gamma
-                a = x * gamma
-                Ba = B @ a
-                s = (a * Ba).sum(dim=-2, keepdim=True).sqrt()
-                gamma = s / Ba
-                if ((gamma - gamma_prev) / gamma).abs().max().item() < tol:
-                    return gamma.squeeze(-1)
+                log_alpha = log_p + log_gamma
+                log_B_alpha = log_matmul_exp(neg_U_RT, log_alpha)
+                f = log_gamma + log_B_alpha
+                J = torch.exp(neg_U_RT + log_alpha.transpose(-2, -1) - log_B_alpha)
+                J.diagonal(dim1=-2, dim2=-1).add_(1)
+                delta = torch.linalg.solve(J, -f)
+                log_gamma += delta
+                if delta.abs().max().item() < tol:
+                    return log_gamma.exp().squeeze(-1)
+
             raise RuntimeError(
-                f"Fixed-point solver did not converge in {max_iter} iterations"
+                f"log-gamma Newton solver did not converge in {max_iter} iterations"
             )
 
     @staticmethod
@@ -125,36 +133,19 @@ class CosmoSpace(torch.autograd.Function):
         ctx: FunctionCtx,
         x: torch.Tensor,
         U_RT: torch.Tensor,
-        max_iter: int = 1000,
+        max_iter: int = 200,
     ) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        x : torch.Tensor
-            Segment-type weights (not necessarily normalized).
-            Shape: (..., num_segment_types).
-        U_RT : torch.Tensor
-            Reduced interaction energy matrix.
-            Shape: (..., num_segment_types, num_segment_types).
-        max_iter : int
-            Maximum iterations for fixed-point solver.
-
-        Returns
-        -------
-        gamma : torch.Tensor
-            Segment activity coefficient vector.
-            Shape: (..., num_segment_types).
-        """
-        # Save shapes for correct gradient reductions when broadcasting happened
+        # Save shapes for correct gradient reductions in backward when broadcasting
+        # happened in forward
         ctx_any: Any = ctx
         ctx_any.x_shape = tuple(x.shape)
         ctx_any.u_shape = tuple(U_RT.shape)
 
-        B = torch.exp(-U_RT)
-        gamma = CosmoSpace._fixed_point_solver(x, B, max_iter)
+        neg_U_RT = -U_RT
+        gamma = CosmoSpace._logspace_newton_solver(x, neg_U_RT, max_iter=max_iter)
 
         # Save tensors needed in backward
-        ctx.save_for_backward(gamma, x, B)
+        ctx.save_for_backward(gamma, x, neg_U_RT)
         return gamma
 
     @staticmethod
@@ -163,31 +154,11 @@ class CosmoSpace(torch.autograd.Function):
         ctx: NestedIOFunction,
         grad_gamma: torch.Tensor | None,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None, None]:
-        r"""
-        Parameters
-        ----------
-        grad_gamma : torch.Tensor
-            Gradient of the output scalar function with respect to the segment activity
-            coefficient vector.
-            Shape: (..., num_segment_types).
-
-        Returns
-        -------
-        grad_x : torch.Tensor
-            Gradient of the output scalar function with respect to the segment-type
-            weights.
-            Shape: (..., num_segment_types).
-        grad_U_RT : torch.Tensor
-            Gradient of the output scalar function with respect to the reduced
-            interaction energy matrix.
-            Shape: (..., num_segment_types, num_segment_types).
-        None : NoneType
-            Placeholder for the `max_iter` argument, which does not require a gradient.
-        """
         if grad_gamma is None:
             return None, None, None
 
-        gamma, x, B = ctx.saved_tensors  # (..., m), (..., m), (..., m, m)
+        gamma, x, neg_U_RT = ctx.saved_tensors  # (..., m), (..., m), (..., m, m)
+        B = torch.exp(neg_U_RT)
 
         # t = sum(x) (shape (..., 1))
         t = x.sum(dim=-1, keepdim=True)
@@ -195,6 +166,7 @@ class CosmoSpace(torch.autograd.Function):
         BT = B.transpose(-2, -1)
 
         # JT = (∂F/∂gamma)^T evaluated at solution:
+        # For F(gamma) = gamma ⊙ (B (x ⊙ gamma)) - t*1:
         # JT = diag(t/gamma) + diag(x) B^T diag(gamma)
         JT = x.unsqueeze(-1) * BT * gamma.unsqueeze(-2)  # (..., m, m)
         JT.diagonal(dim1=-2, dim2=-1).add_(t * gamma.reciprocal())  # (..., m)
@@ -204,15 +176,12 @@ class CosmoSpace(torch.autograd.Function):
 
         gv = (gamma * v).unsqueeze(-1)  # (..., m, 1)
 
-        # grad_x:
-        # dF/dx has two parts:
-        # 1) from Ba term:   gamma_i * B_{i j} * gamma_j  ->  -gamma ⊙ (B^T (gamma ⊙ v))
-        # 2) from -sum(x):   -1 for each component -> +sum(v) broadcast
+        # grad_x
         term1 = gamma * (BT @ gv).squeeze(-1)  # (..., m)
         v_sum = v.sum(dim=-1, keepdim=True)  # (..., 1)
         grad_x = -term1 + v_sum  # (..., m)
 
-        # grad_B:  - (gamma ⊙ v) ⊗ (x ⊙ gamma)
+        # grad_B
         grad_B = -(gv * (x * gamma).unsqueeze(-2))  # (..., m, m)
 
         # B = exp(-U_RT) => dB/dU_RT = -B
