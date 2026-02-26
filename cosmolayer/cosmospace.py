@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import torch
 from torch.autograd.function import FunctionCtx, NestedIOFunction
 
@@ -101,34 +103,32 @@ class CosmoSpace(torch.autograd.Function):
 
     @staticmethod
     def _logspace_newton_solver(
-        p: torch.Tensor,  # (..., m)
-        U_RT: torch.Tensor,  # (..., m, m)
+        p: torch.Tensor,
+        U_RT: torch.Tensor,
         max_iter: int,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         step_tol = NEWTON_STEP_TOLERANCE[p.dtype]
         resid_tol = NEWTON_RESIDUAL_TOLERANCE[p.dtype]
         with torch.no_grad():
-            t = p.sum(dim=-1, keepdim=True)  # (..., 1)
-            log_t = t.log().unsqueeze(-1)  # (..., 1, 1)
-            log_A = p.log().unsqueeze(-2) - U_RT  # (..., m, m)
-            log_gamma = (
-                -torch.logsumexp(log_A, dim=-1, keepdim=True) + 0.5 * log_t
-            )  # (..., m, 1)
-            log_A_gamma = log_matmul_exp(log_A, log_gamma)  # (..., m, 1)
-            f = log_gamma + log_A_gamma - log_t  # (..., m, 1)
+            t = p.sum(dim=-1, keepdim=True)
+            log_t = t.log().unsqueeze(-1)
+            log_A = p.log().unsqueeze(-2) - U_RT
+            log_gamma = -torch.logsumexp(log_A, dim=-1, keepdim=True) + 0.5 * log_t
+            log_A_gamma = log_matmul_exp(log_A, log_gamma)
+            f = log_gamma + log_A_gamma - log_t
             for _ in range(max_iter):
-                J = torch.exp(log_gamma.mT + log_A - log_A_gamma)  # (..., m, m)
+                J = torch.exp(log_gamma.mT + log_A - log_A_gamma)
                 J.diagonal(dim1=-2, dim2=-1).add_(1)
-                delta = torch.linalg.solve(J, -f)  # (..., m, 1)
-                log_gamma += delta  # (..., m, 1)
-                log_A_gamma = log_matmul_exp(log_A, log_gamma)  # (..., m, 1)
-                f = log_gamma + log_A_gamma - log_t  # (..., m, 1)
+                delta = torch.linalg.solve(J, -f)
+                log_gamma += delta
+                log_A_gamma = log_matmul_exp(log_A, log_gamma)
+                f = log_gamma + log_A_gamma - log_t
                 delta_norm = delta.abs().amax(dim=(-2, -1))
                 f_norm = f.abs().amax(dim=(-2, -1))
                 converged = (delta_norm < step_tol) & (f_norm < resid_tol)
                 if bool(converged.all()):
                     break
-            return log_gamma.squeeze(-1), converged  # (..., m), (...)
+            return log_gamma.squeeze(-1), converged
 
     @staticmethod
     def forward(
@@ -137,6 +137,10 @@ class CosmoSpace(torch.autograd.Function):
         U_RT: torch.Tensor,
         max_iter: int = 100,
     ) -> torch.Tensor:
+
+        ctx_any: Any = ctx
+        ctx_any.p_shape = tuple(p.shape)
+        ctx_any.u_shape = tuple(U_RT.shape)
 
         if bool((p < 0).any()):
             raise ValueError("Segment-type probabilities must be nonnegative")
@@ -151,53 +155,45 @@ class CosmoSpace(torch.autograd.Function):
                 f"Newton solver did not converge in {max_iter} iterations"
             )
 
-        return log_gamma.squeeze(-1)
+        return log_gamma
 
     @staticmethod
     @torch.autograd.function.once_differentiable
     def backward(
         ctx: NestedIOFunction,
-        grad_log_gamma: torch.Tensor | None,  # (..., m)
+        grad_log_gamma: torch.Tensor | None,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None, None]:
         if grad_log_gamma is None:
             return None, None, None
 
-        log_gamma, p, U_RT = ctx.saved_tensors  # (..., m), (..., m), (..., m, m)
+        log_gamma, p, U_RT = ctx.saved_tensors
 
-        gamma = log_gamma.exp()  # (..., m)
-        B = torch.exp(-U_RT)  # (..., m, m)
+        gamma = log_gamma.exp()
+        B = torch.exp(-U_RT)
 
-        t = p.sum(dim=-1, keepdim=True)  # (..., 1)
+        t = p.sum(dim=-1, keepdim=True)
 
         # Rebuild log_A, log_A_gamma, and J (same as forward)
-        log_A = p.log().unsqueeze(-2) - U_RT  # (..., m, m)
-        log_A_gamma = log_matmul_exp(log_A, log_gamma.unsqueeze(-1))  # (..., m, 1)
-
-        # y = A @ gamma = B (p ⊙ gamma)
-        y = log_A_gamma.exp().squeeze(-1)  # (..., m)
-
-        J = torch.exp(log_gamma.unsqueeze(-2) + log_A - log_A_gamma)  # (..., m, m)
+        log_A = p.log().unsqueeze(-2) - U_RT
+        log_A_gamma = log_matmul_exp(log_A, log_gamma.unsqueeze(-1))
+        J = torch.exp(log_gamma.unsqueeze(-2) + log_A - log_A_gamma)
         J.diagonal(dim1=-2, dim2=-1).add_(1)
 
         # Solve (∂F/∂log_gamma)^T v = dL/dlog_gamma
-        v = torch.linalg.solve(J.mT, grad_log_gamma.unsqueeze(-1)).squeeze(
-            -1
-        )  # (..., m)
+        v = torch.linalg.solve(J.mT, grad_log_gamma.unsqueeze(-1))
 
-        # r = v / y
-        r = v / y  # (..., m)
+        # r = v / (A @ gamma)
+        r = v / log_A_gamma.exp()
 
         # grad_p: -gamma * (B^T r) + (sum(v)/t)
-        Bt_r = (B.mT @ r.unsqueeze(-1)).squeeze(-1)  # (..., m)
-        v_sum = v.sum(dim=-1, keepdim=True)  # (..., 1)
-        grad_p = -gamma * Bt_r + v_sum / t  # (..., m)
+        grad_p = -gamma * (B.mT @ r).squeeze(-1) + v.sum(dim=-2) / t
 
-        # grad_U_RT: r_i * B_ij * (p_j * gamma_j)
-        pg = p * gamma  # (..., m)
-        grad_U_RT = r.unsqueeze(-1) * B * pg.unsqueeze(-2)  # (..., m, m)
+        # grad_U_RT: r_i * A_ij * gamma_j
+        grad_U_RT = r * log_A.exp() * gamma.unsqueeze(-2)
 
         # Reduce to original shapes if broadcasting happened
-        grad_p = grad_p.sum_to_size(p.shape)
-        grad_U_RT = grad_U_RT.sum_to_size(U_RT.shape)
+        ctx_any: Any = ctx
+        grad_p = grad_p.sum_to_size(ctx_any.p_shape)
+        grad_U_RT = grad_U_RT.sum_to_size(ctx_any.u_shape)
 
         return grad_p, grad_U_RT, None
