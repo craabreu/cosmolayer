@@ -90,7 +90,9 @@ class CosmoSolver(torch.autograd.Function):
     ...     dtype=torch.float32,
     ...     requires_grad=True,
     ... )
-    >>> log_gamma = CosmoSolver.apply(p, U_RT)
+    >>> log_gamma, converged = CosmoSolver.apply(p, U_RT)
+    >>> converged.all().item()
+    True
     >>> log_gamma
     tensor([[-4.7...e+00, -4.0...e+00, ... -1.4056e+01],
             [-2.1...e+01, -1.9...e+01, ... -5.3149e+00]], grad_fn=<CosmoSolverBackward>)
@@ -135,7 +137,7 @@ class CosmoSolver(torch.autograd.Function):
         p: torch.Tensor,
         U_RT: torch.Tensor,
         max_iter: int = 100,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
 
         ctx_any: Any = ctx
         ctx_any.p_shape = tuple(p.shape)
@@ -148,18 +150,21 @@ class CosmoSolver(torch.autograd.Function):
         if bool(invalid):
             raise ValueError("Segment-type probabilities are invalid")
 
-        log_gamma, _ = CosmoSolver._logspace_newton_solver(p, U_RT, max_iter=max_iter)
+        log_gamma, converged = CosmoSolver._logspace_newton_solver(
+            p, U_RT, max_iter=max_iter
+        )
         ctx.save_for_backward(log_gamma, p, U_RT)
 
-        return log_gamma.squeeze(-1)
+        return log_gamma.squeeze(-1), converged
 
     @staticmethod
     def backward(
         ctx: NestedIOFunction,
         grad_log_gamma: torch.Tensor | None,
-    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        grad_converged: torch.Tensor | None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None, None]:
         if grad_log_gamma is None:
-            return None, None
+            return None, None, None
 
         log_gamma, p, U_RT = ctx.saved_tensors
 

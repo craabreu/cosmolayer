@@ -39,7 +39,8 @@ def test_cosmosolve_output_shapes() -> None:
     x, U_RT = create_random_problem(n, batch_size)
 
     # Forward pass
-    gamma: torch.Tensor = CosmoSolver.apply(x, U_RT)
+    gamma, converged = CosmoSolver.apply(x, U_RT)
+    assert converged.all().item()
     assert gamma.shape == (batch_size, n)
 
     # Backward pass
@@ -59,7 +60,9 @@ def test_cosmosolve_solution(normalized_x: bool) -> None:
     batch_size = 3
     x, U_RT = create_random_problem(n, batch_size, normalized_x=normalized_x)
 
-    gamma: torch.Tensor = CosmoSolver.apply(x, U_RT).exp()
+    log_gamma, converged = CosmoSolver.apply(x, U_RT)
+    assert converged.all().item()
+    gamma = log_gamma.exp()
 
     # Verify: gamma = t / (B @ z), where z = x * gamma and t = sum(x)
     z = x * gamma
@@ -85,7 +88,7 @@ def test_cosmosolve_gradients() -> None:
 
     # Use gradcheck to verify the gradients
     result = torch.autograd.gradcheck(
-        CosmoSolver.apply,
+        lambda x, U_RT: CosmoSolver.apply(x, U_RT)[0],
         (x, U_RT),
         eps=1e-6,
         atol=1e-4,

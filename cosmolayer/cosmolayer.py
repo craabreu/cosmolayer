@@ -4,6 +4,7 @@
 """
 
 from collections.abc import Sequence
+from typing import cast
 
 import numpy as np
 import torch
@@ -103,6 +104,7 @@ class CosmoLayer(torch.nn.Module):
         *,
         reference_temperature: float = 298.15,  # K
         learn_matrices: bool = False,
+        max_iter: int = 100,
     ):
         super().__init__()
 
@@ -137,6 +139,7 @@ class CosmoLayer(torch.nn.Module):
         self._ref_temp = reference_temperature
         self._area_per_segment = area_per_segment
         self._kappa = COORDINATION_NUMBER / (2 * AREA_PER_CONTACT)
+        self._max_iter = max_iter
 
     def extra_repr(self) -> str:
         """Return a string representation of the CosmoLayer."""
@@ -257,10 +260,14 @@ class CosmoLayer(torch.nn.Module):
             Log-activity coefficients of segment types in pure compounds.
             Shape: (..., num_components, num_segment_types).
         """
-        log_gamma_pure: torch.Tensor = CosmoSolver.apply(
-            probs, scaled_interactions.unsqueeze(-3)
+        log_gamma_pure, converged = CosmoSolver.apply(
+            probs, scaled_interactions.unsqueeze(-3), self._max_iter
         )
-        return log_gamma_pure
+        if not bool(converged.all()):
+            raise RuntimeError(
+                f"Newton solver did not converge in {self._max_iter} iterations"
+            )
+        return cast(torch.Tensor, log_gamma_pure)
 
     def log_mixture_segment_activity_coefficients(
         self,
@@ -293,11 +300,16 @@ class CosmoLayer(torch.nn.Module):
             Log-activity coefficients of segment types in the mixture.
             Shape: (..., num_segment_types).
         """
-        log_gamma_mix: torch.Tensor = CosmoSolver.apply(
+        log_gamma_mix, converged = CosmoSolver.apply(
             self.mixture_probabilities(fracs, areas, probs),
             scaled_interactions,
+            self._max_iter,
         )
-        return log_gamma_mix
+        if not bool(converged.all()):
+            raise RuntimeError(
+                f"Newton solver did not converge in {self._max_iter} iterations"
+            )
+        return cast(torch.Tensor, log_gamma_mix)
 
     def log_residual_activity_coefficients(
         self,
