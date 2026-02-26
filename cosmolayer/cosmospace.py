@@ -15,6 +15,7 @@ from torch.autograd.function import FunctionCtx, NestedIOFunction
 from .utils import log_matmul_exp
 
 NEWTON_STEP_TOLERANCE = {torch.float32: 1e-5, torch.float64: 1e-10}
+NEWTON_RESIDUAL_TOLERANCE = {torch.float32: 1e-6, torch.float64: 1e-12}
 
 
 class CosmoSpace(torch.autograd.Function):
@@ -103,25 +104,34 @@ class CosmoSpace(torch.autograd.Function):
         p: torch.Tensor,  # (..., m)
         U_RT: torch.Tensor,  # (..., m, m)
         max_iter: int,
-    ) -> torch.Tensor:
-        tol = NEWTON_STEP_TOLERANCE[p.dtype]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        step_tol = NEWTON_STEP_TOLERANCE[p.dtype]
+        resid_tol = NEWTON_RESIDUAL_TOLERANCE[p.dtype]
         tiny = torch.finfo(p.dtype).tiny
         with torch.no_grad():
-            log_t = p.sum(dim=-1, keepdim=True).log().unsqueeze(-1)  # (..., 1, 1)
+            t = p.sum(dim=-1, keepdim=True)  # (..., 1)
+            if (p < 0).any() or (t <= 0).any():
+                raise ValueError("Segment-type probabilities are invalid")
+            log_t = t.clamp_min(tiny).log().unsqueeze(-1)  # (..., 1, 1)
             log_A = p.clamp_min(tiny).log().unsqueeze(-2) - U_RT  # (..., m, m)
-            log_gamma = -torch.logsumexp(log_A, dim=-1, keepdim=True)  # (..., m, 1)
+            log_gamma = (
+                -torch.logsumexp(log_A, dim=-1, keepdim=True) + 0.5 * log_t
+            )  # (..., m, 1)
+            log_A_gamma = log_matmul_exp(log_A, log_gamma)  # (..., m, 1)
+            f = log_gamma + log_A_gamma - log_t  # (..., m, 1)
             for _ in range(max_iter):
-                log_A_gamma = log_matmul_exp(log_A, log_gamma)  # (..., m, 1)
-                f = log_gamma + log_A_gamma - log_t  # (..., m, 1)
                 J = torch.exp(log_gamma.mT + log_A - log_A_gamma)  # (..., m, m)
                 J.diagonal(dim1=-2, dim2=-1).add_(1)
                 delta = torch.linalg.solve(J, -f)  # (..., m, 1)
                 log_gamma += delta  # (..., m, 1)
-                if delta.abs().max() < tol:
-                    return log_gamma.exp().squeeze(-1)  # (..., m)
-            raise RuntimeError(
-                f"Newton solver did not converge in {max_iter} iterations"
-            )
+                log_A_gamma = log_matmul_exp(log_A, log_gamma)  # (..., m, 1)
+                f = log_gamma + log_A_gamma - log_t  # (..., m, 1)
+                delta_norm = delta.abs().amax(dim=(-2, -1))
+                f_norm = f.abs().amax(dim=(-2, -1))
+                converged = (delta_norm < step_tol) & (f_norm < resid_tol)
+                if bool(converged.all()):
+                    break
+            return log_gamma.exp().squeeze(-1), converged  # (..., m), (...)
 
     @staticmethod
     def forward(
@@ -136,7 +146,14 @@ class CosmoSpace(torch.autograd.Function):
         ctx_any.p_shape = tuple(p.shape)
         ctx_any.u_shape = tuple(U_RT.shape)
 
-        gamma = CosmoSpace._logspace_newton_solver(p, U_RT, max_iter=max_iter)
+        gamma, converged = CosmoSpace._logspace_newton_solver(
+            p, U_RT, max_iter=max_iter
+        )
+
+        if not bool(converged.all()):
+            raise RuntimeError(
+                f"Newton solver did not converge in {max_iter} iterations"
+            )
 
         # Save tensors needed in backward
         ctx.save_for_backward(gamma, p, U_RT)
