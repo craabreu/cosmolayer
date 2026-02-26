@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from .cosmospace import CosmoSpace
+from .cosmosolver import CosmoSolver
 
 AREA_PER_CONTACT = 79.53  # Å²
 COORDINATION_NUMBER = 10
@@ -257,7 +257,7 @@ class CosmoLayer(torch.nn.Module):
             Log-activity coefficients of segment types in pure compounds.
             Shape: (..., num_components, num_segment_types).
         """
-        log_gamma_pure: torch.Tensor = CosmoSpace.apply(
+        log_gamma_pure: torch.Tensor = CosmoSolver.apply(
             probs, scaled_interactions.unsqueeze(-3)
         )
         return log_gamma_pure
@@ -293,7 +293,7 @@ class CosmoLayer(torch.nn.Module):
             Log-activity coefficients of segment types in the mixture.
             Shape: (..., num_segment_types).
         """
-        log_gamma_mix: torch.Tensor = CosmoSpace.apply(
+        log_gamma_mix: torch.Tensor = CosmoSolver.apply(
             self.mixture_probabilities(fracs, areas, probs),
             scaled_interactions,
         )

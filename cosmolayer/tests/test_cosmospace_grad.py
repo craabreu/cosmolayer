@@ -1,9 +1,9 @@
-"""Test the backward pass of CosmoSpace using torch.autograd.gradcheck."""
+"""Test the backward pass of CosmoSolver using torch.autograd.gradcheck."""
 
 import pytest
 import torch
 
-from cosmolayer.cosmospace import CosmoSpace
+from cosmolayer.cosmosolver import CosmoSolver
 
 
 def create_random_problem(
@@ -19,7 +19,7 @@ def create_random_problem(
     x = torch.rand(batch_size, n, dtype=dtype)
     if normalized_x:
         x = x / x.sum(dim=-1, keepdim=True)
-    # Use x directly as the CosmoSpace input; keep it as a leaf tensor for gradcheck.
+    # Use x directly as the CosmoSolver input; keep it as a leaf tensor for gradcheck.
     x = x.detach().requires_grad_(True)
 
     U_RT_raw = torch.rand(batch_size, n, n, dtype=dtype)
@@ -32,14 +32,14 @@ def create_random_problem(
     return x, U_RT
 
 
-def test_cosmospace_output_shapes() -> None:
+def test_cosmosolve_output_shapes() -> None:
     """Test that outputs are not None and have the correct shapes."""
     n = 5
     batch_size = 2
     x, U_RT = create_random_problem(n, batch_size)
 
     # Forward pass
-    gamma: torch.Tensor = CosmoSpace.apply(x, U_RT)
+    gamma: torch.Tensor = CosmoSolver.apply(x, U_RT)
     assert gamma.shape == (batch_size, n)
 
     # Backward pass
@@ -53,13 +53,13 @@ def test_cosmospace_output_shapes() -> None:
 
 
 @pytest.mark.parametrize("normalized_x", [True, False])
-def test_cosmospace_solution(normalized_x: bool) -> None:
+def test_cosmosolve_solution(normalized_x: bool) -> None:
     """Test that the solution satisfies the fixed-point equation."""
     n = 10
     batch_size = 3
     x, U_RT = create_random_problem(n, batch_size, normalized_x=normalized_x)
 
-    gamma: torch.Tensor = CosmoSpace.apply(x, U_RT).exp()
+    gamma: torch.Tensor = CosmoSolver.apply(x, U_RT).exp()
 
     # Verify: gamma = t / (B @ z), where z = x * gamma and t = sum(x)
     z = x * gamma
@@ -77,7 +77,7 @@ def test_cosmospace_solution(normalized_x: bool) -> None:
     assert error_s < 1e-6
 
 
-def test_cosmospace_gradients() -> None:
+def test_cosmosolve_gradients() -> None:
     """Test that gradients are computed correctly."""
     n = 4
     batch_size = 2
@@ -85,7 +85,7 @@ def test_cosmospace_gradients() -> None:
 
     # Use gradcheck to verify the gradients
     result = torch.autograd.gradcheck(
-        CosmoSpace.apply,
+        CosmoSolver.apply,
         (x, U_RT),
         eps=1e-6,
         atol=1e-4,

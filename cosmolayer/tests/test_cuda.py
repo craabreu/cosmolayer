@@ -1,7 +1,7 @@
 """Tests for CosmoLayer on different devices (CPU and CUDA).
 
 These tests verify that CosmoLayer produces numerically identical results on all
-supported devices and that autograd through CosmoSpace is correct on GPU.
+supported devices and that autograd through CosmoSolver is correct on GPU.
 """
 
 from importlib.resources import files
@@ -19,7 +19,7 @@ from cosmolayer.cosmosac.constants import (
     COSMO_SAC_2002_AREA_PER_SEGMENT,
     COSMO_SAC_2002_EXPONENTS,
 )
-from cosmolayer.cosmospace import CosmoSpace
+from cosmolayer.cosmosolver import CosmoSolver
 
 skip_if_no_cuda = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="CUDA not available"
@@ -119,8 +119,8 @@ def test_cosmo_layer_cpu_cuda_parity(_binary_mixture_data: dict[str, Any]) -> No
 
 @pytest.mark.cuda
 @skip_if_no_cuda
-def test_cosmospace_gradients_on_cuda() -> None:
-    """CosmoSpace autograd is numerically correct on CUDA."""
+def test_cosmosolve_gradients_on_cuda() -> None:
+    """CosmoSolver autograd is numerically correct on CUDA."""
     device = torch.device("cuda")
     torch.manual_seed(42)
     n, batch_size = 4, 2
@@ -132,7 +132,7 @@ def test_cosmospace_gradients_on_cuda() -> None:
     u_rt = ((u_raw + u_raw.transpose(-2, -1)) / 2).detach().requires_grad_(True)
 
     result = torch.autograd.gradcheck(
-        CosmoSpace.apply,
+        CosmoSolver.apply,
         (x, u_rt),
         eps=1e-6,
         atol=1e-4,
