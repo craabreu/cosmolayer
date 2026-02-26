@@ -59,7 +59,7 @@ def test_cosmospace_solution(normalized_x: bool) -> None:
     batch_size = 3
     x, U_RT = create_random_problem(n, batch_size, normalized_x=normalized_x)
 
-    gamma: torch.Tensor = CosmoSpace.apply(x, U_RT)
+    gamma: torch.Tensor = CosmoSpace.apply(x, U_RT).exp()
 
     # Verify: gamma = t / (B @ z), where z = x * gamma and t = sum(x)
     z = x * gamma

@@ -259,7 +259,7 @@ class CosmoLayer(torch.nn.Module):
         """
         log_gamma_pure: torch.Tensor = CosmoSpace.apply(
             probs, scaled_interactions.unsqueeze(-3)
-        ).log()
+        )
         return log_gamma_pure
 
     def log_mixture_segment_activity_coefficients(
@@ -296,7 +296,7 @@ class CosmoLayer(torch.nn.Module):
         log_gamma_mix: torch.Tensor = CosmoSpace.apply(
             self.mixture_probabilities(fracs, areas, probs),
             scaled_interactions,
-        ).log()
+        )
         return log_gamma_mix
 
     def log_residual_activity_coefficients(

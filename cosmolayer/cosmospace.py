@@ -7,8 +7,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
 from torch.autograd.function import FunctionCtx, NestedIOFunction
 
@@ -21,10 +19,12 @@ NEWTON_RESIDUAL_TOLERANCE = {torch.float32: 1e-6, torch.float64: 1e-12}
 class CosmoSpace(torch.autograd.Function):
     r"""Implicit COSMOspace layer.
 
-    Solves the COSMO self-consistent equations for the activity coefficient vector
-    :math:`\boldsymbol{\gamma}`, given the nonnegative probability distribution vector
-    :math:`\mathbf{p}` and the reduced interaction energy matrix
-    :math:`\mathbf{U}/(RT)`:
+    Solves the COSMO self-consistent equations for the logarithm of the activity
+    coefficient vector, :math:`\ln \boldsymbol{\gamma}`, given the nonnegative
+    probability distribution vector :math:`\mathbf{p}` and the reduced interaction
+    energy matrix :math:`\mathbf{U}/(RT)`.
+
+    The self-consistent equations are:
 
     .. math::
 
@@ -36,8 +36,8 @@ class CosmoSpace(torch.autograd.Function):
     factors, :math:`t=\mathbf{1}^T \mathbf{p}` is the sum of the probabilities, and
     :math:`\circ` represents an elementwise product.
 
-    The solution is strictly positive (:math:`\min(\boldsymbol{\gamma}) > 0`) and
-    satisfies :math:`\boldsymbol{\gamma}^\mathsf{T} \mathbf{M} \boldsymbol{\gamma} = t`,
+    The solution satisfies
+    :math:`\boldsymbol{\gamma}^\mathsf{T} \mathbf{M} \boldsymbol{\gamma} = t`,
     where :math:`\mathbf{M} = \mathbf{B} \circ (\mathbf{p}\mathbf{p}^T)`.
 
     .. note::
@@ -58,8 +58,8 @@ class CosmoSpace(torch.autograd.Function):
 
     Returns
     -------
-    gamma : torch.Tensor
-        The segment activity coefficient vector.
+    log_gamma : torch.Tensor
+        The logarithm of the segment activity coefficient vector.
         Shape: (..., num_segment_types).
 
     Raises
@@ -88,11 +88,11 @@ class CosmoSpace(torch.autograd.Function):
     ...     dtype=torch.float32,
     ...     requires_grad=True,
     ... )
-    >>> gamma = CosmoSpace.apply(p, U_RT)
-    >>> gamma.log()
+    >>> log_gamma = CosmoSpace.apply(p, U_RT)
+    >>> log_gamma
     tensor([[-4.7...e+00, -4.0...e+00, ... -1.4056e+01],
-            [-2.1...e+01, -1.9...e+01, ... -5.3149e+00]], grad_fn=<LogBackward0>)
-    >>> loss = (gamma ** 2).sum()
+            [-2.1...e+01, -1.9...e+01, ... -5.3149e+00]], grad_fn=<CosmoSpaceBackward>)
+    >>> loss = (2 * log_gamma).exp().sum()
     >>> loss.backward()
     >>> p.grad
     tensor([[ 6.4...e+04,  1.1...e+04, ... -4.2...e+05],
@@ -107,13 +107,10 @@ class CosmoSpace(torch.autograd.Function):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         step_tol = NEWTON_STEP_TOLERANCE[p.dtype]
         resid_tol = NEWTON_RESIDUAL_TOLERANCE[p.dtype]
-        tiny = torch.finfo(p.dtype).tiny
         with torch.no_grad():
             t = p.sum(dim=-1, keepdim=True)  # (..., 1)
-            if (p < 0).any() or (t <= 0).any():
-                raise ValueError("Segment-type probabilities are invalid")
-            log_t = t.clamp_min(tiny).log().unsqueeze(-1)  # (..., 1, 1)
-            log_A = p.clamp_min(tiny).log().unsqueeze(-2) - U_RT  # (..., m, m)
+            log_t = t.log().unsqueeze(-1)  # (..., 1, 1)
+            log_A = p.log().unsqueeze(-2) - U_RT  # (..., m, m)
             log_gamma = (
                 -torch.logsumexp(log_A, dim=-1, keepdim=True) + 0.5 * log_t
             )  # (..., m, 1)
@@ -131,74 +128,76 @@ class CosmoSpace(torch.autograd.Function):
                 converged = (delta_norm < step_tol) & (f_norm < resid_tol)
                 if bool(converged.all()):
                     break
-            return log_gamma.exp().squeeze(-1), converged  # (..., m), (...)
+            return log_gamma.squeeze(-1), converged  # (..., m), (...)
 
     @staticmethod
     def forward(
         ctx: FunctionCtx,
         p: torch.Tensor,
         U_RT: torch.Tensor,
-        max_iter: int = 200,
+        max_iter: int = 100,
     ) -> torch.Tensor:
-        # Save shapes for correct gradient reductions in backward when broadcasting
-        # happened in forward
-        ctx_any: Any = ctx
-        ctx_any.p_shape = tuple(p.shape)
-        ctx_any.u_shape = tuple(U_RT.shape)
 
-        gamma, converged = CosmoSpace._logspace_newton_solver(
+        if bool((p < 0).any()):
+            raise ValueError("Segment-type probabilities must be nonnegative")
+
+        log_gamma, converged = CosmoSpace._logspace_newton_solver(
             p, U_RT, max_iter=max_iter
         )
+        ctx.save_for_backward(log_gamma, p, U_RT)
 
         if not bool(converged.all()):
             raise RuntimeError(
                 f"Newton solver did not converge in {max_iter} iterations"
             )
 
-        # Save tensors needed in backward
-        ctx.save_for_backward(gamma, p, U_RT)
-        return gamma
+        return log_gamma.squeeze(-1)
 
     @staticmethod
     @torch.autograd.function.once_differentiable
     def backward(
         ctx: NestedIOFunction,
-        grad_gamma: torch.Tensor | None,
+        grad_log_gamma: torch.Tensor | None,  # (..., m)
     ) -> tuple[torch.Tensor | None, torch.Tensor | None, None]:
-        if grad_gamma is None:
+        if grad_log_gamma is None:
             return None, None, None
 
-        gamma, p, U_RT = ctx.saved_tensors  # (..., m), (..., m), (..., m, m)
+        log_gamma, p, U_RT = ctx.saved_tensors  # (..., m), (..., m), (..., m, m)
+
+        gamma = log_gamma.exp()  # (..., m)
         B = torch.exp(-U_RT)  # (..., m, m)
 
-        # t = sum(p)
-        t = p.sum(dim=-1, keepdim=True)
+        t = p.sum(dim=-1, keepdim=True)  # (..., 1)
 
-        # JT = (∂F/∂gamma)^T evaluated at solution:
-        # For F(gamma) = gamma ⊙ (B (p ⊙ gamma)) - t*1:
-        # JT = diag(t/gamma) + diag(p) B^T diag(gamma)
-        JT = p.unsqueeze(-1) * B.mT * gamma.unsqueeze(-2)  # (..., m, m)
-        JT.diagonal(dim1=-2, dim2=-1).add_(t * gamma.reciprocal())  # (..., m)
+        # Rebuild log_A, log_A_gamma, and J (same as forward)
+        log_A = p.log().unsqueeze(-2) - U_RT  # (..., m, m)
+        log_A_gamma = log_matmul_exp(log_A, log_gamma.unsqueeze(-1))  # (..., m, 1)
 
-        # Solve JT v = dL/dgamma
-        v = torch.linalg.solve(JT, grad_gamma.unsqueeze(-1)).squeeze(-1)  # (..., m)
+        # y = A @ gamma = B (p ⊙ gamma)
+        y = log_A_gamma.exp().squeeze(-1)  # (..., m)
 
-        gv = (gamma * v).unsqueeze(-1)  # (..., m, 1)
+        J = torch.exp(log_gamma.unsqueeze(-2) + log_A - log_A_gamma)  # (..., m, m)
+        J.diagonal(dim1=-2, dim2=-1).add_(1)
 
-        # grad_p
-        term1 = gamma * (B.mT @ gv).squeeze(-1)  # (..., m)
+        # Solve (∂F/∂log_gamma)^T v = dL/dlog_gamma
+        v = torch.linalg.solve(J.mT, grad_log_gamma.unsqueeze(-1)).squeeze(
+            -1
+        )  # (..., m)
+
+        # r = v / y
+        r = v / y  # (..., m)
+
+        # grad_p: -gamma * (B^T r) + (sum(v)/t)
+        Bt_r = (B.mT @ r.unsqueeze(-1)).squeeze(-1)  # (..., m)
         v_sum = v.sum(dim=-1, keepdim=True)  # (..., 1)
-        grad_p = -term1 + v_sum  # (..., m)
+        grad_p = -gamma * Bt_r + v_sum / t  # (..., m)
 
-        # grad_B
-        grad_B = -(gv * (p * gamma).unsqueeze(-2))  # (..., m, m)
+        # grad_U_RT: r_i * B_ij * (p_j * gamma_j)
+        pg = p * gamma  # (..., m)
+        grad_U_RT = r.unsqueeze(-1) * B * pg.unsqueeze(-2)  # (..., m, m)
 
-        # B = exp(-U_RT) => dB/dU_RT = -B
-        grad_U_RT = -(B * grad_B)  # (..., m, m)
-
-        # Reduce gradients back to original (possibly broadcasted) input shapes
-        ctx_any: Any = ctx
-        grad_p = grad_p.sum_to_size(ctx_any.p_shape)  # (..., m)
-        grad_U_RT = grad_U_RT.sum_to_size(ctx_any.u_shape)  # (..., m, m)
+        # Reduce to original shapes if broadcasting happened
+        grad_p = grad_p.sum_to_size(p.shape)
+        grad_U_RT = grad_U_RT.sum_to_size(U_RT.shape)
 
         return grad_p, grad_U_RT, None
