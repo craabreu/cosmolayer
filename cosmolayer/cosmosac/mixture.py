@@ -1,4 +1,3 @@
-import collections
 from collections import OrderedDict
 from collections.abc import Callable
 
@@ -152,6 +151,18 @@ class Mixture:
         """
         return self._components[name]
 
+    def _create_component(self, cosmo_string: str) -> Component:
+        return Component(
+            cosmo_string,
+            min_sigma=self._min_sigma,
+            max_sigma=self._max_sigma,
+            num_points=self._num_points,
+            averaging_radius=self._averaging_radius,
+            f_decay=self._f_decay,
+            sigma_0=self._sigma_0,
+            merge_profiles=self._merge_profiles,
+        )
+
     def add_component(self, name: str, cosmo_string: str) -> None:
         """Add a component to the mixture.
 
@@ -162,16 +173,7 @@ class Mixture:
         cosmo_string : str
             COSMO string.
         """
-        self._components[name] = Component(
-            cosmo_string,
-            min_sigma=self._min_sigma,
-            max_sigma=self._max_sigma,
-            num_points=self._num_points,
-            averaging_radius=self._averaging_radius,
-            f_decay=self._f_decay,
-            sigma_0=self._sigma_0,
-            merge_profiles=self._merge_profiles,
-        )
+        self._components[name] = self._create_component(cosmo_string)
 
     def remove_component(self, name: str) -> None:
         """Remove a component from the mixture.
@@ -184,9 +186,13 @@ class Mixture:
         del self._components[name]
 
     def replace_component(
-        self, old_name: str, new_name: str, new_cosmo_string: str
+        self, old_name: str, new_name: str, cosmo_string: str
     ) -> None:
         """Replace a component in the mixture.
+
+        The new name must not already exist in the mixture, unless it is the same as
+        the old name. In this case, the component data is updated using the new COSMO
+        string.
 
         Parameters
         ----------
@@ -194,20 +200,30 @@ class Mixture:
             Name of the component to replace.
         new_name : str
             Name of the new component.
-        new_cosmo_string : str
+        cosmo_string : str
             New component's COSMO string.
+
+        Raises
+        ------
+        ValueError
+            If the old name is not found in the mixture.
+            If the new name already exists in the mixture and is not the same as the
+            old name.
         """
         if old_name not in self._components:
             raise ValueError(f"Component {old_name} not found in mixture.")
         if new_name != old_name and new_name in self._components:
             raise ValueError(f"Component {new_name} already exists in mixture.")
-        old_components = self._components
-        self._components = collections.OrderedDict()
-        for name, component in old_components.items():
-            if name == old_name:
-                self.add_component(new_name, new_cosmo_string)
-            else:
-                self._components[name] = component
+        if new_name == old_name:
+            self._components[new_name] = self._create_component(cosmo_string)
+        else:
+            old_components = self._components
+            self._components = OrderedDict()
+            for name, component in old_components.items():
+                if name == old_name:
+                    self._components[new_name] = self._create_component(cosmo_string)
+                else:
+                    self._components[name] = component
 
     def get_area_per_segment(self) -> float:
         """Get the area per segment for the mixture.
