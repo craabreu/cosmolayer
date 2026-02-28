@@ -137,10 +137,10 @@ def test_replace_component_same_name_new_cosmo(
     )
 
 
-def test_replace_component_unknown_old_name_leaves_mixture_unchanged(
+def test_replace_component_same_name_only_updates_data(
     cosmo_strings: dict[str, str],
 ) -> None:
-    """Replacing a non-existent component leaves the mixture unchanged."""
+    """Replacing with the same name (no rename) updates COSMO data."""
     mixture = Mixture(
         {
             "water": cosmo_strings["water"],
@@ -148,15 +148,56 @@ def test_replace_component_unknown_old_name_leaves_mixture_unchanged(
         }
     )
     names_before = mixture.get_component_names()
-    areas_before = mixture.get_areas().copy()
+    area_water_before = mixture["water"].get_area()
 
-    mixture.replace_component(
-        "nonexistent",
-        "new",
-        cosmo_strings["ethanolamine"],
-    )
+    mixture.replace_component("water", "water", cosmo_strings["ethanolamine"])
+
     assert mixture.get_component_names() == names_before
-    np.testing.assert_allclose(mixture.get_areas(), areas_before)
+    assert mixture["water"].get_area() != area_water_before
+    np.testing.assert_allclose(
+        mixture["water"].get_area(),
+        mixture.get_areas()[0],
+    )
+
+
+def test_replace_component_new_name_already_exists_raises(
+    cosmo_strings: dict[str, str],
+) -> None:
+    """Replacing with a new name that already exists in the mixture raises."""
+    mixture = Mixture(
+        {
+            "water": cosmo_strings["water"],
+            "other": cosmo_strings["fluoromethane"],
+        }
+    )
+    names_before = mixture.get_component_names()
+
+    with pytest.raises(ValueError, match="Component other already exists in mixture"):
+        mixture.replace_component(
+            "water",
+            "other",
+            cosmo_strings["ethanolamine"],
+        )
+    assert mixture.get_component_names() == names_before
+
+
+def test_replace_component_unknown_old_name_leaves_mixture_unchanged(
+    cosmo_strings: dict[str, str],
+) -> None:
+    """Replacing a non-existent component raises error."""
+    mixture = Mixture(
+        {
+            "water": cosmo_strings["water"],
+            "other": cosmo_strings["fluoromethane"],
+        }
+    )
+
+    with pytest.raises(ValueError, match="Component nonexistent not found in mixture"):
+        mixture.replace_component(
+            "nonexistent",
+            "new",
+            cosmo_strings["ethanolamine"],
+        )
 
 
 def test_add_remove_replace_roundtrip_get_areas_consistent(

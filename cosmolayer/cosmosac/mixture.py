@@ -197,6 +197,10 @@ class Mixture:
         new_cosmo_string : str
             New component's COSMO string.
         """
+        if old_name not in self._components:
+            raise ValueError(f"Component {old_name} not found in mixture.")
+        if new_name != old_name and new_name in self._components:
+            raise ValueError(f"Component {new_name} already exists in mixture.")
         old_components = self._components
         self._components = collections.OrderedDict()
         for name, component in old_components.items():
