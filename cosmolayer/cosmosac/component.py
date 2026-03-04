@@ -51,7 +51,8 @@ class Component:
         Default is 0.007 e/Å² :cite:`Bell2020`.
     merge_profiles : bool, optional
         Whether to merge segment groups (NHB, OH, OT) into a single profile
-        when accessing :attr:`probabilities` and :attr:`sigma_profile`. Default is False.
+        when accessing :attr:`probabilities` and :attr:`sigma_profile`.
+        Default is False.
 
     Raises
     ------
@@ -72,7 +73,8 @@ class Component:
     >>> component.volume
     80.07160...
 
-    When :attr:`merge_profiles` is True, :attr:`sigma_profile` is a single merged profile:
+    When :attr:`merge_profiles` is True, :attr:`sigma_profile` is a single
+    merged profile:
 
     >>> component = Component(path.read_text(), merge_profiles=True)
     >>> sigma_profile = component.sigma_profile
@@ -81,7 +83,8 @@ class Component:
     >>> print(sum(sigma_profile))
     97.34554...
 
-    When :attr:`merge_profiles` is False, :attr:`sigma_profile` is stacked (NHB, OH, OT), shape (3, num_points):
+    When :attr:`merge_profiles` is False, :attr:`sigma_profile` is stacked
+    (NHB, OH, OT), shape (3, num_points):
 
     >>> component = Component(path.read_text(), merge_profiles=False)
     >>> stacked = component.sigma_profile
@@ -418,17 +421,15 @@ class Component:
 
     @property
     def atom_data(self) -> pd.DataFrame:
-        """Get the atom data.
+        """Atom data from the parsed COSMO file.
 
-        Get a pandas DataFrame containing the following columns:
-        - id: atom identifier (str)
-        - x, y, z: Cartesian coordinates in Å (float)
-        - element: chemical element symbol (str)
+        DataFrame columns: ``id`` (atom identifier), ``x``, ``y``, ``z`` (Cartesian
+        coordinates in Å), ``element`` (chemical symbol).
 
         Returns
         -------
         pd.DataFrame
-            Atom data.
+            One row per atom.
 
         Examples
         --------
@@ -449,20 +450,17 @@ class Component:
 
     @property
     def segment_data(self) -> pd.DataFrame:
-        """Get the segment data.
+        """Segment (surface tile) data from the COSMO calculation.
 
-        Get a pandas DataFrame containing the following columns:
-        - atom: index of the atom associated with the segment (int)
-        - x, y, z: segment coordinates in Å² (float)
-        - charge: segment charge in e (float)
-        - area: segment surface area in Å² (float)
-        - sigma: screening charge density in e/Å² (float)
-        - sigma_avg: smoothed charge density in e/Å² (float)
+        DataFrame columns: ``atom`` (parent atom index), ``x``, ``y``, ``z``
+        (segment centroid coordinates in Å), ``charge`` (e), ``area`` (Å²),
+        ``sigma`` (screening charge density in e/Å²), ``sigma_avg`` (smoothed
+        density in e/Å²).
 
         Returns
         -------
         pd.DataFrame
-            Segment data.
+            One row per segment.
 
         Examples
         --------
@@ -484,13 +482,12 @@ class Component:
 
     @property
     def bonds(self) -> list[tuple[int, int]]:
-        """Get the bonds between atoms.
+        """Bonds between atoms, inferred from interatomic distances.
 
         Returns
         -------
         list[tuple[int, int]]
-            List of bonds between atoms. Each bond is represented as a tuple of two
-            integers, the indices of the atoms in the bond.
+            Pairs of atom indices (i, j) for each bond.
 
         Examples
         --------
@@ -525,16 +522,29 @@ class Component:
 
     @property
     def merge_profiles(self) -> bool:
-        """Whether segment groups (NHB, OH, OT) are merged for :attr:`sigma_profile` and :attr:`probabilities`."""
+        """Whether segment groups (NHB, OH, OT) are merged for :attr:`sigma_profile`
+        and :attr:`probabilities`.
+
+        Returns
+        -------
+        bool
+        """
         return self._merge_profiles
 
     @property
     def sigma_profile(self) -> NDArray[np.float64]:
-        """Sigma profile, shape depends on :attr:`merge_profiles`.
+        """Surface area distribution over screening charge density (sigma), in Å².
 
-        If :attr:`merge_profiles` is True: merged profile (sum over NHB, OH, OT), shape (num_points,).
-        If :attr:`merge_profiles` is False: stacked segment profiles in SEGMENT_GROUPS order (NHB, OH, OT),
-        shape (3, num_points); sigma_profile[0] is NHB, [1] is OH, [2] is OT. Units: Å².
+        Shape and layout depend on :attr:`merge_profiles`. If True, returns a single
+        merged profile (sum over NHB, OH, OT), shape ``(num_points,)``. If False,
+        returns stacked segment profiles in SEGMENT_GROUPS order (NHB, OH, OT),
+        shape ``(3, num_points)``; ``sigma_profile[0]`` is NHB, ``[1]`` is OH,
+        ``[2]`` is OT.
+
+        Returns
+        -------
+        np.ndarray
+            Sigma profile(s). Units: Å².
         """
         if self._merge_profiles:
             total_profile: NDArray[np.float64] = np.sum(
@@ -545,17 +555,16 @@ class Component:
 
     @property
     def probabilities(self) -> NDArray[np.float64]:
-        """Get the probabilities of segment types in the molecule.
+        """Normalized segment-type probability distribution (sigma profile / area).
 
-        A segment type is defined by its hydrogen bonding class (NHB, OH, OT) and its
-        averaged charge density.
+        Segment types are defined by hydrogen bonding class (NHB, OH, OT) and
+        averaged charge density. Shape is ``(num_points,)`` if :attr:`merge_profiles`
+        is True, otherwise ``(3*num_points,)``.
 
         Returns
         -------
         np.ndarray
-            Normalized probability distribution of segment groups.
-            Shape is (num_points,) if :attr:`merge_profiles` is True, otherwise
-            (3*num_points,).
+            Probabilities summing to 1.0.
 
         Examples
         --------

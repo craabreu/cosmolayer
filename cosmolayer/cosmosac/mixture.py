@@ -172,7 +172,7 @@ class Mixture:
         name : str
             Component name.
         cosmo_string : str
-            COSMO string.
+            Contents of a COSMO output file.
         """
         self._components[name] = self._create_component(cosmo_string)
 
@@ -202,7 +202,7 @@ class Mixture:
         new_name : str
             Name of the new component.
         cosmo_string : str
-            New component's COSMO string.
+            Contents of the new component's COSMO output file.
 
         Raises
         ------
@@ -228,7 +228,7 @@ class Mixture:
 
     @property
     def area_per_segment(self) -> float:
-        """Area per segment for the mixture in Å²."""
+        """Reference area per segment used by the COSMO-SAC model, in Å²."""
         return self._area_per_segment
 
     @property
@@ -254,10 +254,16 @@ class Mixture:
 
     @property
     def probabilities(self) -> NDArray[np.float64]:
-        """Probabilities of segment types for all components.
+        """Normalized segment-type probabilities for each component.
 
-        If :attr:`merge_profiles` is True: (n_components, num_points);
-        if :attr:`merge_profiles` is False: (n_components, 3*num_points).
+        Stack of each component's :attr:`Component.probabilities`. Shape is
+        ``(n_components, num_points)`` if :attr:`merge_profiles` is True, else
+        ``(n_components, 3*num_points)``.
+
+        Returns
+        -------
+        np.ndarray
+            Probabilities; each row sums to 1.0.
         """
         return np.stack(
             [component.probabilities for component in self._components.values()],
@@ -266,10 +272,16 @@ class Mixture:
 
     @property
     def sigma_profiles(self) -> NDArray[np.float64]:
-        """Sigma profiles for all components.
+        """Per-component sigma profiles (surface area vs. charge density), in Å².
 
-        Shape is (n_components, num_points) when :attr:`merge_profiles` is True,
-        (n_components, 3, num_points) when :attr:`merge_profiles` is False.
+        Stack of each component's :attr:`Component.sigma_profile`. Shape is
+        ``(n_components, num_points)`` when :attr:`merge_profiles` is True,
+        ``(n_components, 3, num_points)`` when False (NHB, OH, OT).
+
+        Returns
+        -------
+        np.ndarray
+            Sigma profile array; last dimension is the sigma grid.
         """
         return np.stack(
             [component.sigma_profile for component in self._components.values()],
@@ -279,10 +291,33 @@ class Mixture:
     def interaction_matrices(
         self, temperature: float
     ) -> tuple[NDArray[np.float64], ...]:
-        """COSMO-SAC interaction matrices for the mixture at the given temperature."""
+        """COSMO-SAC interaction matrices for the mixture at the given temperature.
+
+        Parameters
+        ----------
+        temperature : float
+            Temperature in K; used to scale the matrices.
+
+        Returns
+        -------
+        tuple of np.ndarray
+            Matrices used in the COSMO-SAC activity coefficient calculation.
+            Length and shapes match the generator (e.g. sigma–sigma and
+            sigma'–sigma' for the 2010 model).
+        """
         return self._interaction_matrix_generator(temperature)
 
     @property
     def temperature_exponents(self) -> tuple[float, ...]:
-        """Temperature exponents for the interaction matrices."""
+        """Exponents used to scale each interaction matrix with temperature.
+
+        Each entry scales the corresponding matrix from
+        :meth:`interaction_matrices` as T^exponent (e.g. 1 and 3 for the
+        COSMO-SAC 2010 model).
+
+        Returns
+        -------
+        tuple of float
+            One exponent per interaction matrix.
+        """
         return self._temperature_exponents

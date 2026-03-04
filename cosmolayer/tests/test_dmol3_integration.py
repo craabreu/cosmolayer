@@ -105,7 +105,8 @@ def test_dmol3_parser_integration() -> None:
     2. The Component class correctly processes DMol-3 data
     3. Calculated sigma profiles match precalculated reference values
     """
-    # Load the COSMO file using the Component class with merge_profiles=False for stacked sigma_profile
+    # Load the COSMO file using the Component class with merge_profiles=False for
+    # stacked sigma_profile
     cosmo_path = files("cosmolayer.data") / "NCCO.cosmo"
     component = Component(cosmo_path.read_text(), merge_profiles=False)
 
@@ -138,7 +139,7 @@ def test_dmol3_parser_integration() -> None:
     assert component.volume == pytest.approx(expected_volume, abs=1e-5)
 
     # Verify that the calculated profiles have reasonable properties
-    for group_name in ["NHB", "OH", "OT"]:
+    for group_name in SEGMENT_GROUPS:
         calculated = calculated_profiles[group_name]
         expected = expected_profiles[group_name]
 
