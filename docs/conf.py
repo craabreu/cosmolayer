@@ -17,17 +17,37 @@ sys.path.insert(0, os.path.abspath(".."))
 
 def create_class_rst_file(cls, module_name="cosmolayer"):
     name = cls.__name__
-    methods = list(cls.__dict__.keys())
     excluded = ["yaml_tag"]
+    attributes = []
+    methods = []
+    for member_name, member_value in cls.__dict__.items():
+        if member_name.startswith("_") or member_name in excluded:
+            continue
+        if isinstance(member_value, property):
+            attributes.append(member_name)
+        elif isinstance(member_value, (classmethod, staticmethod)) or callable(member_value):
+            methods.append(member_name)
+        else:
+            attributes.append(member_name)
+    attributes = sorted(attributes)
+    methods = sorted(methods)
+
+    included_attributes = [
+        (
+            f"    .. autoattribute:: {attr}\n"
+            "        :no-index-entry:\n"
+        )
+        for attr in attributes
+    ]
+    included_methods = [
+        (
+            f"    .. automethod:: {method}\n"
+            "        :no-index-entry:\n"
+        )
+        for method in methods
+    ]
+
     with open(f"api/{name}.rst", "w") as f:
-        included_methods = [
-            (
-                f"    .. automethod:: {method}\n"
-                "        :no-index-entry:\n"
-            )
-            for method in sorted(methods)
-            if not (method.startswith("_") or method in excluded)
-        ]
         f.writelines(
             [
                 f"{name}\n",
@@ -36,6 +56,8 @@ def create_class_rst_file(cls, module_name="cosmolayer"):
                 f".. autoclass:: {name}\n",
                 "    :member-order: alphabetical\n\n",
             ]
+            + ["    .. rubric:: Attributes\n\n"] * bool(included_attributes)
+            + included_attributes
             + ["    .. rubric:: Methods\n\n"] * bool(included_methods)
             + included_methods
         )
