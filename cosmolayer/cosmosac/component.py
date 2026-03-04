@@ -51,7 +51,7 @@ class Component:
         Default is 0.007 e/Å² :cite:`Bell2020`.
     merge_profiles : bool, optional
         Whether to merge segment groups (NHB, OH, OT) into a single profile
-        when accessing probabilities. Default is False.
+        when accessing probabilities and sigma_profile. Default is False.
 
     Raises
     ------
@@ -71,34 +71,45 @@ class Component:
     97.34554...
     >>> component.volume
     80.07160...
+
+    With merge_profiles=True, sigma_profile is a single merged profile:
+
+    >>> component = Component(path.read_text(), merge_profiles=True)
     >>> sigma_profile = component.sigma_profile
+    >>> sigma_profile.shape
+    (51,)
     >>> print(sum(sigma_profile))
     97.34554...
-    >>> sigma_profiles = {
-    ...     s: component.sigma_profile_for_segment(s)
-    ...     for s in ["NHB", "OH", "OT"]
-    ... }
-    >>> for s in ["NHB", "OH", "OT"]:
-    ...     print(s, sum(sigma_profiles[s]))
+
+    With merge_profiles=False, sigma_profile is stacked (NHB, OH, OT), shape (3, num_points):
+
+    >>> component = Component(path.read_text(), merge_profiles=False)
+    >>> stacked = component.sigma_profile
+    >>> stacked.shape
+    (3, 51)
+    >>> from cosmolayer.cosmosac.segment_groups import SEGMENT_GROUPS
+    >>> for i, s in enumerate(SEGMENT_GROUPS):
+    ...     print(s, sum(stacked[i]))
     NHB 72.31802...
     OH 12.25732...
     OT 12.77019...
 
-    Plotting the sigma profiles:
+    Plotting the sigma profiles (stacked, merge_profiles=False):
+
 
     .. plot::
         :context: close-figs
 
         >>> from importlib.resources import files
         >>> from cosmolayer.cosmosac import Component
+        >>> from cosmolayer.cosmosac.segment_groups import SEGMENT_GROUPS
         >>> from matplotlib import pyplot as plt
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
-        >>> component = Component(path.read_text())
+        >>> component = Component(path.read_text(), merge_profiles=False)
         >>> fig, ax = plt.subplots(figsize=(8, 4))
         >>> grid = component.sigma_grid
-        >>> for s in ["NHB", "OH", "OT"]:
-        ...     _ = ax.plot(grid, component.sigma_profile_for_segment(s), label=s)
-        >>> _ = ax.plot(grid, component.sigma_profile, label="Overall")
+        >>> for i, label in enumerate(SEGMENT_GROUPS):
+        ...     _ = ax.plot(grid, component.sigma_profile[i], label=label)
         >>> _ = ax.set_xlabel("Charge density (e/Å²)")
         >>> _ = ax.set_ylabel("Surface area contribution (Å²)")
         >>> _ = ax.legend()
@@ -514,23 +525,18 @@ class Component:
 
     @property
     def sigma_profile(self) -> NDArray[np.float64]:
-        """Overall sigma profile (sum over all segment classes). Shape: (num_points,). Units: Å²."""
-        total_profile: NDArray[np.float64] = np.sum(
-            list(self._sigma_profiles.values()), axis=0
-        )
-        return total_profile
+        """Sigma profile, shape depends on merge_profiles.
 
-    def sigma_profile_for_segment(self, segment_class: str) -> NDArray[np.float64]:
-        """Sigma profile for a given segment class.
-
-        Segment classes: NHB (non-hydrogen-bonding), OH (hydroxyl), OT (other H-bonding).
-        Shape: (num_points,). Units: Å².
+        If merge_profiles is True: merged profile (sum over NHB, OH, OT), shape (num_points,).
+        If merge_profiles is False: stacked segment profiles in SEGMENT_GROUPS order (NHB, OH, OT),
+        shape (3, num_points); sigma_profile[0] is NHB, [1] is OH, [2] is OT. Units: Å².
         """
-        try:
-            profile: NDArray[np.float64] = self._sigma_profiles[segment_class.upper()]
-            return profile
-        except KeyError as e:
-            raise ValueError(f"Invalid segment class: {segment_class}") from e
+        if self._merge_profiles:
+            total_profile: NDArray[np.float64] = np.sum(
+                list(self._sigma_profiles.values()), axis=0
+            )
+            return total_profile
+        return np.stack([self._sigma_profiles[seg] for seg in SEGMENT_GROUPS], axis=0)
 
     @property
     def probabilities(self) -> NDArray[np.float64]:

@@ -248,7 +248,9 @@ class Mixture:
     @property
     def probabilities(self) -> NDArray[np.float64]:
         """Probabilities of segment types for all components.
-        If merge=True: (n_components, num_points); if merge=False: (n_components, 3*num_points).
+
+        If merge=True: (n_components, num_points); if merge=False:
+        (n_components, 3*num_points).
         """
         return np.stack(
             [component.probabilities for component in self._components.values()],
@@ -257,19 +259,13 @@ class Mixture:
 
     @property
     def sigma_profiles(self) -> NDArray[np.float64]:
-        """Sigma profiles for all components (total). Shape: (n_components, num_points)."""
+        """Sigma profiles for all components.
+
+        Shape is (n_components, num_points) when merge_profiles is True,
+        (n_components, 3, num_points) when merge_profiles is False.
+        """
         return np.stack(
             [component.sigma_profile for component in self._components.values()],
-            axis=0,
-        )
-
-    def sigma_profiles_for_segment(self, segment_class: str) -> NDArray[np.float64]:
-        """Sigma profiles for all components for a segment class. Shape: (n_components, num_points)."""
-        return np.stack(
-            [
-                component.sigma_profile_for_segment(segment_class)
-                for component in self._components.values()
-            ],
             axis=0,
         )
 
