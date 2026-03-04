@@ -72,7 +72,7 @@ class Model:
     >>> from cosmolayer.cosmosac.model import CosmoSac2002Model
     >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
     >>> component = CosmoSac2002Model.create_component(path.read_text())
-    >>> component.get_area()
+    >>> component.area
     97.34554...
 
     Inspecting model parameters:
@@ -197,9 +197,9 @@ class Model:
         >>> from cosmolayer.cosmosac.model import CosmoSac2010Model
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = CosmoSac2010Model.create_component(path.read_text())
-        >>> component.get_area()
+        >>> component.area
         97.34554...
-        >>> component.get_probabilities().shape
+        >>> component.probabilities.shape
         (153,)
         """
         return Component(
@@ -255,7 +255,7 @@ class Model:
         >>> mixture = CosmoSac2002Model.create_mixture(components)
         >>> len(mixture)
         2
-        >>> mixture.get_interaction_matrices(298.15)[0].shape
+        >>> mixture.interaction_matrices(298.15)[0].shape
         (51, 51)
 
         Creating a mixture with the COSMO-SAC 2010 model:
@@ -263,7 +263,7 @@ class Model:
         >>> mixture = CosmoSac2010Model.create_mixture(components)
         >>> len(mixture)
         2
-        >>> matrices = mixture.get_interaction_matrices(298.15)
+        >>> matrices = mixture.interaction_matrices(298.15)
         >>> len(matrices)
         2
         >>> all(m.shape == (153, 153) for m in matrices)

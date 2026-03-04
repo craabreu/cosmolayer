@@ -50,7 +50,7 @@ def create_atom_spheres(
     resolution: int = 40,
     default_color: tuple[float, float, float] = (0.7, 0.7, 0.7),
 ) -> list[o3d.geometry.TriangleMesh]:
-    atom_df = component.get_atom_data()
+    atom_df = component.atom_data
     spheres: list[o3d.geometry.TriangleMesh] = []
     for item in atom_df.itertuples(index=False):
         element = str(item.element).strip()
@@ -96,11 +96,11 @@ def create_bond_sticks(
     resolution: int = 100,
     default_color: tuple[float, float, float] = (0.7, 0.7, 0.7),
 ) -> list[o3d.geometry.TriangleMesh]:
-    atom_df = component.get_atom_data()
+    atom_df = component.atom_data
     coords = atom_df[["x", "y", "z"]].values
     elements = atom_df["element"].values
     radii = atom_df["element"].apply(estimate_vdw_radius).values * atom_radius_scale
-    bonds = component.get_bonds()
+    bonds = component.bonds
     cylinders: list[o3d.geometry.TriangleMesh] = []
     for i, j in bonds:
         vector = coords[j] - coords[i]
@@ -204,9 +204,9 @@ def surface_tessellation(
     interpolated_colors: bool = False,
     colormap: str = "jet",
 ) -> o3d.geometry.TriangleMesh:
-    segment_data = component.get_segment_data()
-    atom_data = component.get_atom_data()
-    sigma_grid = component.get_sigma_grid()
+    segment_data = component.segment_data
+    atom_data = component.atom_data
+    sigma_grid = component.sigma_grid
     vmin, vmax = sigma_grid[0], sigma_grid[-1]
     sigmas = segment_data[
         "sigma" if original_charge_densities else "sigma_avg"

@@ -69,9 +69,9 @@ class CosmoLayer(torch.nn.Module):
     ...     "water": (source / "O.cosmo").read_text(),
     ... }
     >>> mixture = CosmoSac2002Model.create_mixture(components)
-    >>> interaction_matrices = mixture.get_interaction_matrices(T_ref)
-    >>> exponents = mixture.get_temperature_exponents()
-    >>> area_per_segment = mixture.get_area_per_segment()
+    >>> interaction_matrices = mixture.interaction_matrices(T_ref)
+    >>> exponents = mixture.temperature_exponents
+    >>> area_per_segment = mixture.area_per_segment
     >>> cosmo_layer = CosmoLayer(interaction_matrices, exponents, area_per_segment)
     >>> cosmo_layer
     CosmoLayer(
@@ -82,9 +82,9 @@ class CosmoLayer(torch.nn.Module):
     )
     >>> T = torch.tensor(373.15)
     >>> x = torch.tensor([0.5, 0.5], requires_grad=True)
-    >>> a = torch.tensor(mixture.get_areas())
-    >>> v = torch.tensor(mixture.get_volumes())
-    >>> P = torch.tensor(mixture.get_probabilities())
+    >>> a = torch.tensor(mixture.areas)
+    >>> v = torch.tensor(mixture.volumes)
+    >>> P = torch.tensor(mixture.probabilities)
     >>> ln_gamma = cosmo_layer(T, x, a, v, P)
     >>> ln_gamma.tolist()
     [0.805809..., 0.648071...]

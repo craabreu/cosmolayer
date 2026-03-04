@@ -115,7 +115,7 @@ def test_dmol3_parser_integration() -> None:
     )
 
     # Get calculated sigma grid
-    calculated_sigma_grid = component.get_sigma_grid()
+    calculated_sigma_grid = component.sigma_grid
 
     # Verify sigma grid matches exactly
     np.testing.assert_allclose(
@@ -128,12 +128,13 @@ def test_dmol3_parser_integration() -> None:
 
     # Get calculated sigma profiles for each segment group
     calculated_profiles = {
-        group: component.get_sigma_profile(group) for group in ["NHB", "OH", "OT"]
+        group: component.sigma_profile_for_segment(group)
+        for group in ["NHB", "OH", "OT"]
     }
 
     # Verify basic properties match metadata from .sigma file
-    assert component.get_area() == pytest.approx(expected_area, abs=1e-4)
-    assert component.get_volume() == pytest.approx(expected_volume, abs=1e-5)
+    assert component.area == pytest.approx(expected_area, abs=1e-4)
+    assert component.volume == pytest.approx(expected_volume, abs=1e-5)
 
     # Verify that the calculated profiles have reasonable properties
     for group_name in ["NHB", "OH", "OT"]:

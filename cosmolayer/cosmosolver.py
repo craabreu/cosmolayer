@@ -79,7 +79,7 @@ class CosmoSolver(torch.autograd.Function):
     ...     for species in ("C=C(N)O", "NCCO")
     ... ]
     >>> probabilities = [
-    ...     CosmoSac2002Model.create_component(cosmo_string).get_probabilities()
+    ...     CosmoSac2002Model.create_component(cosmo_string).probabilities
     ...     for cosmo_string in cosmo_strings
     ... ]
     >>> p = torch.stack(

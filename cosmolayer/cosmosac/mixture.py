@@ -49,7 +49,7 @@ class Mixture:
         Default is 0.007 e/Å².
     merge_profiles : bool, optional
         Whether to merge segment groups (NHB, OH, OT) into a single profile
-        when calling get_probabilities(). Default is False.
+        when accessing probabilities. Default is False.
     regularize : float, optional
         Minimum value for clipping probabilities. Default is 1e-10.
     interaction_matrix_generator : Callable, optional
@@ -80,13 +80,13 @@ class Mixture:
     >>> mixture = Mixture(components)
     >>> len(mixture)
     2
-    >>> mixture["1-aminoethenol"].get_area()
+    >>> mixture["1-aminoethenol"].area
     97.34554...
-    >>> mixture["2-aminoethanol"].get_area()
+    >>> mixture["2-aminoethanol"].area
     103.51765...
-    >>> mixture.get_component_names()
+    >>> mixture.component_names
     ('1-aminoethenol', '2-aminoethanol')
-    >>> areas = mixture.get_areas()
+    >>> areas = mixture.areas
     >>> areas.shape
     (2,)
     >>> float(areas[0])
@@ -225,194 +225,61 @@ class Mixture:
                 else:
                     self._components[name] = component
 
-    def get_area_per_segment(self) -> float:
-        """Get the area per segment for the mixture.
-
-        Returns
-        -------
-        float
-            Area per segment in Å².
-        """
+    @property
+    def area_per_segment(self) -> float:
+        """Area per segment for the mixture in Å²."""
         return self._area_per_segment
 
-    def get_component_names(self) -> tuple[str, ...]:
-        """Get the names of all components in the mixture.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Tuple of component names in the order they were provided.
-        """
+    @property
+    def component_names(self) -> tuple[str, ...]:
+        """Names of all components in the order they were provided."""
         return tuple(self._components.keys())
 
-    def get_areas(self) -> NDArray[np.float64]:
-        """Get cavity surface areas for all components.
+    @property
+    def areas(self) -> NDArray[np.float64]:
+        """Cavity surface areas for all components in Å². Shape: (n_components,)."""
+        return np.array([component.area for component in self._components.values()])
 
-        Returns
-        -------
-        NDArray[np.float64]
-            Array of cavity surface areas in Å² for each component.
-            Shape: (n_components,).
+    @property
+    def volumes(self) -> NDArray[np.float64]:
+        """Cavity volumes for all components in Å³. Shape: (n_components,)."""
+        return np.array([component.volume for component in self._components.values()])
 
-        Examples
-        --------
-        >>> from importlib.resources import files
-        >>> from cosmolayer.cosmosac import Mixture
-        >>> source = files("cosmolayer.data")
-        >>> components = {
-        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
-        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
-        ... }
-        >>> mixture = Mixture(components)
-        >>> areas = mixture.get_areas()
-        >>> areas.shape
-        (2,)
-        """
-        return np.array(
-            [component.get_area() for component in self._components.values()]
-        )
-
-    def get_volumes(self) -> NDArray[np.float64]:
-        """Get cavity volumes for all components.
-
-        Returns
-        -------
-        NDArray[np.float64]
-            Array of cavity volumes in Å³ for each component.
-            Shape: (n_components,).
-
-        Examples
-        --------
-        >>> from importlib.resources import files
-        >>> from cosmolayer.cosmosac import Mixture
-        >>> source = files("cosmolayer.data")
-        >>> components = {
-        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
-        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
-        ... }
-        >>> mixture = Mixture(components)
-        >>> volumes = mixture.get_volumes()
-        >>> volumes.shape
-        (2,)
-        """
-        return np.array(
-            [component.get_volume() for component in self._components.values()]
-        )
-
-    def get_probabilities(self) -> NDArray[np.float64]:
-        """Get probabilities of segment types for all components.
-
-        Returns
-        -------
-        NDArray[np.float64]
-            Array of probabilities for each component.
-            If merge=True: shape is (n_components, num_points).
-            If merge=False: shape is (n_components, 3*num_points).
-
-        Examples
-        --------
-        >>> from importlib.resources import files
-        >>> from cosmolayer.cosmosac import Mixture
-        >>> import numpy as np
-        >>> source = files("cosmolayer.data")
-        >>> components = {
-        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
-        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
-        ... }
-        >>> mixture = Mixture(components)
-        >>> probabilities = mixture.get_probabilities()
-        >>> probabilities.shape
-        (2, 153)
-        >>> bool(np.all(probabilities <= 1))
-        True
+    @property
+    def probabilities(self) -> NDArray[np.float64]:
+        """Probabilities of segment types for all components.
+        If merge=True: (n_components, num_points); if merge=False: (n_components, 3*num_points).
         """
         return np.stack(
-            [component.get_probabilities() for component in self._components.values()],
+            [component.probabilities for component in self._components.values()],
             axis=0,
         )
 
-    def get_sigma_profiles(
-        self, segment_class: str | None = None
-    ) -> NDArray[np.float64]:
-        """Get sigma profiles for all components.
+    @property
+    def sigma_profiles(self) -> NDArray[np.float64]:
+        """Sigma profiles for all components (total). Shape: (n_components, num_points)."""
+        return np.stack(
+            [component.sigma_profile for component in self._components.values()],
+            axis=0,
+        )
 
-        Parameters
-        ----------
-        segment_class : str, optional
-            Segment class ("NHB", "OH", or "OT"). If None, returns total profiles.
-
-        Returns
-        -------
-        NDArray[np.float64]
-            Array of sigma profiles for each component.
-            Shape: (n_components, num_points).
-
-        Examples
-        --------
-        >>> from importlib.resources import files
-        >>> from cosmolayer.cosmosac import Mixture
-        >>> source = files("cosmolayer.data")
-        >>> components = {
-        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
-        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
-        ... }
-        >>> mixture = Mixture(components)
-        >>> profiles = mixture.get_sigma_profiles()
-        >>> profiles.shape
-        (2, 51)
-        """
+    def sigma_profiles_for_segment(self, segment_class: str) -> NDArray[np.float64]:
+        """Sigma profiles for all components for a segment class. Shape: (n_components, num_points)."""
         return np.stack(
             [
-                component.get_sigma_profile(segment_class)
+                component.sigma_profile_for_segment(segment_class)
                 for component in self._components.values()
             ],
             axis=0,
         )
 
-    def get_interaction_matrices(
+    def interaction_matrices(
         self, temperature: float
     ) -> tuple[NDArray[np.float64], ...]:
-        """Get the COSMO-SAC interaction matrices for the mixture.
-
-        Parameters
-        ----------
-        temperature : float
-            The temperature in Kelvin at which the interaction matrices are computed.
-
-        Returns
-        -------
-        tuple[NDArray[np.float64], ...]
-            Tuple of interaction matrices, one for each segment type pair.
-            Each matrix has shape (n_segment_types, n_segment_types).
-
-        Examples
-        --------
-        >>> from importlib.resources import files
-        >>> from cosmolayer.cosmosac import Mixture
-        >>> source = files("cosmolayer.data")
-        >>> components = {
-        ...     "1-aminoethenol": (source / "C=C(N)O.cosmo").read_text(),
-        ...     "2-aminoethanol": (source / "NCCO.cosmo").read_text(),
-        ... }
-        >>> mixture = Mixture(components)
-        >>> matrices = mixture.get_interaction_matrices(298.15)
-        >>> isinstance(matrices, tuple)
-        True
-        >>> len(matrices)
-        2
-        >>> all(isinstance(mat, np.ndarray) for mat in matrices)
-        True
-        >>> all(mat.shape == (153, 153) for mat in matrices)
-        True
-        """
+        """COSMO-SAC interaction matrices for the mixture at the given temperature."""
         return self._interaction_matrix_generator(temperature)
 
-    def get_temperature_exponents(self) -> tuple[float, ...]:
-        """Get the temperature exponents for the interaction matrices.
-
-        Returns
-        -------
-        tuple[float, ...]
-            Tuple of temperature exponents.
-        """
+    @property
+    def temperature_exponents(self) -> tuple[float, ...]:
+        """Temperature exponents for the interaction matrices."""
         return self._temperature_exponents

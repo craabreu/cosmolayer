@@ -31,20 +31,20 @@ def test_add_component_adds_and_accessible(
     """Adding a component increases len, updates names, and component is accessible."""
     mixture = Mixture({"water": cosmo_strings["water"]})
     assert len(mixture) == 1
-    assert mixture.get_component_names() == ("water",)
+    assert mixture.component_names == ("water",)
 
     mixture.add_component("fluoromethane", cosmo_strings["fluoromethane"])
     assert len(mixture) == 2
-    assert mixture.get_component_names() == ("water", "fluoromethane")
+    assert mixture.component_names == ("water", "fluoromethane")
 
-    areas = mixture.get_areas()
+    areas = mixture.areas
     assert areas.shape == (2,)
     np.testing.assert_allclose(
-        mixture["water"].get_area(),
+        mixture["water"].area,
         areas[0],
     )
     np.testing.assert_allclose(
-        mixture["fluoromethane"].get_area(),
+        mixture["fluoromethane"].area,
         areas[1],
     )
 
@@ -60,7 +60,7 @@ def test_add_component_preserves_order(
         }
     )
     mixture.add_component("c", cosmo_strings["ethanolamine"])
-    assert mixture.get_component_names() == ("a", "b", "c")
+    assert mixture.component_names == ("a", "b", "c")
 
 
 def test_remove_component_reduces_len_and_raises_for_removed(
@@ -77,10 +77,10 @@ def test_remove_component_reduces_len_and_raises_for_removed(
 
     mixture.remove_component("water")
     assert len(mixture) == 1
-    assert mixture.get_component_names() == ("fluoromethane",)
+    assert mixture.component_names == ("fluoromethane",)
     with pytest.raises(KeyError, match="water"):
         _ = mixture["water"]
-    assert mixture["fluoromethane"].get_area() > 0
+    assert mixture["fluoromethane"].area > 0
 
 
 def test_remove_component_raises_for_unknown_name(
@@ -103,15 +103,15 @@ def test_replace_component_swaps_component_preserves_order(
             "third": cosmo_strings["ethanolamine"],
         }
     )
-    area_second_before = mixture["second"].get_area()
+    area_second_before = mixture["second"].area
 
     mixture.replace_component(
         "second",
         "replacement",
         cosmo_strings["aminoethenol"],
     )
-    assert mixture.get_component_names() == ("first", "replacement", "third")
-    assert mixture["replacement"].get_area() != area_second_before
+    assert mixture.component_names == ("first", "replacement", "third")
+    assert mixture["replacement"].area != area_second_before
     with pytest.raises(KeyError, match="second"):
         _ = mixture["second"]
 
@@ -126,14 +126,14 @@ def test_replace_component_same_name_new_cosmo(
             "other": cosmo_strings["fluoromethane"],
         }
     )
-    area_water_before = mixture["water"].get_area()
+    area_water_before = mixture["water"].area
 
     mixture.replace_component("water", "water", cosmo_strings["ethanolamine"])
-    assert mixture.get_component_names() == ("water", "other")
-    assert mixture["water"].get_area() != area_water_before
+    assert mixture.component_names == ("water", "other")
+    assert mixture["water"].area != area_water_before
     np.testing.assert_allclose(
-        mixture["water"].get_area(),
-        mixture.get_areas()[0],
+        mixture["water"].area,
+        mixture.areas[0],
     )
 
 
@@ -147,16 +147,16 @@ def test_replace_component_same_name_only_updates_data(
             "other": cosmo_strings["fluoromethane"],
         }
     )
-    names_before = mixture.get_component_names()
-    area_water_before = mixture["water"].get_area()
+    names_before = mixture.component_names
+    area_water_before = mixture["water"].area
 
     mixture.replace_component("water", "water", cosmo_strings["ethanolamine"])
 
-    assert mixture.get_component_names() == names_before
-    assert mixture["water"].get_area() != area_water_before
+    assert mixture.component_names == names_before
+    assert mixture["water"].area != area_water_before
     np.testing.assert_allclose(
-        mixture["water"].get_area(),
-        mixture.get_areas()[0],
+        mixture["water"].area,
+        mixture.areas[0],
     )
 
 
@@ -170,7 +170,7 @@ def test_replace_component_new_name_already_exists_raises(
             "other": cosmo_strings["fluoromethane"],
         }
     )
-    names_before = mixture.get_component_names()
+    names_before = mixture.component_names
 
     with pytest.raises(ValueError, match="Component other already exists in mixture"):
         mixture.replace_component(
@@ -178,7 +178,7 @@ def test_replace_component_new_name_already_exists_raises(
             "other",
             cosmo_strings["ethanolamine"],
         )
-    assert mixture.get_component_names() == names_before
+    assert mixture.component_names == names_before
 
 
 def test_replace_component_unknown_old_name_leaves_mixture_unchanged(
@@ -200,29 +200,29 @@ def test_replace_component_unknown_old_name_leaves_mixture_unchanged(
         )
 
 
-def test_add_remove_replace_roundtrip_get_areas_consistent(
+def test_add_remove_replace_roundtrip_areas_consistent(
     cosmo_strings: dict[str, str],
 ) -> None:
-    """Build same mixture via constructor vs add/remove/replace; get_areas match."""
+    """Build same mixture via constructor vs add/remove/replace; areas match."""
     direct = Mixture(
         {
             "water": cosmo_strings["water"],
             "fluoromethane": cosmo_strings["fluoromethane"],
         }
     )
-    areas_direct = direct.get_areas()
+    areas_direct = direct.areas
 
     built = Mixture({"water": cosmo_strings["water"]})
     built.add_component("fluoromethane", cosmo_strings["fluoromethane"])
-    areas_built = built.get_areas()
+    areas_built = built.areas
     np.testing.assert_allclose(areas_direct, areas_built)
 
     built.remove_component("fluoromethane")
     assert len(built) == 1
-    np.testing.assert_allclose(built.get_areas()[0], areas_direct[0])
+    np.testing.assert_allclose(built.areas[0], areas_direct[0])
 
     built.add_component("fluoromethane", cosmo_strings["fluoromethane"])
     built.replace_component(
         "fluoromethane", "fluoromethane", cosmo_strings["fluoromethane"]
     )
-    np.testing.assert_allclose(built.get_areas(), areas_direct)
+    np.testing.assert_allclose(built.areas, areas_direct)

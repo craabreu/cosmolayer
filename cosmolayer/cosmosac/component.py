@@ -51,7 +51,7 @@ class Component:
         Default is 0.007 e/Å² :cite:`Bell2020`.
     merge_profiles : bool, optional
         Whether to merge segment groups (NHB, OH, OT) into a single profile
-        when calling get_probabilities(). Default is False.
+        when accessing probabilities. Default is False.
 
     Raises
     ------
@@ -67,15 +67,15 @@ class Component:
     >>> from cosmolayer.cosmosac import Component
     >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
     >>> component = Component(path.read_text())
-    >>> component.get_area()
+    >>> component.area
     97.34554...
-    >>> component.get_volume()
+    >>> component.volume
     80.07160...
-    >>> sigma_profile = component.get_sigma_profile()
+    >>> sigma_profile = component.sigma_profile
     >>> print(sum(sigma_profile))
     97.34554...
     >>> sigma_profiles = {
-    ...     s: component.get_sigma_profile(s)
+    ...     s: component.sigma_profile_for_segment(s)
     ...     for s in ["NHB", "OH", "OT"]
     ... }
     >>> for s in ["NHB", "OH", "OT"]:
@@ -95,10 +95,10 @@ class Component:
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path.read_text())
         >>> fig, ax = plt.subplots(figsize=(8, 4))
-        >>> grid = component.get_sigma_grid()
+        >>> grid = component.sigma_grid
         >>> for s in ["NHB", "OH", "OT"]:
-        ...     _ = ax.plot(grid, component.get_sigma_profile(s), label=s)
-        >>> _ = ax.plot(grid, component.get_sigma_profile(), label="Overall")
+        ...     _ = ax.plot(grid, component.sigma_profile_for_segment(s), label=s)
+        >>> _ = ax.plot(grid, component.sigma_profile, label="Overall")
         >>> _ = ax.set_xlabel("Charge density (e/Å²)")
         >>> _ = ax.set_ylabel("Surface area contribution (Å²)")
         >>> _ = ax.legend()
@@ -115,7 +115,7 @@ class Component:
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path.read_text())
         >>> fig, ax = plt.subplots(figsize=(8, 4))
-        >>> p = component.get_probabilities()
+        >>> p = component.probabilities
         >>> _ = ax.bar(range(len(p)), p)
         >>> _ = ax.set_xlabel("Segment type index")
         >>> _ = ax.set_ylabel("Probability")
@@ -332,7 +332,7 @@ class Component:
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> with open(path, encoding="utf-8") as file:
         ...     component = Component.from_text_reader(file)
-        >>> component.get_area(), component.get_volume()
+        >>> component.area, component.volume
         (97.34554..., 80.07160...)
 
         """
@@ -361,7 +361,7 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component.from_file(path)
-        >>> component.get_area(), component.get_volume()
+        >>> component.area, component.volume
         (97.34554..., 80.07160...)
 
         """
@@ -371,34 +371,24 @@ class Component:
         with file_path.open("r", encoding="utf-8") as file:
             return cls.from_text_reader(file)
 
-    def get_area(self) -> float:
-        """Get the cavity surface area of the molecule in Å².
+    @property
+    def area(self) -> float:
+        """Cavity surface area of the molecule in Å².
 
-        Returns
-        -------
-        float
-            Cavity surface area in Å². This is the sum of the areas of all
-            segments from the COSMO calculation.
+        Sum of the areas of all segments from the COSMO calculation.
         """
         return self._area
 
-    def get_volume(self) -> float:
-        """Get the cavity volume of the molecule in Å³.
-
-        Returns
-        -------
-        float
-            Cavity volume in Å³.
-        """
+    @property
+    def volume(self) -> float:
+        """Cavity volume of the molecule in Å³."""
         return self._volume
 
-    def get_format(self) -> str:
-        """Get the COSMO file format that was parsed.
+    @property
+    def cosmo_format(self) -> str:
+        """COSMO file format that was parsed.
 
-        Returns
-        -------
-        str
-            The detected file format. Either "TURBOMOLE" or "DMol-3".
+        Either "TURBOMOLE" or "DMol-3".
 
         Examples
         --------
@@ -406,16 +396,17 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component.from_file(path)
-        >>> component.get_format()
+        >>> component.cosmo_format
         'TURBOMOLE'
         >>> path = files("cosmolayer.data") / "NCCO.cosmo"
         >>> component = Component.from_file(path)
-        >>> component.get_format()
+        >>> component.cosmo_format
         'DMol-3'
         """
         return self._format
 
-    def get_atom_data(self) -> pd.DataFrame:
+    @property
+    def atom_data(self) -> pd.DataFrame:
         """Get the atom data.
 
         Get a pandas DataFrame containing the following columns:
@@ -434,7 +425,7 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path.read_text())
-        >>> component.get_atom_data()
+        >>> component.atom_data
            id       x       y       z element
         0  C1 -1.4... -0.2...  0.0...       C
         1  C2 -0.0...  0.0...  0.0...       C
@@ -445,7 +436,8 @@ class Component:
         """
         return self._atom_data
 
-    def get_segment_data(self) -> pd.DataFrame:
+    @property
+    def segment_data(self) -> pd.DataFrame:
         """Get the segment data.
 
         Get a pandas DataFrame containing the following columns:
@@ -467,7 +459,7 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path.read_text())
-        >>> component.get_segment_data()
+        >>> component.segment_data
              atom         x         y  ...      area     sigma  sigma_avg
         0       0 -0.867... -1.196...  ...  0.206...  0.010...   0.007...
         1       0 -1.504... -1.502...  ...  0.218...  0.007...   0.005...
@@ -479,7 +471,8 @@ class Component:
         """
         return self._segment_data
 
-    def get_bonds(self) -> list[tuple[int, int]]:
+    @property
+    def bonds(self) -> list[tuple[int, int]]:
         """Get the bonds between atoms.
 
         Returns
@@ -494,12 +487,13 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path.read_text())
-        >>> component.get_bonds()
+        >>> component.bonds
         [(0, 1), (0, 4), (0, 5), ... (2, 7), (3, 8)]
         """
         return self._bonds
 
-    def get_sigma_grid(self) -> NDArray[np.float64]:
+    @property
+    def sigma_grid(self) -> NDArray[np.float64]:
         """Get the screening charge density grid in e/Å².
 
         Returns
@@ -513,46 +507,33 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> path = files("cosmolayer.data") / "C=C(N)O.cosmo"
         >>> component = Component(path.read_text())
-        >>> component.get_sigma_grid()
+        >>> component.sigma_grid
         array([-0.025, -0.024, -0.023, ... 0.023,  0.024,  0.025])
         """
         return self._grid
 
-    def get_sigma_profile(
-        self, segment_class: str | None = None
-    ) -> NDArray[np.float64]:
-        """Get the sigma profile for a given segment class or the overall sigma profile.
-
-        The segment classes are:
-        - NHB: Non-hydrogen-bonding segments
-        - OH: Segments associated with hydroxyl groups
-        - OT: Segments associated with other hydrogen-bonding groups
-
-        Parameters
-        ----------
-        segment_class : str, optional
-            Segment class. If None, returns the total sigma profile.
-
-        Returns
-        -------
-        np.ndarray
-            Sigma profile for the given segment class or the overall sigma profile.
-            Shape: (num_points,). Units: Å².
-        """
-        if segment_class:
-            try:
-                profile: NDArray[np.float64] = self._sigma_profiles[
-                    segment_class.upper()
-                ]
-                return profile
-            except KeyError as e:
-                raise ValueError(f"Invalid segment class: {segment_class}") from e
+    @property
+    def sigma_profile(self) -> NDArray[np.float64]:
+        """Overall sigma profile (sum over all segment classes). Shape: (num_points,). Units: Å²."""
         total_profile: NDArray[np.float64] = np.sum(
             list(self._sigma_profiles.values()), axis=0
         )
         return total_profile
 
-    def get_probabilities(self) -> NDArray[np.float64]:
+    def sigma_profile_for_segment(self, segment_class: str) -> NDArray[np.float64]:
+        """Sigma profile for a given segment class.
+
+        Segment classes: NHB (non-hydrogen-bonding), OH (hydroxyl), OT (other H-bonding).
+        Shape: (num_points,). Units: Å².
+        """
+        try:
+            profile: NDArray[np.float64] = self._sigma_profiles[segment_class.upper()]
+            return profile
+        except KeyError as e:
+            raise ValueError(f"Invalid segment class: {segment_class}") from e
+
+    @property
+    def probabilities(self) -> NDArray[np.float64]:
         """Get the probabilities of segment types in the molecule.
 
         A segment type is defined by its hydrogen bonding class (NHB, OH, OT) and its
@@ -572,7 +553,7 @@ class Component:
         >>> from cosmolayer.cosmosac import Component
         >>> cosmo_string = (files("cosmolayer.data") / "C=C(N)O.cosmo").read_text()
         >>> component = Component(cosmo_string, merge_profiles=True)
-        >>> probabilities = component.get_probabilities()
+        >>> probabilities = component.probabilities
         >>> probabilities.shape
         (51,)
         >>> bool(np.all(probabilities <= 1))
@@ -580,7 +561,7 @@ class Component:
         >>> bool(np.isclose(probabilities.sum(), 1.0))
         True
         >>> component = Component(cosmo_string, merge_profiles=False)
-        >>> probabilities_full = component.get_probabilities()
+        >>> probabilities_full = component.probabilities
         >>> probabilities_full.shape
         (153,)
         >>> bool(np.isclose(probabilities_full.sum(), 1.0))
