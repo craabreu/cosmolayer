@@ -49,7 +49,8 @@ class Mixture:
         Default is 0.007 e/Å².
     merge_profiles : bool, optional
         Whether to merge segment groups (NHB, OH, OT) into a single profile
-        when accessing probabilities. Default is False.
+        when accessing :attr:`probabilities` and :attr:`sigma_profiles`.
+        Default is False.
     regularize : float, optional
         Minimum value for clipping probabilities. Default is 1e-10.
     interaction_matrix_generator : Callable, optional
@@ -231,6 +232,12 @@ class Mixture:
         return self._area_per_segment
 
     @property
+    def merge_profiles(self) -> bool:
+        """Whether segment groups (NHB, OH, OT) are merged for :attr:`sigma_profiles`
+        and :attr:`probabilities`."""
+        return self._merge_profiles
+
+    @property
     def component_names(self) -> tuple[str, ...]:
         """Names of all components in the order they were provided."""
         return tuple(self._components.keys())
@@ -249,8 +256,8 @@ class Mixture:
     def probabilities(self) -> NDArray[np.float64]:
         """Probabilities of segment types for all components.
 
-        If merge=True: (n_components, num_points); if merge=False:
-        (n_components, 3*num_points).
+        If :attr:`merge_profiles` is True: (n_components, num_points);
+        if :attr:`merge_profiles` is False: (n_components, 3*num_points).
         """
         return np.stack(
             [component.probabilities for component in self._components.values()],
@@ -261,8 +268,8 @@ class Mixture:
     def sigma_profiles(self) -> NDArray[np.float64]:
         """Sigma profiles for all components.
 
-        Shape is (n_components, num_points) when merge_profiles is True,
-        (n_components, 3, num_points) when merge_profiles is False.
+        Shape is (n_components, num_points) when :attr:`merge_profiles` is True,
+        (n_components, 3, num_points) when :attr:`merge_profiles` is False.
         """
         return np.stack(
             [component.sigma_profile for component in self._components.values()],

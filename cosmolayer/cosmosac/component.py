@@ -51,7 +51,7 @@ class Component:
         Default is 0.007 e/Å² :cite:`Bell2020`.
     merge_profiles : bool, optional
         Whether to merge segment groups (NHB, OH, OT) into a single profile
-        when accessing probabilities and sigma_profile. Default is False.
+        when accessing :attr:`probabilities` and :attr:`sigma_profile`. Default is False.
 
     Raises
     ------
@@ -72,7 +72,7 @@ class Component:
     >>> component.volume
     80.07160...
 
-    With merge_profiles=True, sigma_profile is a single merged profile:
+    When :attr:`merge_profiles` is True, :attr:`sigma_profile` is a single merged profile:
 
     >>> component = Component(path.read_text(), merge_profiles=True)
     >>> sigma_profile = component.sigma_profile
@@ -81,7 +81,7 @@ class Component:
     >>> print(sum(sigma_profile))
     97.34554...
 
-    With merge_profiles=False, sigma_profile is stacked (NHB, OH, OT), shape (3, num_points):
+    When :attr:`merge_profiles` is False, :attr:`sigma_profile` is stacked (NHB, OH, OT), shape (3, num_points):
 
     >>> component = Component(path.read_text(), merge_profiles=False)
     >>> stacked = component.sigma_profile
@@ -94,7 +94,7 @@ class Component:
     OH 12.25732...
     OT 12.77019...
 
-    Plotting the sigma profiles (stacked, merge_profiles=False):
+    Plotting the sigma profiles (stacked, :attr:`merge_profiles` is False):
 
 
     .. plot::
@@ -524,11 +524,16 @@ class Component:
         return self._grid
 
     @property
-    def sigma_profile(self) -> NDArray[np.float64]:
-        """Sigma profile, shape depends on merge_profiles.
+    def merge_profiles(self) -> bool:
+        """Whether segment groups (NHB, OH, OT) are merged for :attr:`sigma_profile` and :attr:`probabilities`."""
+        return self._merge_profiles
 
-        If merge_profiles is True: merged profile (sum over NHB, OH, OT), shape (num_points,).
-        If merge_profiles is False: stacked segment profiles in SEGMENT_GROUPS order (NHB, OH, OT),
+    @property
+    def sigma_profile(self) -> NDArray[np.float64]:
+        """Sigma profile, shape depends on :attr:`merge_profiles`.
+
+        If :attr:`merge_profiles` is True: merged profile (sum over NHB, OH, OT), shape (num_points,).
+        If :attr:`merge_profiles` is False: stacked segment profiles in SEGMENT_GROUPS order (NHB, OH, OT),
         shape (3, num_points); sigma_profile[0] is NHB, [1] is OH, [2] is OT. Units: Å².
         """
         if self._merge_profiles:
@@ -549,7 +554,7 @@ class Component:
         -------
         np.ndarray
             Normalized probability distribution of segment groups.
-            Shape is (num_points,) if ``merge_profiles`` is True, otherwise
+            Shape is (num_points,) if :attr:`merge_profiles` is True, otherwise
             (3*num_points,).
 
         Examples
