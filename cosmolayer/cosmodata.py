@@ -20,7 +20,6 @@ Tensor1D: TypeAlias = torch.Tensor
 Tensor2D: TypeAlias = torch.Tensor
 
 InputsType: TypeAlias = tuple[Tensor0D, Tensor1D, Tensor1D, Tensor1D, Tensor2D]
-TargetsType: TypeAlias = tuple[Tensor1D, Tensor2D]
 
 
 @dataclass
@@ -47,12 +46,9 @@ class MixtureDatapoint:
     probabilities : NumpyArray2D
         Sigma-profile probabilities.
         Shape: ``(num_components, num_segment_types)``.
-    mixture_targets : NumpyArray1D
-        Mixture-level training targets.
-        Shape: ``(num_mixture_targets,)``.
-    per_component_targets : NumpyArray2D
-        Per-component training targets.
-        Shape: ``(num_per_component_targets, num_components)``.
+    targets : NumpyArray1D
+        Training targets.
+        Shape: ``(num_targets,)``.
 
     Attributes
     ----------
@@ -60,10 +56,8 @@ class MixtureDatapoint:
         Number of components.
     num_segment_types : int
         Number of segment-type probabilities.
-    num_mixture_targets : int
-        Number of mixture-level targets.
-    num_per_component_targets : int
-        Number of per-component target types.
+    num_targets : int
+        Number of training targets.
 
     Raises
     ------
@@ -76,12 +70,10 @@ class MixtureDatapoint:
     areas: NumpyArray1D = field(repr=False)
     volumes: NumpyArray1D = field(repr=False)
     probabilities: NumpyArray2D = field(repr=False)
-    mixture_targets: NumpyArray1D = field(repr=False)
-    per_component_targets: NumpyArray2D = field(repr=False)
+    targets: NumpyArray1D = field(repr=False)
     num_components: int = field(init=False)
     num_segment_types: int = field(init=False)
-    num_mixture_targets: int = field(init=False)
-    num_per_component_targets: int = field(init=False)
+    num_targets: int = field(init=False)
 
     def __post_init__(self) -> None:
         """Validate array shapes and freeze stored numpy arrays.
@@ -97,38 +89,33 @@ class MixtureDatapoint:
             assert self.mole_fractions.shape == (self.num_components,)
             assert self.areas.shape == (self.num_components,)
             assert self.volumes.shape == (self.num_components,)
-            assert self.mixture_targets.ndim == 1
-            assert self.per_component_targets.ndim == 2  # noqa: PLR2004
-            assert self.per_component_targets.shape[1] == self.num_components
+            assert self.targets.ndim == 1
         except AssertionError as e:
             raise ValueError("Invalid array shapes") from e
-        self.num_mixture_targets = len(self.mixture_targets)
-        self.num_per_component_targets = self.per_component_targets.shape[0]
+        self.num_targets = len(self.targets)
         for array in (
             self.mole_fractions,
             self.areas,
             self.volumes,
             self.probabilities,
-            self.mixture_targets,
-            self.per_component_targets,
+            self.targets,
         ):
             array.flags.writeable = False
 
     @property
-    def shape(self) -> tuple[int, int, int, int]:
+    def shape(self) -> tuple[int, int, int]:
         """Return the structural shape metadata for the datapoint.
 
         Returns
         -------
-        tuple[int, int, int, int]
+        tuple[int, int, int]
             Tuple containing the number of components, segment types,
-            mixture-level targets, and per-component target types.
+            and number of training targets.
         """
         return (
             self.num_components,
             self.num_segment_types,
-            self.num_mixture_targets,
-            self.num_per_component_targets,
+            self.num_targets,
         )
 
     def get_inputs(self, dtype: torch.dtype) -> InputsType:
@@ -153,7 +140,7 @@ class MixtureDatapoint:
             torch.tensor(self.probabilities, dtype=dtype),
         )
 
-    def get_targets(self, dtype: torch.dtype) -> TargetsType:
+    def get_targets(self, dtype: torch.dtype) -> Tensor1D:
         """Convert target arrays to torch tensors.
 
         Parameters
@@ -163,16 +150,13 @@ class MixtureDatapoint:
 
         Returns
         -------
-        TargetsType
-            Mixture-level and per-component targets as torch tensors.
+        Tensor1D
+            Training targets as torch tensors.
         """
-        return (
-            torch.tensor(self.mixture_targets, dtype=dtype),
-            torch.tensor(self.per_component_targets, dtype=dtype),
-        )
+        return torch.tensor(self.targets, dtype=dtype)
 
 
-class MixtureDataset(torch.utils.data.Dataset[tuple[InputsType, TargetsType]]):
+class MixtureDataset(torch.utils.data.Dataset[tuple[InputsType, Tensor1D]]):
     """Torch dataset wrapper for shape-compatible mixture datapoints.
 
     Parameters
@@ -199,14 +183,12 @@ class MixtureDataset(torch.utils.data.Dataset[tuple[InputsType, TargetsType]]):
     >>> cosmo_files = [data / "C=C(N)O.cosmo", data / "NCCO.cosmo"]
     >>> mole_fractions = [0.5, 0.5]
     >>> temperature = 298.15
-    >>> mixture_targets = [1.2]
-    >>> component_targets = [[0.9, 1.1]]
+    >>> targets = [1.2]
     >>> dp = CosmoSacMixtureDatapoint(
     ...     cosmo_files,
     ...     mole_fractions,
     ...     temperature,
-    ...     mixture_targets,
-    ...     component_targets,
+    ...     targets,
     ...     CosmoSac2002Model,
     ... )
     >>> dataset = MixtureDataset([dp], dtype=torch.float32)
@@ -216,7 +198,7 @@ class MixtureDataset(torch.utils.data.Dataset[tuple[InputsType, TargetsType]]):
     >>> len(inputs)
     5
     >>> len(targets)
-    2
+    1
     """
 
     def __init__(
@@ -236,7 +218,7 @@ class MixtureDataset(torch.utils.data.Dataset[tuple[InputsType, TargetsType]]):
         """Return the number of datapoints in the dataset."""
         return len(self._mixtures)
 
-    def __getitem__(self, index: int) -> tuple[InputsType, TargetsType]:
+    def __getitem__(self, index: int) -> tuple[InputsType, Tensor1D]:
         """Return one datapoint as input and target tensor tuples.
 
         Parameters
@@ -246,7 +228,7 @@ class MixtureDataset(torch.utils.data.Dataset[tuple[InputsType, TargetsType]]):
 
         Returns
         -------
-        tuple[InputsType, TargetsType]
+        tuple[InputsType, Tensor1D]
             Input tensors and target tensors for the selected datapoint.
         """
         mixture = self._mixtures[index]

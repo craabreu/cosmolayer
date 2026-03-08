@@ -24,11 +24,9 @@ def _cosmo_files() -> list[Path]:
 
 
 def _make_datapoint(
-    num_mixture_targets: int = 1,
-    num_per_component_targets: int = 1,
+    num_targets: int = 1,
 ) -> MixtureDatapoint:
     """Build a simple 2-component datapoint for dataset tests."""
-    num_components = 2
     return MixtureDatapoint(
         temperature=298.15,
         mole_fractions=np.array([0.5, 0.5]),
@@ -40,11 +38,7 @@ def _make_datapoint(
                 [0.3, 0.3, 0.4],
             ]
         ),
-        mixture_targets=np.arange(num_mixture_targets, dtype=float),
-        per_component_targets=np.arange(
-            num_per_component_targets * num_components,
-            dtype=float,
-        ).reshape(num_per_component_targets, num_components),
+        targets=np.arange(num_targets, dtype=float),
     )
 
 
@@ -56,10 +50,8 @@ def test_cosmosac_mixture_datapoint_allows_missing_targets() -> None:
         298.15,
     )
 
-    assert datapoint.mixture_targets.shape == (0,)
-    assert datapoint.per_component_targets.shape == (0, 2)
-    assert datapoint.num_mixture_targets == 0
-    assert datapoint.num_per_component_targets == 0
+    assert datapoint.targets.shape == (0,)
+    assert datapoint.num_targets == 0
 
 
 def test_cosmosac_mixture_datapoint_preserves_target_layout() -> None:
@@ -68,17 +60,12 @@ def test_cosmosac_mixture_datapoint_preserves_target_layout() -> None:
         _cosmo_files(),
         [0.25, 0.75],
         298.15,
-        mixture_targets=[1.2, 3.4],
-        component_targets=[[0.9, 1.1], [2.0, 2.2]],
+        targets=[1.2, 3.4],
         model=CosmoSac2002Model,
     )
 
     assert datapoint.probabilities.shape == (2, 51)
-    np.testing.assert_allclose(datapoint.mixture_targets, [1.2, 3.4])
-    np.testing.assert_allclose(
-        datapoint.per_component_targets,
-        [[0.9, 1.1], [2.0, 2.2]],
-    )
+    np.testing.assert_allclose(datapoint.targets, [1.2, 3.4])
 
 
 def test_mixture_dataset_rejects_empty_mixtures() -> None:
@@ -90,8 +77,8 @@ def test_mixture_dataset_rejects_empty_mixtures() -> None:
 def test_mixture_dataset_rejects_shape_mismatch() -> None:
     """Dataset construction should fail when datapoint shapes differ."""
     mixtures: Sequence[MixtureDatapoint] = [
-        _make_datapoint(num_mixture_targets=1, num_per_component_targets=1),
-        _make_datapoint(num_mixture_targets=2, num_per_component_targets=1),
+        _make_datapoint(num_targets=1),
+        _make_datapoint(num_targets=2),
     ]
     with pytest.raises(ValueError, match="same shape"):
         MixtureDataset(mixtures, dtype=torch.float64)
@@ -112,23 +99,20 @@ def test_mixture_dataset_getitem_returns_typed_tensors() -> None:
     dataset = MixtureDataset([_make_datapoint()], dtype=torch.float64)
     inputs, targets = dataset[0]
     temperature, mole_fractions, areas, volumes, probabilities = inputs
-    mixture_targets, per_component_targets = targets
 
     assert temperature.dtype == torch.float64
     assert mole_fractions.dtype == torch.float64
     assert areas.dtype == torch.float64
     assert volumes.dtype == torch.float64
     assert probabilities.dtype == torch.float64
-    assert mixture_targets.dtype == torch.float64
-    assert per_component_targets.dtype == torch.float64
+    assert targets.dtype == torch.float64
 
     assert temperature.ndim == 0
     assert mole_fractions.shape == (2,)
     assert areas.shape == (2,)
     assert volumes.shape == (2,)
     assert probabilities.shape == (2, 3)
-    assert mixture_targets.shape == (1,)
-    assert per_component_targets.shape == (1, 2)
+    assert targets.shape == (1,)
 
 
 def test_cosmosac_mixture_datapoint_rejects_mole_fraction_length_mismatch() -> None:
@@ -138,15 +122,4 @@ def test_cosmosac_mixture_datapoint_rejects_mole_fraction_length_mismatch() -> N
             _cosmo_files(),
             [1.0],
             298.15,
-        )
-
-
-def test_cosmosac_mixture_datapoint_rejects_bad_component_target_width() -> None:
-    """Constructor should fail when component target rows have wrong width."""
-    with pytest.raises(ValueError, match="Invalid array shapes"):
-        CosmoSacMixtureDatapoint(
-            _cosmo_files(),
-            [0.5, 0.5],
-            298.15,
-            component_targets=[[0.9], [1.1]],
         )

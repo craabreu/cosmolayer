@@ -56,20 +56,16 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
         Mole fractions for each component (should sum to 1).
     temperature : float
         Temperature in Kelvin.
-    mixture_targets : Sequence[float]
+    targets : Sequence[float]
         Target values for the mixture (e.g. activity coefficients, excess
-        properties). Length defines the number of mixture-level targets.
-    component_targets : Sequence[Sequence[float]]
-        Per-component target values. Outer length = number of target types;
-        each inner sequence length = number of components.
+        properties). Length defines the number of training targets.
     model: :class:`~cosmolayer.cosmosac.model.Model`
         COSMO-SAC model used to load components and compute probabilities.
 
     Raises
     ------
     ValueError
-        If ``len(mole_fractions) != len(cosmo_files)`` or if any row of
-        ``component_targets`` has length different from the number of components.
+        If ``len(mole_fractions) != len(cosmo_files)``.
 
     Examples
     --------
@@ -83,11 +79,10 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
     >>> cosmo_files = [data / "C=C(N)O.cosmo", data / "NCCO.cosmo"]
     >>> mole_fractions = [0.5, 0.5]
     >>> temperature = 298.15
-    >>> mixture_targets = [1.2]
-    >>> component_targets = [[0.9, 1.1]]
+    >>> targets = [1.2]
     >>> dp = CosmoSacMixtureDatapoint(
     ...     cosmo_files, mole_fractions, temperature,
-    ...     mixture_targets, component_targets, CosmoSac2002Model,
+    ...     targets, CosmoSac2002Model,
     ... )
     >>> dp.temperature
     298.15
@@ -97,14 +92,12 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
     ((2,), (2,))
     >>> dp.probabilities.shape
     (2, 51)
-    >>> dp.mixture_targets.shape
+    >>> dp.targets.shape
     (1,)
-    >>> dp.per_component_targets.shape
-    (1, 2)
     >>> dp.num_components, dp.num_segment_types
     (2, 51)
-    >>> dp.num_mixture_targets, dp.num_per_component_targets
-    (1, 1)
+    >>> dp.num_targets
+    1
     """
 
     def __init__(  # noqa: PLR0913
@@ -112,8 +105,7 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
         cosmo_files: Sequence[os.PathLike[str]],
         mole_fractions: Sequence[float],
         temperature: float,
-        mixture_targets: Sequence[float] | None = None,
-        component_targets: Sequence[Sequence[float]] | None = None,
+        targets: Sequence[float] | None = None,
         model: Model = CosmoSac2010Model,
     ):
         """Build a mixture datapoint from COSMO files and optional targets.
@@ -126,24 +118,14 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
             Mole fractions for each component.
         temperature : float
             Temperature in Kelvin.
-        mixture_targets : Sequence[float] | None, optional
-            Optional mixture-level targets. If ``None``, no mixture-level
-            targets are stored.
-        component_targets : Sequence[Sequence[float]] | None, optional
-            Optional per-component targets with shape
-            ``(num_per_component_targets, num_components)``. If ``None`` or
-            empty, no per-component targets are stored.
+        targets : Sequence[float] | None, optional
+            Optional training targets. If ``None``, no training targets are stored.
         model : Model, optional
             COSMO-SAC model used to parse component data. Default is
             :data:`CosmoSac2010Model`.
         """
-        if mixture_targets is None:
-            mixture_targets = []
-        num_components = len(cosmo_files)
-        if component_targets is None or len(component_targets) == 0:
-            per_component_targets = np.empty((0, num_components))
-        else:
-            per_component_targets = np.stack(component_targets, axis=0)
+        if targets is None:
+            targets = []
 
         areas, volumes, probabilities = zip(
             *[_get_component_data(str(path), model) for path in cosmo_files],
@@ -156,6 +138,5 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
             areas=np.array(areas),
             volumes=np.array(volumes),
             probabilities=np.stack(probabilities, axis=0),
-            mixture_targets=np.array(mixture_targets),
-            per_component_targets=per_component_targets,
+            targets=np.array(targets),
         )
