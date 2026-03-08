@@ -7,7 +7,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
 
 import numpy as np
 import torch
@@ -20,6 +20,15 @@ Tensor1D: TypeAlias = torch.Tensor
 Tensor2D: TypeAlias = torch.Tensor
 
 InputsType: TypeAlias = tuple[Tensor0D, Tensor1D, Tensor1D, Tensor1D, Tensor2D]
+
+if TYPE_CHECKING:
+    _DatasetItemT = TypeVar("_DatasetItemT")
+
+    class _DatasetBase(Generic[_DatasetItemT]):
+        """Mypy-only base to avoid torch stub variability in CI."""
+
+else:
+    _DatasetBase = torch.utils.data.Dataset
 
 
 @dataclass
@@ -156,7 +165,7 @@ class MixtureDatapoint:
         return torch.tensor(self.targets, dtype=dtype)
 
 
-class MixtureDataset(torch.utils.data.Dataset[tuple[InputsType, Tensor1D]]):
+class MixtureDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
     """Torch dataset wrapper for shape-compatible mixture datapoints.
 
     Parameters
