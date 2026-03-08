@@ -65,7 +65,7 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
     Raises
     ------
     ValueError
-        If ``len(mole_fractions) != len(cosmo_files)``.
+        If the number of mole fractions does not match the number of COSMO files.
 
     Examples
     --------

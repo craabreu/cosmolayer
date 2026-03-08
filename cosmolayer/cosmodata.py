@@ -32,15 +32,15 @@ class MixtureDatapoint:
 
     Parameters
     ----------
-    temperature
+    temperature: float
         Temperature.
-    mole_fractions
+    mole_fractions: NumpyArray1D
         Mole fractions.
         Shape: ``(num_components,)``.
-    areas
+    areas: NumpyArray1D
         Segment surface areas per component.
         Shape: ``(num_components,)``.
-    volumes
+    volumes: NumpyArray1D
         Molar volumes per component.
         Shape: ``(num_components,)``.
     probabilities : NumpyArray2D
