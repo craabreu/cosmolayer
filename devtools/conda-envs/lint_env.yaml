@@ -6,10 +6,13 @@ dependencies:
     # Base depends
   - python
   - pip
+  - lightning
   - numpy
   - pandas
   - periodictable
+  - pytorch
   - pyyaml
+  - torchmetrics
   - typing-extensions
 
     # Linting & visualization

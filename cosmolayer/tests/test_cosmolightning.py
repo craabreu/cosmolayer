@@ -1,8 +1,11 @@
 """Unit tests for the CosmoLightningModule wrapper."""
 
+from typing import cast
+
 import torch
 
 from cosmolayer.cosmodata import InputsType, Tensor1D
+from cosmolayer.cosmolayer import CosmoLayer
 from cosmolayer.cosmolightning import CosmoLightningModule
 
 
@@ -40,7 +43,7 @@ def _make_batch() -> tuple[InputsType, Tensor1D]:
 
 
 def test_forward_returns_predictions() -> None:
-    module = CosmoLightningModule(cosmo_layer=_DummyCosmoLayer())  # type: ignore[arg-type]
+    module = CosmoLightningModule(cosmo_layer=cast(CosmoLayer, _DummyCosmoLayer()))
     inputs, _ = _make_batch()
 
     predictions = module.forward(inputs)
@@ -49,15 +52,15 @@ def test_forward_returns_predictions() -> None:
 
 
 def test_configure_optimizers_returns_adam() -> None:
-    module = CosmoLightningModule(cosmo_layer=_DummyCosmoLayer())  # type: ignore[arg-type]
+    module = CosmoLightningModule(cosmo_layer=cast(CosmoLayer, _DummyCosmoLayer()))
     optimizer = module.configure_optimizers()
     assert isinstance(optimizer, torch.optim.Adam)
 
 
 def test_training_step_uses_loss_function() -> None:
-    module = CosmoLightningModule(cosmo_layer=_DummyCosmoLayer())  # type: ignore[arg-type]
+    module = CosmoLightningModule(cosmo_layer=cast(CosmoLayer, _DummyCosmoLayer()))
     batch = _make_batch()
-    module.log = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    module.log = lambda *args, **kwargs: None
 
     loss = module.training_step(batch, batch_idx=0)
 
@@ -65,10 +68,10 @@ def test_training_step_uses_loss_function() -> None:
 
 
 def test_validation_and_test_steps_run() -> None:
-    module = CosmoLightningModule(cosmo_layer=_DummyCosmoLayer())  # type: ignore[arg-type]
+    module = CosmoLightningModule(cosmo_layer=cast(CosmoLayer, _DummyCosmoLayer()))
     batch = _make_batch()
-    module.log = lambda *args, **kwargs: None  # type: ignore[method-assign]
-    module.log_dict = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    module.log = lambda *args, **kwargs: None
+    module.log_dict = lambda *args, **kwargs: None
 
     val_loss = module.validation_step(batch, batch_idx=0)
     test_loss = module.test_step(batch, batch_idx=0)

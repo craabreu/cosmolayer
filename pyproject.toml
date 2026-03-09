@@ -164,10 +164,10 @@ strict = true
 
 # PyTorch has limited stubs: allow untyped calls, subclassing Any, untyped decorators
 [[tool.mypy.overrides]]
-module = ["cosmolayer.cosmosolver", "cosmolayer.cosmolayer"]
+module = ["cosmolayer.cosmosolver", "cosmolayer.cosmolayer", "cosmolayer.cosmolightning"]
 disable_error_code = ["no-untyped-call", "misc", "untyped-decorator"]
 
 # In tests: allow untyped calls and untyped decorators (pytest fixtures/parametrize)
 [[tool.mypy.overrides]]
 module = "cosmolayer.tests.*"
-disable_error_code = ["no-untyped-call", "untyped-decorator"]
+disable_error_code = ["method-assign", "no-untyped-call", "misc", "untyped-decorator"]
