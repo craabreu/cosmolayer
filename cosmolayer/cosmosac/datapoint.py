@@ -59,9 +59,10 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
         Mole fractions for each component (should sum to 1).
     temperature : float
         Temperature in Kelvin.
-    targets : Sequence[float]
+    targets : Sequence[float] | None, optional
         Target values for the mixture (e.g. activity coefficients, excess
-        properties). Length defines the number of training targets.
+        properties). Length defines the number of training targets. If ``None``,
+        no training targets are stored.
     model: :class:`~cosmolayer.cosmosac.model.Model`
         COSMO-SAC model used to load components and compute probabilities.
 
@@ -156,7 +157,8 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
     ) -> CosmoSacMixtureDatapoint:
         """Build a mixture datapoint from one row of a DataFrame (as a Series).
 
-        This method is useful for building :class:`~cosmolayer.MixtureDataset`
+        This method is useful for building
+        :class:`~cosmolayer.MixtureTrainingDataset`
         instances from a pandas DataFrame using :meth:`pandas.DataFrame.apply`.
 
         Column specifiers can be column names (strings), in which case values

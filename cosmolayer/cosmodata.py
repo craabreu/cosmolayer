@@ -165,7 +165,76 @@ class MixtureDatapoint:
         return torch.tensor(self.targets, dtype=dtype)
 
 
-class MixtureDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
+
+class MixtureInferenceDataset(_DatasetBase[InputsType]):
+    """Torch dataset wrapper for shape-compatible mixture datapoints in inference.
+
+    Parameters
+    ----------
+    mixtures : Sequence[MixtureDatapoint]
+        Datapoints to expose through the dataset interface. All datapoints
+        must share the same input shape (number of components and segment types).
+    dtype : torch.dtype
+        Data type used when converting datapoints to tensors.
+
+    Raises
+    ------
+    ValueError
+        If ``mixtures`` is empty or contains incompatible input shapes.
+
+    Examples
+    --------
+    >>> from cosmolayer.cosmodata import MixtureInferenceDataset, MixtureDatapoint
+    >>> dp = MixtureDatapoint(
+    ...     temperature=298.15,
+    ...     mole_fractions=np.array([0.5, 0.5]),
+    ...     areas=np.array([1.0, 2.0]),
+    ...     volumes=np.array([1.0, 2.0]),
+    ...     probabilities=np.array([[0.5, 0.5], [0.4, 0.6]]),
+    ...     targets=np.array([]),
+    ... )
+    >>> dataset = MixtureInferenceDataset([dp], dtype=torch.float32)
+    >>> inputs = dataset[0]
+    >>> len(inputs)
+    5
+    """
+
+    def __init__(
+        self,
+        mixtures: Sequence[MixtureDatapoint],
+        dtype: torch.dtype,
+    ):
+        if len(mixtures) == 0:
+            raise ValueError(
+                "MixtureInferenceDataset must contain at least one mixture"
+            )
+        input_shape = mixtures[0].shape[:2]
+        if any(mixture.shape[:2] != input_shape for mixture in mixtures[1:]):
+            raise ValueError("All mixtures must have the same input shape")
+        self._mixtures = mixtures
+        self._dtype = dtype
+
+    def __len__(self) -> int:
+        """Return the number of datapoints in the dataset."""
+        return len(self._mixtures)
+
+    def __getitem__(self, index: int) -> InputsType:
+        """Return one datapoint as input tensors.
+
+        Parameters
+        ----------
+        index : int
+            Position of the datapoint in the dataset.
+
+        Returns
+        -------
+        InputsType
+            Input tensors for the selected datapoint.
+        """
+        return self._mixtures[index].get_inputs(self._dtype)
+
+
+class MixtureTrainingDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
     """Torch dataset wrapper for shape-compatible mixture datapoints.
 
     Parameters
@@ -184,7 +253,7 @@ class MixtureDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
 
     Examples
     --------
-    >>> from cosmolayer.cosmodata import MixtureDataset, MixtureDatapoint
+    >>> from cosmolayer.cosmodata import MixtureTrainingDataset, MixtureDatapoint
     >>> from cosmolayer.cosmosac import CosmoSac2002Model
     >>> from cosmolayer.cosmosac.datapoint import CosmoSacMixtureDatapoint
     >>> from importlib.resources import files
@@ -200,7 +269,7 @@ class MixtureDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
     ...     targets,
     ...     CosmoSac2002Model,
     ... )
-    >>> dataset = MixtureDataset([dp], dtype=torch.float32)
+    >>> dataset = MixtureTrainingDataset([dp], dtype=torch.float32)
     >>> len(dataset)
     1
     >>> inputs, targets = dataset[0]
@@ -216,7 +285,7 @@ class MixtureDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
         dtype: torch.dtype,
     ):
         if len(mixtures) == 0:
-            raise ValueError("MixtureDataset must contain at least one mixture")
+            raise ValueError("MixtureTrainingDataset must contain at least one mixture")
         shape = mixtures[0].shape
         if any(mixture.shape != shape for mixture in mixtures[1:]):
             raise ValueError("All mixtures must have the same shape")
@@ -242,3 +311,13 @@ class MixtureDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
         """
         mixture = self._mixtures[index]
         return mixture.get_inputs(self._dtype), mixture.get_targets(self._dtype)
+
+    def to_inference_dataset(self) -> MixtureInferenceDataset:
+        """Convert the training dataset to an inference dataset.
+
+        Returns
+        -------
+        MixtureInferenceDataset
+            An inference dataset with the same mixtures and dtype.
+        """
+        return MixtureInferenceDataset(self._mixtures, self._dtype)

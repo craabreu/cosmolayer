@@ -4,7 +4,7 @@ Differentiable COSMO-Type Activity Coefficient Layer
 
 from . import cosmosac
 from ._version import __version__
-from .cosmodata import MixtureDatapoint, MixtureDataset
+from .cosmodata import MixtureDatapoint, MixtureInferenceDataset, MixtureTrainingDataset
 from .cosmolayer import CosmoLayer
 from .cosmolightning import CosmoLightningModule
 from .cosmosolver import CosmoSolver
@@ -16,5 +16,6 @@ __all__ = [
     "CosmoLightningModule",
     "CosmoSolver",
     "MixtureDatapoint",
-    "MixtureDataset",
+    "MixtureInferenceDataset",
+    "MixtureTrainingDataset",
 ]
