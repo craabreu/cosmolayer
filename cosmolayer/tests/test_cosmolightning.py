@@ -1,7 +1,9 @@
 """Unit tests for the CosmoLightningModule wrapper."""
 
+from pathlib import Path
 from typing import cast
 
+import pytest
 import torch
 
 from cosmolayer.cosmodata import InputsType, Tensor1D
@@ -24,6 +26,11 @@ class _DummyCosmoLayer(torch.nn.Module):
     ) -> torch.Tensor:
         del temp, areas, volumes, probs
         return fracs * self.scale
+
+
+class _ScaleTransform(torch.nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return 10.0 * x
 
 
 def _make_batch() -> tuple[InputsType, Tensor1D]:
@@ -98,3 +105,64 @@ def test_validation_and_test_steps_run() -> None:
 
     torch.testing.assert_close(val_loss, torch.tensor(0.0))
     torch.testing.assert_close(test_loss, torch.tensor(0.0))
+
+
+def test_forward_applies_module_output_transform() -> None:
+    module = CosmoLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+        output_transform=_ScaleTransform(),
+    )
+    module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
+    inputs, _ = _make_batch()
+
+    predictions = module.forward(inputs)
+
+    torch.testing.assert_close(predictions, torch.tensor([2.0, 6.0, 12.0]))
+
+
+def test_rejects_non_module_output_transform() -> None:
+    with pytest.raises(TypeError, match="torch.nn.Module"):
+        CosmoLightningModule(
+            num_segment_types=4,
+            temperature_exponents=(1,),
+            area_per_segment=1.0,
+            output_transform=cast(torch.nn.Module, torch.exp),
+        )
+
+
+def test_rejects_unknown_loss_function() -> None:
+    with pytest.raises(ValueError, match="Unknown loss function"):
+        CosmoLightningModule(
+            num_segment_types=4,
+            temperature_exponents=(1,),
+            area_per_segment=1.0,
+            loss_function="not_a_loss",
+        )
+
+
+def test_checkpoint_roundtrip_restores_predictions(tmp_path: Path) -> None:
+    module = CosmoLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+        initialization=123,
+    )
+    inputs, _ = _make_batch()
+    expected = module(inputs)
+
+    ckpt_path = tmp_path / "model.ckpt"
+    torch.save(
+        {
+            "state_dict": module.state_dict(),
+            "hyper_parameters": dict(module.hparams),
+            "pytorch-lightning_version": "2.0.0",
+        },
+        ckpt_path,
+    )
+
+    loaded = CosmoLightningModule.load_from_checkpoint(str(ckpt_path))
+    actual = loaded(inputs)
+
+    torch.testing.assert_close(actual, expected)

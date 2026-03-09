@@ -3,7 +3,8 @@
    :synopsis: PyTorch Lightning wrapper for CosmoLayer training.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
+from typing import cast
 
 import numpy as np
 import torch
@@ -23,7 +24,7 @@ class CosmoLightningModule(pl.LightningModule):
     ----------
     cosmo_layer : CosmoLayer
         COSMO layer used to compute predictions.
-    output_transform : Callable[[torch.Tensor], torch.Tensor], optional
+    output_transform : torch.nn.Module, optional
         Function to transform the output of the layer from the logarithms of the
         activity coefficients to another tensor-valued quantity of interest.
         If ``None`` (default), the logarithms of the activity coefficients are
@@ -32,9 +33,10 @@ class CosmoLightningModule(pl.LightningModule):
         Learning rate for the Adam optimizer. Default is ``1e-3``.
     weight_decay : float, optional
         Weight decay for the Adam optimizer. Default is ``0.0``.
-    loss_function : Callable[[torch.Tensor, torch.Tensor], torch.Tensor], optional
-        Loss function used in training, validation, and test steps.
-        Default is :func:`torch.nn.functional.mse_loss`.
+    loss_function : str, optional
+        Loss function used in training, validation, and test steps. Must be a valid
+        attribute of module :mod:`torch.nn.functional`.
+        Default is "mse_loss".
     initialization : Sequence[NDArray[np.float64]] | int, optional
 
     Examples
@@ -73,27 +75,28 @@ class CosmoLightningModule(pl.LightningModule):
         num_segment_types: int,
         temperature_exponents: tuple[int, ...],
         area_per_segment: float,
-        output_transform: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        output_transform: torch.nn.Module | None = None,
         reference_temperature: float = 298.15,
         max_iter: int = 100,
         learning_rate: float = 1e-3,
         weight_decay: float = 0.0,
-        loss_function: Callable[
-            [torch.Tensor, torch.Tensor], torch.Tensor
-        ] = F.mse_loss,
+        loss_function: str = "mse_loss",
         initialization: Sequence[NDArray[np.float64]] | int = 42,
     ):
+        if output_transform is not None and not isinstance(
+            output_transform, torch.nn.Module
+        ):
+            raise TypeError("output_transform must be a torch.nn.Module or None")
+        if not hasattr(F, loss_function):
+            raise ValueError(
+                f"Unknown loss function '{loss_function}' in torch.nn.functional"
+            )
         super().__init__()
-        self.save_hyperparameters(ignore=["loss_function", "initialization"])
-        self.num_segment_types = num_segment_types
-        self.temperature_exponents = temperature_exponents
-        self.area_per_segment = area_per_segment
+        self.save_hyperparameters(ignore=["initialization"])
         self.output_transform = output_transform
-        self.reference_temperature = reference_temperature
-        self.max_iter = max_iter
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.loss_function = loss_function
+        self.loss_function = getattr(F, loss_function)
 
         initial_matrices: Sequence[NDArray[np.float64]]
         if isinstance(initialization, int):
@@ -130,7 +133,7 @@ class CosmoLightningModule(pl.LightningModule):
         if self.output_transform is None:
             return log_gamma
         else:
-            return self.output_transform(log_gamma)
+            return cast(torch.Tensor, self.output_transform(log_gamma))
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer used during training.
@@ -163,7 +166,7 @@ class CosmoLightningModule(pl.LightningModule):
         """
         inputs, targets = batch
         predictions = self.forward(inputs)
-        loss = self.loss_function(predictions, targets)
+        loss: torch.Tensor = self.loss_function(predictions, targets)
         self.log(
             "train_loss",
             loss,
@@ -192,7 +195,7 @@ class CosmoLightningModule(pl.LightningModule):
         """
         inputs, targets = batch
         predictions = self.forward(inputs)
-        loss = self.loss_function(predictions, targets)
+        loss: torch.Tensor = self.loss_function(predictions, targets)
         self.log(
             "val_loss",
             loss,
@@ -221,7 +224,7 @@ class CosmoLightningModule(pl.LightningModule):
         """
         inputs, targets = batch
         predictions = self.forward(inputs)
-        loss = self.loss_function(predictions, targets)
+        loss: torch.Tensor = self.loss_function(predictions, targets)
         self.log_dict(
             {
                 "test_loss": loss,
