@@ -42,6 +42,12 @@ class Model:
 
     Parameters
     ----------
+    min_sigma : float
+        Minimum screening charge density in e/Å².
+    max_sigma : float
+        Maximum screening charge density in e/Å².
+    num_points : int
+        Number of discrete points in the sigma grid.
     area_per_segment : float
         Reference surface area of a single segment in Å².
     averaging_radius : float
@@ -85,6 +91,9 @@ class Model:
     (1,)
     """
 
+    min_sigma: float
+    max_sigma: float
+    num_points: int
     area_per_segment: float
     averaging_radius: float
     f_decay: float
@@ -168,9 +177,6 @@ class Model:
     def create_component(
         self,
         cosmo_string: str,
-        min_sigma: float = -0.025,
-        max_sigma: float = 0.025,
-        num_points: int = 51,
     ) -> Component:
         """Create a :class:`~cosmolayer.cosmosac.component.Component` consistent
         with this model.
@@ -179,12 +185,6 @@ class Model:
         ----------
         cosmo_string : str
             Contents of a COSMO output file.
-        min_sigma : float, optional
-            Minimum screening charge density in e/Å². Default is -0.025.
-        max_sigma : float, optional
-            Maximum screening charge density in e/Å². Default is 0.025.
-        num_points : int, optional
-            Number of discrete points in the sigma grid. Default is 51.
 
         Returns
         -------
@@ -204,9 +204,9 @@ class Model:
         """
         return Component(
             cosmo_string,
-            min_sigma=min_sigma,
-            max_sigma=max_sigma,
-            num_points=num_points,
+            min_sigma=self.min_sigma,
+            max_sigma=self.max_sigma,
+            num_points=self.num_points,
             averaging_radius=self.averaging_radius,
             f_decay=self.f_decay,
             sigma_0=self.sigma_0,
@@ -216,9 +216,6 @@ class Model:
     def create_mixture(
         self,
         components: dict[str, str],
-        min_sigma: float = -0.025,
-        max_sigma: float = 0.025,
-        num_points: int = 51,
     ) -> "Mixture":
         """Create a :class:`~cosmolayer.cosmosac.mixture.Mixture` consistent with
         this model.
@@ -228,12 +225,6 @@ class Model:
         components : dict[str, str]
             Dictionary mapping component names to COSMO strings (contents of
             COSMO output files).
-        min_sigma : float, optional
-            Minimum screening charge density in e/Å². Default is -0.025.
-        max_sigma : float, optional
-            Maximum screening charge density in e/Å². Default is 0.025.
-        num_points : int, optional
-            Number of discrete points in the sigma grid. Default is 51.
 
         Returns
         -------
@@ -272,9 +263,9 @@ class Model:
 
         return Mixture(
             components,
-            min_sigma=min_sigma,
-            max_sigma=max_sigma,
-            num_points=num_points,
+            min_sigma=self.min_sigma,
+            max_sigma=self.max_sigma,
+            num_points=self.num_points,
             area_per_segment=self.area_per_segment,
             averaging_radius=self.averaging_radius,
             f_decay=self.f_decay,
@@ -284,8 +275,18 @@ class Model:
             temperature_exponents=self.temperature_exponents,
         )
 
+    @property
+    def num_segment_types(self) -> int:
+        """Number of segment types."""
+        if self.merge_profiles:
+            return self.num_points
+        return 3 * self.num_points
+
 
 CosmoSac2002Model = Model(
+    min_sigma=-0.025,
+    max_sigma=0.025,
+    num_points=51,
     area_per_segment=COSMO_SAC_2002_AREA_PER_SEGMENT,
     averaging_radius=COSMO_SAC_2002_AVERAGING_RADIUS,
     f_decay=COSMO_SAC_2002_F_DECAY,
@@ -296,6 +297,9 @@ CosmoSac2002Model = Model(
 )
 
 CosmoSac2010Model = Model(
+    min_sigma=-0.025,
+    max_sigma=0.025,
+    num_points=51,
     area_per_segment=COSMO_SAC_2010_AREA_PER_SEGMENT,
     averaging_radius=COSMO_SAC_2010_AVERAGING_RADIUS,
     f_decay=COSMO_SAC_2010_F_DECAY,

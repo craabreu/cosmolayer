@@ -165,7 +165,6 @@ class MixtureDatapoint:
         return torch.tensor(self.targets, dtype=dtype)
 
 
-
 class MixtureInferenceDataset(_DatasetBase[InputsType]):
     """Torch dataset wrapper for shape-compatible mixture datapoints in inference.
 

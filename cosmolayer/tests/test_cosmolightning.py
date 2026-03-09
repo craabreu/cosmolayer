@@ -43,7 +43,12 @@ def _make_batch() -> tuple[InputsType, Tensor1D]:
 
 
 def test_forward_returns_predictions() -> None:
-    module = CosmoLightningModule(cosmo_layer=cast(CosmoLayer, _DummyCosmoLayer()))
+    module = CosmoLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+    )
+    module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
     inputs, _ = _make_batch()
 
     predictions = module.forward(inputs)
@@ -52,13 +57,23 @@ def test_forward_returns_predictions() -> None:
 
 
 def test_configure_optimizers_returns_adam() -> None:
-    module = CosmoLightningModule(cosmo_layer=cast(CosmoLayer, _DummyCosmoLayer()))
+    module = CosmoLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+    )
+    module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
     optimizer = module.configure_optimizers()
     assert isinstance(optimizer, torch.optim.Adam)
 
 
 def test_training_step_uses_loss_function() -> None:
-    module = CosmoLightningModule(cosmo_layer=cast(CosmoLayer, _DummyCosmoLayer()))
+    module = CosmoLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+    )
+    module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
     batch = _make_batch()
     module.log = lambda *args, **kwargs: None
 
@@ -68,7 +83,12 @@ def test_training_step_uses_loss_function() -> None:
 
 
 def test_validation_and_test_steps_run() -> None:
-    module = CosmoLightningModule(cosmo_layer=cast(CosmoLayer, _DummyCosmoLayer()))
+    module = CosmoLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+    )
+    module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
     batch = _make_batch()
     module.log = lambda *args, **kwargs: None
     module.log_dict = lambda *args, **kwargs: None

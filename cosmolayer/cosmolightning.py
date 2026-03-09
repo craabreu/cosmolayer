@@ -3,10 +3,12 @@
    :synopsis: PyTorch Lightning wrapper for CosmoLayer training.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
+import numpy as np
 import torch
 from lightning import pytorch as pl
+from numpy.typing import NDArray
 from torch.nn import functional as F
 from torchmetrics.functional import r2_score
 
@@ -21,6 +23,11 @@ class CosmoLightningModule(pl.LightningModule):
     ----------
     cosmo_layer : CosmoLayer
         COSMO layer used to compute predictions.
+    output_transform : Callable[[torch.Tensor], torch.Tensor], optional
+        Function to transform the output of the layer from the logarithms of the
+        activity coefficients to another tensor-valued quantity of interest.
+        If ``None`` (default), the logarithms of the activity coefficients are
+        returned.
     learning_rate : float, optional
         Learning rate for the Adam optimizer. Default is ``1e-3``.
     weight_decay : float, optional
@@ -28,6 +35,7 @@ class CosmoLightningModule(pl.LightningModule):
     loss_function : Callable[[torch.Tensor, torch.Tensor], torch.Tensor], optional
         Loss function used in training, validation, and test steps.
         Default is :func:`torch.nn.functional.mse_loss`.
+    initialization : Sequence[NDArray[np.float64]] | int, optional
 
     Examples
     --------
@@ -50,27 +58,59 @@ class CosmoLightningModule(pl.LightningModule):
     ...     targets=[-0.2, 0.02],
     ...     model=model,
     ... )
-    >>> module = CosmoLightningModule(cosmo_layer=cosmo_layer)
+    >>> module = CosmoLightningModule(
+    ...    num_segment_types=model.num_segment_types,
+    ...    temperature_exponents=model.temperature_exponents,
+    ...    area_per_segment=model.area_per_segment,
+    ... )
     >>> preds = module(datapoint.get_inputs())
-    >>> preds.tolist()
-    [-0.208..., 0.018...]
+    >>> preds.shape
+    torch.Size([2])
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
-        cosmo_layer: CosmoLayer,
+        num_segment_types: int,
+        temperature_exponents: tuple[int, ...],
+        area_per_segment: float,
+        output_transform: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        reference_temperature: float = 298.15,
+        max_iter: int = 100,
         learning_rate: float = 1e-3,
         weight_decay: float = 0.0,
         loss_function: Callable[
             [torch.Tensor, torch.Tensor], torch.Tensor
         ] = F.mse_loss,
+        initialization: Sequence[NDArray[np.float64]] | int = 42,
     ):
         super().__init__()
-        self.cosmo_layer = cosmo_layer
+        self.save_hyperparameters(ignore=["loss_function", "initialization"])
+        self.num_segment_types = num_segment_types
+        self.temperature_exponents = temperature_exponents
+        self.area_per_segment = area_per_segment
+        self.output_transform = output_transform
+        self.reference_temperature = reference_temperature
+        self.max_iter = max_iter
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.loss_function = loss_function
-        self.save_hyperparameters(ignore=["cosmo_layer", "loss_function"])
+
+        initial_matrices: Sequence[NDArray[np.float64]]
+        if isinstance(initialization, int):
+            rng = np.random.default_rng(initialization)
+            initial_matrices = [
+                rng.normal(size=(num_segment_types, num_segment_types))
+                for _ in range(len(temperature_exponents))
+            ]
+        else:
+            initial_matrices = initialization
+        self.cosmo_layer = CosmoLayer(
+            interaction_matrices=initial_matrices,
+            exponents=temperature_exponents,
+            area_per_segment=area_per_segment,
+            reference_temperature=reference_temperature,
+            max_iter=max_iter,
+        )
 
     def forward(self, inputs: InputsType) -> torch.Tensor:
         """Compute model predictions for one datapoint.
@@ -86,8 +126,11 @@ class CosmoLightningModule(pl.LightningModule):
         torch.Tensor
             Predicted target values.
         """
-        predictions: torch.Tensor = self.cosmo_layer(*inputs)
-        return predictions
+        log_gamma: torch.Tensor = self.cosmo_layer(*inputs)
+        if self.output_transform is None:
+            return log_gamma
+        else:
+            return self.output_transform(log_gamma)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer used during training.
