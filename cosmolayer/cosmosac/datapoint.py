@@ -5,11 +5,14 @@
 .. moduleauthor:: Charlles Abreu <craabreu@gmail.com>
 """
 
+from __future__ import annotations
+
 import functools
 import os
 from collections.abc import Sequence
 
 import numpy as np
+import pandas as pd
 
 from ..cosmodata import MixtureDatapoint, NumpyArray1D
 from .model import CosmoSac2010Model, Model
@@ -139,4 +142,91 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
             volumes=np.array(volumes),
             probabilities=np.stack(probabilities, axis=0),
             targets=np.array(targets),
+        )
+
+    @classmethod
+    def from_series(
+        cls,
+        series: pd.Series,
+        cosmo_files: Sequence[str | os.PathLike[str]],
+        mole_fractions: Sequence[str | float],
+        temperature: str | float,
+        targets: Sequence[str | float],
+        model: Model = CosmoSac2010Model,
+    ) -> CosmoSacMixtureDatapoint:
+        """Build a mixture datapoint from one row of a DataFrame (as a Series).
+
+        This method is useful for building :class:`~cosmolayer.MixtureDataset`
+        instances from a pandas DataFrame using :meth:`pandas.DataFrame.apply`.
+
+        Column specifiers can be column names (strings), in which case values
+        are taken from ``series[key]``, or literal numbers or paths (floats or
+        os.PathLike), which are converted to strings and used as-is. This allows
+        mixing DataFrame columns with fixed values (e.g. same solvent, same
+        temperature, or same mole fractions for all datapoints).
+
+        Examples
+        --------
+        >>> from importlib.resources import files
+        >>> from pathlib import Path
+        >>> data = Path(str(files("cosmolayer") / "data"))
+        >>> row = pd.Series(
+        ...     {
+        ...         "file_a": data / "C=C(N)O.cosmo",
+        ...         "target_1": 1.2,
+        ...     }
+        ... )
+        >>> point = CosmoSacMixtureDatapoint.from_series(
+        ...     series=row,
+        ...     cosmo_files=["file_a", data / "NCCO.cosmo"],
+        ...     mole_fractions=[0.25, 0.75],
+        ...     temperature=298.15,
+        ...     targets=["target_1"],
+        ... )
+        >>> point.num_components, point.num_targets
+        (2, 1)
+        >>> point.mole_fractions.tolist()
+        [0.25, 0.75]
+
+        Parameters
+        ----------
+        series : pd.Series
+            One row of a DataFrame (e.g. from ``df.iloc[i]`` or ``df.iterrows()``).
+        cosmo_files : Sequence[str | pathlib.Path]
+            For each component, either a column name (str) or a path to a COSMO
+            file (pathlib.Path).
+        mole_fractions : Sequence[str | float]
+            For each component, either a column name (str) or a literal mole
+            fraction (float). Values should sum to 1.
+        temperature : str | float
+            Column name for temperature in Kelvin, or a literal temperature.
+        targets : Sequence[str | float]
+            For each target, either a column name (str) or a literal value (float).
+        model : Model, optional
+            COSMO-SAC model used to load components. Default is
+            :class:`~cosmolayer.cosmosac.model.CosmoSac2010Model`.
+
+        Returns
+        -------
+        CosmoSacMixtureDatapoint
+            A datapoint built from the series values.
+        """
+
+        return cls(
+            cosmo_files=[
+                series[cosmo_file] if isinstance(cosmo_file, str) else cosmo_file
+                for cosmo_file in cosmo_files
+            ],
+            mole_fractions=[
+                series[fraction] if isinstance(fraction, str) else fraction
+                for fraction in mole_fractions
+            ],
+            temperature=(
+                series[temperature] if isinstance(temperature, str) else temperature
+            ),
+            targets=[
+                series[target] if isinstance(target, str) else target
+                for target in targets
+            ],
+            model=model,
         )

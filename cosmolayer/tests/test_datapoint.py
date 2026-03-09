@@ -9,6 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 import torch
 
@@ -123,3 +124,69 @@ def test_cosmosac_mixture_datapoint_rejects_mole_fraction_length_mismatch() -> N
             [1.0],
             298.15,
         )
+
+
+def test_cosmosac_mixture_datapoint_from_series_with_column_keys() -> None:
+    """from_series should resolve all values from Series column names."""
+    cosmo_a, cosmo_b = _cosmo_files()
+    series = pd.Series(
+        {
+            "file_a": str(cosmo_a),
+            "file_b": str(cosmo_b),
+            "x_a": 0.25,
+            "x_b": 0.75,
+            "temperature": 303.15,
+            "target_1": 1.2,
+            "target_2": 3.4,
+        }
+    )
+
+    datapoint = CosmoSacMixtureDatapoint.from_series(
+        series=series,
+        cosmo_files=["file_a", "file_b"],
+        mole_fractions=["x_a", "x_b"],
+        temperature="temperature",
+        targets=["target_1", "target_2"],
+        model=CosmoSac2002Model,
+    )
+    expected = CosmoSacMixtureDatapoint(
+        cosmo_files=[cosmo_a, cosmo_b],
+        mole_fractions=[0.25, 0.75],
+        temperature=303.15,
+        targets=[1.2, 3.4],
+        model=CosmoSac2002Model,
+    )
+
+    assert datapoint.temperature == expected.temperature
+    np.testing.assert_allclose(datapoint.mole_fractions, expected.mole_fractions)
+    np.testing.assert_allclose(datapoint.areas, expected.areas)
+    np.testing.assert_allclose(datapoint.volumes, expected.volumes)
+    np.testing.assert_allclose(datapoint.probabilities, expected.probabilities)
+    np.testing.assert_allclose(datapoint.targets, expected.targets)
+
+
+def test_cosmosac_mixture_datapoint_from_series_with_mixed_literals() -> None:
+    """from_series should support mixing Series keys with literal inputs."""
+    cosmo_a, cosmo_b = _cosmo_files()
+    series = pd.Series({"x_a": 0.4, "target_1": 9.0})
+
+    datapoint = CosmoSacMixtureDatapoint.from_series(
+        series=series,
+        cosmo_files=[cosmo_a, cosmo_b],
+        mole_fractions=["x_a", 0.6],
+        temperature=298.15,
+        targets=["target_1", 7.5],
+    )
+    expected = CosmoSacMixtureDatapoint(
+        cosmo_files=[cosmo_a, cosmo_b],
+        mole_fractions=[0.4, 0.6],
+        temperature=298.15,
+        targets=[9.0, 7.5],
+    )
+
+    assert datapoint.temperature == expected.temperature
+    np.testing.assert_allclose(datapoint.mole_fractions, expected.mole_fractions)
+    np.testing.assert_allclose(datapoint.areas, expected.areas)
+    np.testing.assert_allclose(datapoint.volumes, expected.volumes)
+    np.testing.assert_allclose(datapoint.probabilities, expected.probabilities)
+    np.testing.assert_allclose(datapoint.targets, expected.targets)

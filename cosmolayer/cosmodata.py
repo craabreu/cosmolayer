@@ -127,13 +127,13 @@ class MixtureDatapoint:
             self.num_targets,
         )
 
-    def get_inputs(self, dtype: torch.dtype) -> InputsType:
+    def get_inputs(self, dtype: torch.dtype = torch.float64) -> InputsType:
         """Convert physical inputs to torch tensors.
 
         Parameters
         ----------
         dtype : torch.dtype
-            Data type used for all returned tensors.
+            Data type used for all returned tensors. Default is ``torch.float64``.
 
         Returns
         -------
@@ -149,13 +149,13 @@ class MixtureDatapoint:
             torch.tensor(self.probabilities, dtype=dtype),
         )
 
-    def get_targets(self, dtype: torch.dtype) -> Tensor1D:
+    def get_targets(self, dtype: torch.dtype = torch.float64) -> Tensor1D:
         """Convert target arrays to torch tensors.
 
         Parameters
         ----------
         dtype : torch.dtype
-            Data type used for all returned tensors.
+            Data type used for all returned tensors. Default is ``torch.float64``.
 
         Returns
         -------

@@ -3,7 +3,7 @@
    :synopsis: Differentiable COSMO-type activity coefficient layer.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import cast
 
 import numpy as np
@@ -50,6 +50,11 @@ class CosmoLayer(torch.nn.Module):
         same length as the number of interaction energy matrices.
     area_per_segment : float
         Area of each surface segment.
+    output_transform : Callable[[torch.Tensor], torch.Tensor], optional
+        Function to transform the output of the layer from the logarithms of the
+        activity coefficients to another tensor-valued quantity of interest.
+        If ``None`` (default), the logarithms of the activity coefficients are
+        returned.
     reference_temperature : float, optional
         Reference temperature :math:`T_{\rm ref}`. Default is 298.15 K.
     learn_matrices : bool, optional
@@ -102,6 +107,7 @@ class CosmoLayer(torch.nn.Module):
         exponents: Sequence[int],
         area_per_segment: float,
         *,
+        output_transform: Callable[[torch.Tensor], torch.Tensor] | None = None,
         reference_temperature: float = 298.15,  # K
         learn_matrices: bool = False,
         max_iter: int = 100,
@@ -140,6 +146,7 @@ class CosmoLayer(torch.nn.Module):
         self._area_per_segment = area_per_segment
         self._kappa = COORDINATION_NUMBER / (2 * AREA_PER_CONTACT)
         self._max_iter = max_iter
+        self._output_transform = output_transform
 
     def extra_repr(self) -> str:
         """Return a string representation of the CosmoLayer."""
@@ -408,6 +415,10 @@ class CosmoLayer(torch.nn.Module):
     ) -> torch.Tensor:
         """Forward pass of the CosmoLayer.
 
+        The output of the layer is the logarithm of the activity coefficients of the
+        components, optionally transformed by the user-provided ``output_transform``
+        function.
+
         Parameters
         ----------
         temp : torch.Tensor
@@ -430,7 +441,12 @@ class CosmoLayer(torch.nn.Module):
         Returns
         -------
         torch.Tensor
-            Logarithms of the activity coefficients.
+            Logarithms of the activity coefficients, or the result of the
+            ``output_transform`` function applied to the logarithms of the activity
+            coefficients.
             Shape: (..., num_components).
         """
-        return self.log_activity_coefficients(temp, fracs, areas, volumes, probs)
+        log_gamma = self.log_activity_coefficients(temp, fracs, areas, volumes, probs)
+        if self._output_transform is None:
+            return log_gamma
+        return self._output_transform(log_gamma)

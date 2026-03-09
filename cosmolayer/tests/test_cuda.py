@@ -132,7 +132,7 @@ def test_cosmosolve_gradients_on_cuda() -> None:
     u_rt = ((u_raw + u_raw.transpose(-2, -1)) / 2).detach().requires_grad_(True)
 
     result = torch.autograd.gradcheck(
-        CosmoSolver.apply,
+        lambda p, u: CosmoSolver.apply(p, u)[0],
         (x, u_rt),
         eps=1e-6,
         atol=1e-4,

@@ -138,7 +138,6 @@ class CosmoSolver(torch.autograd.Function):
         U_RT: torch.Tensor,
         max_iter: int = 100,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-
         ctx_any: Any = ctx
         ctx_any.p_shape = tuple(p.shape)
         ctx_any.u_shape = tuple(U_RT.shape)
