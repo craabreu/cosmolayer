@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, cast
 
 import numpy as np
 import torch
@@ -20,18 +19,31 @@ from .cosmolayer import CosmoLayer
 from .utils import is_loss_function
 
 
-class CosmoLightningModule(pl.LightningModule):
+class LogGammaLightningModule(pl.LightningModule):
     """PyTorch Lightning module for batched training of a learnable
     :class:`~cosmolayer.CosmoLayer`.
 
     This class is the canonical high-level training interface for CosmoLayer.
     It constructs an internal :class:`~cosmolayer.CosmoLayer` with learnable
-    interaction matrices, optionally applies an output transformation, and
-    defines the optimization, training, validation, test, and prediction logic.
+    interaction matrices and defines the optimization, training, validation,
+    test, and prediction logic.
+
+    The targets are the log-activity coefficients of the components. In order to
+    handle other tasks, the user must subclass :class:`LogGammaLightningModule` and
+    override the :meth:`~LogGammaLightningModule.predict_from_log_gamma` method. For
+    instance:
+
+    .. code-block:: python
+
+        from scipy.constants import R
+
+        class ExcessGibbsLightningModule(LogGammaLightningModule):
+            def predict_from_log_gamma(self, T, x, log_gamma):
+                return (R * T * (x * log_gamma).sum(dim=-1)).unsqueeze(-1)
 
     The module is batch-first throughout. All inputs must represent a minibatch
-    of ``B`` datapoints, and the returned predictions must have leading
-    dimension ``B``. Targets must have the same shape as the predictions.
+    of ``b`` datapoints, and the returned predictions must have leading
+    dimension ``b``. Targets must have the same shape as the predictions.
 
     Parameters
     ----------
@@ -42,12 +54,6 @@ class CosmoLightningModule(pl.LightningModule):
         matrices.
     area_per_segment : float
         Area associated with one segment.
-    prediction_head : torch.nn.Module, optional
-        Optional module applied to the raw output of :class:`CosmoLayer`.
-        If ``None`` (default), the raw logarithms of the activity coefficients
-        are returned. If provided, it must map the batched output of
-        :class:`CosmoLayer` to the final task-space predictions used in the
-        loss and metric computations.
     reference_temperature : float, optional
         Reference temperature used by :class:`CosmoLayer`.
         Default is ``298.15``.
@@ -81,7 +87,7 @@ class CosmoLightningModule(pl.LightningModule):
     >>> import cosmolayer as cl
     >>> from cosmolayer import cosmosac
     >>> model = cosmosac.CosmoSac2010Model
-    >>> module = CosmoLightningModule(
+    >>> module = LogGammaLightningModule(
     ...     num_segment_types=model.num_segment_types,
     ...     temperature_exponents=model.temperature_exponents,
     ...     area_per_segment=model.area_per_segment,
@@ -105,9 +111,8 @@ class CosmoLightningModule(pl.LightningModule):
     def __init__(  # noqa: PLR0913
         self,
         num_segment_types: int,
-        temperature_exponents: tuple[int, ...],
+        temperature_exponents: Sequence[int],
         area_per_segment: float,
-        prediction_head: torch.nn.Module | None = None,
         reference_temperature: float = 298.15,
         max_iter: int = 100,
         learning_rate: float = 1e-3,
@@ -131,20 +136,11 @@ class CosmoLightningModule(pl.LightningModule):
             raise ValueError("learning_rate must be positive")
         if weight_decay < 0.0:
             raise ValueError("weight_decay must be non-negative")
-        if prediction_head is not None and not isinstance(
-            prediction_head, torch.nn.Module
-        ):
-            raise TypeError("prediction_head must be a torch.nn.Module or None")
         loss_callable = getattr(F, loss_function, None)
         if not is_loss_function(loss_callable):
             raise ValueError(f"Unsupported loss_function '{loss_function}'.")
 
-        self.save_hyperparameters(ignore=["initialization", "prediction_head"])
-        self.hparams["prediction_head_class_name"] = (
-            prediction_head.__class__.__name__ if prediction_head is not None else None
-        )
-
-        self.prediction_head = prediction_head
+        self.save_hyperparameters(ignore=["initialization"])
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.loss_function = loss_callable
@@ -227,20 +223,45 @@ class CosmoLightningModule(pl.LightningModule):
         inputs : InputsType
             Batched input tuple ``(temperature, mole_fractions, areas, volumes,
             probabilities)``. All tensors must be batch-first and represent the
-            same minibatch of size ``B``.
+            same minibatch of size ``b``.
 
         Returns
         -------
         torch.Tensor
-            Batched predictions with leading dimension ``B``. If
-            ``prediction_head is None``, this is the raw batched output of
-            :class:`CosmoLayer` (typically logarithms of activity coefficients).
-            Otherwise, it is the transformed task-space prediction.
+            Batched predictions with leading dimension ``b``.
         """
-        raw_output: torch.Tensor = self.cosmo_layer(*inputs)
-        if self.prediction_head is None:
-            return raw_output
-        return cast(torch.Tensor, self.prediction_head(raw_output))
+        temperature, mole_fractions, areas, volumes, probabilities = inputs
+        log_gamma: torch.Tensor = self.cosmo_layer(
+            temperature, mole_fractions, areas, volumes, probabilities
+        )
+        return self.predict_from_log_gamma(temperature, mole_fractions, log_gamma)
+
+    def predict_from_log_gamma(
+        self,
+        T: torch.Tensor,
+        x: torch.Tensor,
+        log_gamma: torch.Tensor,
+    ) -> torch.Tensor:
+        """Convert log-activity coefficients to final predictions.
+
+        Parameters
+        ----------
+        T : torch.Tensor
+            Temperature in the same units as the reference temperature.
+            Shape: (...,).
+        x : torch.Tensor
+            Mole fractions of the components. Must sum to 1.
+            Shape: (..., num_components).
+        log_gamma : torch.Tensor
+            Logarithms of the activity coefficients.
+            Shape: (..., num_components).
+
+        Returns
+        -------
+        torch.Tensor
+            Final predictions.
+        """
+        return log_gamma
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer used during training.
@@ -275,7 +296,6 @@ class CosmoLightningModule(pl.LightningModule):
         torch.Tensor
             Training loss for the batch.
         """
-        del batch_idx
         inputs, targets = batch
         predictions = self(inputs)
         batch_size = self._infer_batch_size(predictions, targets)
@@ -308,7 +328,6 @@ class CosmoLightningModule(pl.LightningModule):
         torch.Tensor
             Validation loss for the batch.
         """
-        del batch_idx
         inputs, targets = batch
         predictions = self(inputs)
         batch_size = self._infer_batch_size(predictions, targets)
@@ -342,7 +361,6 @@ class CosmoLightningModule(pl.LightningModule):
         torch.Tensor
             Test loss for the batch.
         """
-        del batch_idx
         inputs, targets = batch
         predictions = self(inputs)
         batch_size = self._infer_batch_size(predictions, targets)
@@ -364,44 +382,3 @@ class CosmoLightningModule(pl.LightningModule):
             batch_size=batch_size,
         )
         return loss
-
-    @classmethod
-    def load_from_checkpoint(  # type: ignore[override]
-        cls,
-        checkpoint_path: str,
-        map_location: Any = None,
-        hparams_file: str | None = None,
-        strict: bool | None = None,
-        prediction_head: torch.nn.Module | None = None,
-        **kwargs: Any,
-    ) -> CosmoLightningModule:
-        checkpoint = torch.load(checkpoint_path, map_location=map_location)
-        hparams = checkpoint.get("hyper_parameters", {})
-        expected_class = hparams.get("prediction_head_class_name")
-        actual_class = (
-            None if prediction_head is None else prediction_head.__class__.__name__
-        )
-        if expected_class is not None and actual_class is None:
-            raise ValueError(
-                "This checkpoint requires an prediction_head of class "
-                f"'{expected_class}', but none was provided."
-            )
-        if expected_class is None and actual_class is not None:
-            raise ValueError(
-                "This checkpoint does not require an prediction_head, but "
-                f"'{actual_class}' was provided."
-            )
-        if expected_class != actual_class:
-            raise ValueError(
-                "Output transform class mismatch: checkpoint expects "
-                f"'{expected_class}', got '{actual_class}'"
-            )
-        if prediction_head is not None:
-            kwargs["prediction_head"] = prediction_head
-        return super().load_from_checkpoint(
-            checkpoint_path,
-            map_location=map_location,
-            hparams_file=hparams_file,
-            strict=strict,
-            **kwargs,
-        )

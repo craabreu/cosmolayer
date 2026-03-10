@@ -1,4 +1,4 @@
-"""Unit tests for the CosmoLightningModule wrapper."""
+"""Unit tests for the LogGammaLightningModule wrapper."""
 
 from pathlib import Path
 from typing import cast
@@ -8,7 +8,7 @@ import torch
 
 from cosmolayer.cosmodata import InputsType, Tensor1D
 from cosmolayer.cosmolayer import CosmoLayer
-from cosmolayer.cosmolightning import CosmoLightningModule
+from cosmolayer.cosmolightning import LogGammaLightningModule
 
 
 class _DummyCosmoLayer(torch.nn.Module):
@@ -28,18 +28,23 @@ class _DummyCosmoLayer(torch.nn.Module):
         return fracs * self.scale
 
 
-class _ScaleTransform(torch.nn.Module):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return 10.0 * x
-
-
-class _AffineTransform(torch.nn.Module):
+class _ScaledLogGammaLightningModule(LogGammaLightningModule):
     def __init__(self, scale: float) -> None:
-        super().__init__()
+        super().__init__(
+            num_segment_types=4,
+            temperature_exponents=(1,),
+            area_per_segment=1.0,
+        )
         self.scale = torch.nn.Parameter(torch.tensor(scale))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.scale * x
+    def predict_from_log_gamma(
+        self,
+        temperature: torch.Tensor,
+        mole_fractions: torch.Tensor,
+        log_gamma: torch.Tensor,
+    ) -> torch.Tensor:
+        del temperature, mole_fractions
+        return self.scale * log_gamma
 
 
 def _make_batch() -> tuple[InputsType, Tensor1D]:
@@ -59,7 +64,7 @@ def _make_batch() -> tuple[InputsType, Tensor1D]:
 
 
 def test_forward_returns_predictions() -> None:
-    module = CosmoLightningModule(
+    module = LogGammaLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
         area_per_segment=1.0,
@@ -73,7 +78,7 @@ def test_forward_returns_predictions() -> None:
 
 
 def test_configure_optimizers_returns_adam() -> None:
-    module = CosmoLightningModule(
+    module = LogGammaLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
         area_per_segment=1.0,
@@ -84,7 +89,7 @@ def test_configure_optimizers_returns_adam() -> None:
 
 
 def test_training_step_uses_loss_function() -> None:
-    module = CosmoLightningModule(
+    module = LogGammaLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
         area_per_segment=1.0,
@@ -93,13 +98,13 @@ def test_training_step_uses_loss_function() -> None:
     batch = _make_batch()
     module.log = lambda *args, **kwargs: None
 
-    loss = module.training_step(batch, batch_idx=0)
+    loss = module.training_step(batch, 0)
 
     torch.testing.assert_close(loss, torch.tensor(0.0))
 
 
 def test_validation_and_test_steps_run() -> None:
-    module = CosmoLightningModule(
+    module = LogGammaLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
         area_per_segment=1.0,
@@ -109,20 +114,15 @@ def test_validation_and_test_steps_run() -> None:
     module.log = lambda *args, **kwargs: None
     module.log_dict = lambda *args, **kwargs: None
 
-    val_loss = module.validation_step(batch, batch_idx=0)
-    test_loss = module.test_step(batch, batch_idx=0)
+    val_loss = module.validation_step(batch, 0)
+    test_loss = module.test_step(batch, 0)
 
     torch.testing.assert_close(val_loss, torch.tensor(0.0))
     torch.testing.assert_close(test_loss, torch.tensor(0.0))
 
 
-def test_forward_applies_module_prediction_head() -> None:
-    module = CosmoLightningModule(
-        num_segment_types=4,
-        temperature_exponents=(1,),
-        area_per_segment=1.0,
-        prediction_head=_ScaleTransform(),
-    )
+def test_forward_applies_predict_from_log_gamma_override() -> None:
+    module = _ScaledLogGammaLightningModule(scale=10.0)
     module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
     inputs, _ = _make_batch()
 
@@ -131,19 +131,9 @@ def test_forward_applies_module_prediction_head() -> None:
     torch.testing.assert_close(predictions, torch.tensor([2.0, 6.0, 12.0]))
 
 
-def test_rejects_non_module_prediction_head() -> None:
-    with pytest.raises(TypeError, match="torch.nn.Module"):
-        CosmoLightningModule(
-            num_segment_types=4,
-            temperature_exponents=(1,),
-            area_per_segment=1.0,
-            prediction_head=cast(torch.nn.Module, torch.exp),
-        )
-
-
 def test_rejects_unknown_loss_function() -> None:
     with pytest.raises(ValueError, match="Unsupported loss_function 'not_a_loss'."):
-        CosmoLightningModule(
+        LogGammaLightningModule(
             num_segment_types=4,
             temperature_exponents=(1,),
             area_per_segment=1.0,
@@ -152,7 +142,7 @@ def test_rejects_unknown_loss_function() -> None:
 
 
 def test_checkpoint_roundtrip_restores_predictions(tmp_path: Path) -> None:
-    module = CosmoLightningModule(
+    module = LogGammaLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
         area_per_segment=1.0,
@@ -171,24 +161,18 @@ def test_checkpoint_roundtrip_restores_predictions(tmp_path: Path) -> None:
         ckpt_path,
     )
 
-    loaded = CosmoLightningModule.load_from_checkpoint(str(ckpt_path))
+    loaded = LogGammaLightningModule.load_from_checkpoint(str(ckpt_path))
     actual = loaded(inputs)
 
     torch.testing.assert_close(actual, expected)
 
 
-def test_checkpoint_roundtrip_restores_prediction_head(tmp_path: Path) -> None:
-    module = CosmoLightningModule(
-        num_segment_types=4,
-        temperature_exponents=(1,),
-        area_per_segment=1.0,
-        prediction_head=_AffineTransform(scale=3.0),
-        initialization=123,
-    )
+def test_checkpoint_roundtrip_restores_subclass_parameter(tmp_path: Path) -> None:
+    module = _ScaledLogGammaLightningModule(scale=3.0)
     inputs, _ = _make_batch()
     expected = module(inputs)
 
-    ckpt_path = tmp_path / "model_with_transform.ckpt"
+    ckpt_path = tmp_path / "model_with_override.ckpt"
     torch.save(
         {
             "state_dict": module.state_dict(),
@@ -198,21 +182,12 @@ def test_checkpoint_roundtrip_restores_prediction_head(tmp_path: Path) -> None:
         ckpt_path,
     )
 
-    with pytest.raises(ValueError, match="requires an prediction_head of class"):
-        CosmoLightningModule.load_from_checkpoint(str(ckpt_path))
-
-    with pytest.raises(ValueError, match="Output transform class mismatch"):
-        CosmoLightningModule.load_from_checkpoint(
-            str(ckpt_path),
-            prediction_head=_ScaleTransform(),
-        )
-
-    loaded = CosmoLightningModule.load_from_checkpoint(
+    loaded = _ScaledLogGammaLightningModule.load_from_checkpoint(
         str(ckpt_path),
-        prediction_head=_AffineTransform(scale=0.0),
+        scale=0.0,
     )
     actual = loaded(inputs)
 
-    assert isinstance(loaded.prediction_head, _AffineTransform)
-    torch.testing.assert_close(loaded.prediction_head.scale, torch.tensor(3.0))
+    assert isinstance(loaded, _ScaledLogGammaLightningModule)
+    torch.testing.assert_close(loaded.scale, torch.tensor(3.0))
     torch.testing.assert_close(actual, expected)
