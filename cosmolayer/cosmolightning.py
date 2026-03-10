@@ -11,12 +11,15 @@ import numpy as np
 import torch
 from lightning import pytorch as pl
 from numpy.typing import NDArray
+from torch import distributed as td
 from torch.nn import functional as F
 from torchmetrics import MeanAbsoluteError, MeanSquaredError, R2Score
 
 from .cosmodata import InputsType
 from .cosmolayer import CosmoLayer
 from .utils import is_loss_function
+
+EPSILON = 1e-8
 
 
 class LogGammaLightningModule(pl.LightningModule):
@@ -117,6 +120,7 @@ class LogGammaLightningModule(pl.LightningModule):
         max_iter: int = 100,
         learning_rate: float = 1e-3,
         weight_decay: float = 0.0,
+        normalize_targets: bool = False,
         loss_function: str = "mse_loss",
         initialization: Sequence[NDArray[np.float64]] | int = 42,
     ) -> None:
@@ -141,6 +145,7 @@ class LogGammaLightningModule(pl.LightningModule):
             raise ValueError(f"Unsupported loss_function '{loss_function}'.")
 
         self.save_hyperparameters(ignore=["initialization"])
+        self.normalize_targets = normalize_targets
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.loss_function = loss_callable
@@ -163,6 +168,9 @@ class LogGammaLightningModule(pl.LightningModule):
         self.test_mae = MeanAbsoluteError()
         self.test_rmse = MeanSquaredError(squared=False)
         self.test_r2 = R2Score()
+
+        self.register_buffer("target_mean", torch.tensor(0.0))
+        self.register_buffer("target_std", torch.tensor(1.0))
 
     @staticmethod
     def _build_initial_matrices(
@@ -214,6 +222,58 @@ class LogGammaLightningModule(pl.LightningModule):
                 f"got {predictions.shape} and {targets.shape}"
             )
         return int(targets.shape[0])
+
+    @torch.no_grad()
+    def _compute_target_statistics(self) -> None:
+        trainer = self.trainer
+        if hasattr(trainer, "datamodule") and trainer.datamodule is not None:
+            dataloader = trainer.datamodule.train_dataloader()
+        else:
+            dataloader = trainer.train_dataloader
+
+        if dataloader is None:
+            raise ValueError(
+                "Training dataloader is unavailable; cannot normalize targets"
+            )
+
+        count = torch.tensor(0.0)
+        target_sum: torch.Tensor | None = None
+        target_sumsq: torch.Tensor | None = None
+
+        for batch in dataloader:
+            _, targets = batch
+            targets = targets.detach()
+
+            batch_count = torch.tensor(float(targets.shape[0]), device=targets.device)
+            batch_sum = targets.sum(dim=0)
+            batch_sumsq = (targets**2).sum(dim=0)
+
+            if target_sum is None:
+                count = count.to(targets.device)
+                target_sum = torch.zeros_like(batch_sum)
+                target_sumsq = torch.zeros_like(batch_sumsq)
+
+            count = count + batch_count
+            target_sum = target_sum + batch_sum
+            target_sumsq = target_sumsq + batch_sumsq
+
+        if target_sum is None or count.item() == 0:
+            raise ValueError("Training dataloader is empty; cannot normalize targets")
+
+        if td.is_available() and td.is_initialized():
+            td.all_reduce(count, op=td.ReduceOp.SUM)
+            td.all_reduce(target_sum, op=td.ReduceOp.SUM)
+            td.all_reduce(target_sumsq, op=td.ReduceOp.SUM)
+
+        if target_sum is None or target_sumsq is None:
+            raise ValueError("Training dataloader is empty; cannot normalize targets")
+
+        mean = target_sum / count
+        variance = torch.clamp(target_sumsq / count - mean**2, min=0.0)
+        std = torch.sqrt(variance + EPSILON)
+
+        self.target_mean = mean.to(self.device)
+        self.target_std = std.to(self.device)
 
     def forward(self, inputs: InputsType) -> torch.Tensor:
         """Compute predictions for a minibatch of datapoints.
@@ -277,6 +337,10 @@ class LogGammaLightningModule(pl.LightningModule):
             weight_decay=self.weight_decay,
         )
 
+    def on_fit_start(self) -> None:
+        if self.normalize_targets:
+            self._compute_target_statistics()
+
     def training_step(
         self, batch: tuple[InputsType, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
@@ -299,6 +363,11 @@ class LogGammaLightningModule(pl.LightningModule):
         inputs, targets = batch
         predictions = self(inputs)
         batch_size = self._infer_batch_size(predictions, targets)
+        if self.normalize_targets:
+            target_mean = self.target_mean
+            target_std = self.target_std
+            targets = (targets - target_mean) / target_std
+            predictions = (predictions - target_mean) / target_std
         loss: torch.Tensor = self.loss_function(predictions, targets)
         self.log(
             "train_loss",
@@ -331,6 +400,11 @@ class LogGammaLightningModule(pl.LightningModule):
         inputs, targets = batch
         predictions = self(inputs)
         batch_size = self._infer_batch_size(predictions, targets)
+        if self.normalize_targets:
+            target_mean = self.target_mean
+            target_std = self.target_std
+            targets = (targets - target_mean) / target_std
+            predictions = (predictions - target_mean) / target_std
         loss: torch.Tensor = self.loss_function(predictions, targets)
         self.log(
             "val_loss",
@@ -364,7 +438,14 @@ class LogGammaLightningModule(pl.LightningModule):
         inputs, targets = batch
         predictions = self(inputs)
         batch_size = self._infer_batch_size(predictions, targets)
-        loss: torch.Tensor = self.loss_function(predictions, targets)
+        loss_predictions = predictions
+        loss_targets = targets
+        if self.normalize_targets:
+            target_mean = self.target_mean
+            target_std = self.target_std
+            loss_targets = (targets - target_mean) / target_std
+            loss_predictions = (predictions - target_mean) / target_std
+        loss: torch.Tensor = self.loss_function(loss_predictions, loss_targets)
 
         self.test_mae.update(predictions, targets)
         self.test_rmse.update(predictions, targets)

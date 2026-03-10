@@ -1,14 +1,25 @@
 """Unit tests for the LogGammaLightningModule wrapper."""
 
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 import torch
+from _pytest.monkeypatch import MonkeyPatch
 
 from cosmolayer.cosmodata import InputsType, Tensor1D
 from cosmolayer.cosmolayer import CosmoLayer
 from cosmolayer.cosmolightning import LogGammaLightningModule
+
+
+class _DummyTrainer:
+    def __init__(
+        self,
+        train_dataloader: list[tuple[object, torch.Tensor]],
+        datamodule: object | None = None,
+    ) -> None:
+        self.train_dataloader = train_dataloader
+        self.datamodule = datamodule
 
 
 class _DummyCosmoLayer(torch.nn.Module):
@@ -121,6 +132,25 @@ def test_validation_and_test_steps_run() -> None:
     torch.testing.assert_close(test_loss, torch.tensor(0.0))
 
 
+def test_test_step_normalizes_loss_when_enabled() -> None:
+    module = LogGammaLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+        normalize_targets=True,
+    )
+    module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
+    inputs, _ = _make_batch()
+    targets = torch.zeros(3)
+    module.target_mean.data = torch.zeros(3)
+    module.target_std.data = torch.full((3,), 2.0)
+    module.log_dict = lambda *args, **kwargs: None
+
+    test_loss = module.test_step((inputs, targets), 0)
+
+    torch.testing.assert_close(test_loss, torch.tensor(0.15333333333333335))
+
+
 def test_forward_applies_predict_from_log_gamma_override() -> None:
     module = _ScaledLogGammaLightningModule(scale=10.0)
     module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
@@ -139,6 +169,54 @@ def test_rejects_unknown_loss_function() -> None:
             area_per_segment=1.0,
             loss_function="not_a_loss",
         )
+
+
+def test_compute_target_statistics_reduces_across_ranks(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    module = LogGammaLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+        normalize_targets=True,
+    )
+    cast(Any, module)._trainer = _DummyTrainer(
+        train_dataloader=[(None, torch.tensor([[1.0, 2.0], [3.0, 4.0]]))]
+    )
+
+    calls = {"count": 0}
+
+    def _fake_all_reduce(tensor: torch.Tensor, op: object | None = None) -> None:
+        del op
+        calls["count"] += 1
+        tensor.mul_(2.0)
+
+    monkeypatch.setattr(torch.distributed, "is_available", lambda: True)
+    monkeypatch.setattr(torch.distributed, "is_initialized", lambda: True)
+    monkeypatch.setattr(torch.distributed, "all_reduce", _fake_all_reduce)
+
+    module._compute_target_statistics()
+
+    assert calls["count"] == 3
+    torch.testing.assert_close(module.target_mean, torch.tensor([2.0, 3.0]))
+    torch.testing.assert_close(
+        module.target_std, torch.sqrt(torch.tensor([1.0, 1.0]) + 1e-8)
+    )
+
+
+def test_compute_target_statistics_rejects_empty_dataloader() -> None:
+    module = LogGammaLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+        normalize_targets=True,
+    )
+    cast(Any, module)._trainer = _DummyTrainer(train_dataloader=[])
+
+    with pytest.raises(
+        ValueError, match="Training dataloader is empty; cannot normalize targets"
+    ):
+        module._compute_target_statistics()
 
 
 def test_checkpoint_roundtrip_restores_predictions(tmp_path: Path) -> None:
