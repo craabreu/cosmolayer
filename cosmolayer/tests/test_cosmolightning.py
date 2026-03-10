@@ -198,7 +198,19 @@ def test_checkpoint_roundtrip_restores_output_transform(tmp_path: Path) -> None:
         ckpt_path,
     )
 
-    loaded = CosmoLightningModule.load_from_checkpoint(str(ckpt_path))
+    with pytest.raises(ValueError, match="requires an output_transform of class"):
+        CosmoLightningModule.load_from_checkpoint(str(ckpt_path))
+
+    with pytest.raises(ValueError, match="Output transform class mismatch"):
+        CosmoLightningModule.load_from_checkpoint(
+            str(ckpt_path),
+            output_transform=_ScaleTransform(),
+        )
+
+    loaded = CosmoLightningModule.load_from_checkpoint(
+        str(ckpt_path),
+        output_transform=_AffineTransform(scale=0.0),
+    )
     actual = loaded(inputs)
 
     assert isinstance(loaded.output_transform, _AffineTransform)

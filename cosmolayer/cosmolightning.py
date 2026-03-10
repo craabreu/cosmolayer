@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -139,7 +139,12 @@ class CosmoLightningModule(pl.LightningModule):
         if not is_loss_function(loss_callable):
             raise ValueError(f"Unsupported loss_function '{loss_function}'.")
 
-        self.save_hyperparameters(ignore=["initialization"])
+        self.save_hyperparameters(ignore=["initialization", "output_transform"])
+        self.hparams["output_transform_class_name"] = (
+            output_transform.__class__.__name__
+            if output_transform is not None
+            else None
+        )
 
         self.output_transform = output_transform
         self.learning_rate = learning_rate
@@ -361,3 +366,44 @@ class CosmoLightningModule(pl.LightningModule):
             batch_size=batch_size,
         )
         return loss
+
+    @classmethod
+    def load_from_checkpoint(  # type: ignore[override]
+        cls,
+        checkpoint_path: str,
+        map_location: Any = None,
+        hparams_file: str | None = None,
+        strict: bool | None = None,
+        output_transform: torch.nn.Module | None = None,
+        **kwargs: Any,
+    ) -> CosmoLightningModule:
+        checkpoint = torch.load(checkpoint_path, map_location=map_location)
+        hparams = checkpoint.get("hyper_parameters", {})
+        expected_class = hparams.get("output_transform_class_name")
+        actual_class = (
+            None if output_transform is None else output_transform.__class__.__name__
+        )
+        if expected_class is not None and actual_class is None:
+            raise ValueError(
+                "This checkpoint requires an output_transform of class "
+                f"'{expected_class}', but none was provided."
+            )
+        if expected_class is None and actual_class is not None:
+            raise ValueError(
+                "This checkpoint does not require an output_transform, but "
+                f"'{actual_class}' was provided."
+            )
+        if expected_class != actual_class:
+            raise ValueError(
+                "Output transform class mismatch: checkpoint expects "
+                f"'{expected_class}', got '{actual_class}'"
+            )
+        if output_transform is not None:
+            kwargs["output_transform"] = output_transform
+        return super().load_from_checkpoint(
+            checkpoint_path,
+            map_location=map_location,
+            hparams_file=hparams_file,
+            strict=strict,
+            **kwargs,
+        )
