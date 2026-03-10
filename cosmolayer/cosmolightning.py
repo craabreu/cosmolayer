@@ -42,7 +42,7 @@ class CosmoLightningModule(pl.LightningModule):
         matrices.
     area_per_segment : float
         Area associated with one segment.
-    output_transform : torch.nn.Module, optional
+    prediction_head : torch.nn.Module, optional
         Optional module applied to the raw output of :class:`CosmoLayer`.
         If ``None`` (default), the raw logarithms of the activity coefficients
         are returned. If provided, it must map the batched output of
@@ -107,7 +107,7 @@ class CosmoLightningModule(pl.LightningModule):
         num_segment_types: int,
         temperature_exponents: tuple[int, ...],
         area_per_segment: float,
-        output_transform: torch.nn.Module | None = None,
+        prediction_head: torch.nn.Module | None = None,
         reference_temperature: float = 298.15,
         max_iter: int = 100,
         learning_rate: float = 1e-3,
@@ -131,22 +131,20 @@ class CosmoLightningModule(pl.LightningModule):
             raise ValueError("learning_rate must be positive")
         if weight_decay < 0.0:
             raise ValueError("weight_decay must be non-negative")
-        if output_transform is not None and not isinstance(
-            output_transform, torch.nn.Module
+        if prediction_head is not None and not isinstance(
+            prediction_head, torch.nn.Module
         ):
-            raise TypeError("output_transform must be a torch.nn.Module or None")
+            raise TypeError("prediction_head must be a torch.nn.Module or None")
         loss_callable = getattr(F, loss_function, None)
         if not is_loss_function(loss_callable):
             raise ValueError(f"Unsupported loss_function '{loss_function}'.")
 
-        self.save_hyperparameters(ignore=["initialization", "output_transform"])
-        self.hparams["output_transform_class_name"] = (
-            output_transform.__class__.__name__
-            if output_transform is not None
-            else None
+        self.save_hyperparameters(ignore=["initialization", "prediction_head"])
+        self.hparams["prediction_head_class_name"] = (
+            prediction_head.__class__.__name__ if prediction_head is not None else None
         )
 
-        self.output_transform = output_transform
+        self.prediction_head = prediction_head
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.loss_function = loss_callable
@@ -235,14 +233,14 @@ class CosmoLightningModule(pl.LightningModule):
         -------
         torch.Tensor
             Batched predictions with leading dimension ``B``. If
-            ``output_transform is None``, this is the raw batched output of
+            ``prediction_head is None``, this is the raw batched output of
             :class:`CosmoLayer` (typically logarithms of activity coefficients).
             Otherwise, it is the transformed task-space prediction.
         """
         raw_output: torch.Tensor = self.cosmo_layer(*inputs)
-        if self.output_transform is None:
+        if self.prediction_head is None:
             return raw_output
-        return cast(torch.Tensor, self.output_transform(raw_output))
+        return cast(torch.Tensor, self.prediction_head(raw_output))
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer used during training.
@@ -374,23 +372,23 @@ class CosmoLightningModule(pl.LightningModule):
         map_location: Any = None,
         hparams_file: str | None = None,
         strict: bool | None = None,
-        output_transform: torch.nn.Module | None = None,
+        prediction_head: torch.nn.Module | None = None,
         **kwargs: Any,
     ) -> CosmoLightningModule:
         checkpoint = torch.load(checkpoint_path, map_location=map_location)
         hparams = checkpoint.get("hyper_parameters", {})
-        expected_class = hparams.get("output_transform_class_name")
+        expected_class = hparams.get("prediction_head_class_name")
         actual_class = (
-            None if output_transform is None else output_transform.__class__.__name__
+            None if prediction_head is None else prediction_head.__class__.__name__
         )
         if expected_class is not None and actual_class is None:
             raise ValueError(
-                "This checkpoint requires an output_transform of class "
+                "This checkpoint requires an prediction_head of class "
                 f"'{expected_class}', but none was provided."
             )
         if expected_class is None and actual_class is not None:
             raise ValueError(
-                "This checkpoint does not require an output_transform, but "
+                "This checkpoint does not require an prediction_head, but "
                 f"'{actual_class}' was provided."
             )
         if expected_class != actual_class:
@@ -398,8 +396,8 @@ class CosmoLightningModule(pl.LightningModule):
                 "Output transform class mismatch: checkpoint expects "
                 f"'{expected_class}', got '{actual_class}'"
             )
-        if output_transform is not None:
-            kwargs["output_transform"] = output_transform
+        if prediction_head is not None:
+            kwargs["prediction_head"] = prediction_head
         return super().load_from_checkpoint(
             checkpoint_path,
             map_location=map_location,

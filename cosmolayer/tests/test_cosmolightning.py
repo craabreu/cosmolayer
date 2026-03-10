@@ -116,12 +116,12 @@ def test_validation_and_test_steps_run() -> None:
     torch.testing.assert_close(test_loss, torch.tensor(0.0))
 
 
-def test_forward_applies_module_output_transform() -> None:
+def test_forward_applies_module_prediction_head() -> None:
     module = CosmoLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
         area_per_segment=1.0,
-        output_transform=_ScaleTransform(),
+        prediction_head=_ScaleTransform(),
     )
     module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
     inputs, _ = _make_batch()
@@ -131,13 +131,13 @@ def test_forward_applies_module_output_transform() -> None:
     torch.testing.assert_close(predictions, torch.tensor([2.0, 6.0, 12.0]))
 
 
-def test_rejects_non_module_output_transform() -> None:
+def test_rejects_non_module_prediction_head() -> None:
     with pytest.raises(TypeError, match="torch.nn.Module"):
         CosmoLightningModule(
             num_segment_types=4,
             temperature_exponents=(1,),
             area_per_segment=1.0,
-            output_transform=cast(torch.nn.Module, torch.exp),
+            prediction_head=cast(torch.nn.Module, torch.exp),
         )
 
 
@@ -177,12 +177,12 @@ def test_checkpoint_roundtrip_restores_predictions(tmp_path: Path) -> None:
     torch.testing.assert_close(actual, expected)
 
 
-def test_checkpoint_roundtrip_restores_output_transform(tmp_path: Path) -> None:
+def test_checkpoint_roundtrip_restores_prediction_head(tmp_path: Path) -> None:
     module = CosmoLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
         area_per_segment=1.0,
-        output_transform=_AffineTransform(scale=3.0),
+        prediction_head=_AffineTransform(scale=3.0),
         initialization=123,
     )
     inputs, _ = _make_batch()
@@ -198,21 +198,21 @@ def test_checkpoint_roundtrip_restores_output_transform(tmp_path: Path) -> None:
         ckpt_path,
     )
 
-    with pytest.raises(ValueError, match="requires an output_transform of class"):
+    with pytest.raises(ValueError, match="requires an prediction_head of class"):
         CosmoLightningModule.load_from_checkpoint(str(ckpt_path))
 
     with pytest.raises(ValueError, match="Output transform class mismatch"):
         CosmoLightningModule.load_from_checkpoint(
             str(ckpt_path),
-            output_transform=_ScaleTransform(),
+            prediction_head=_ScaleTransform(),
         )
 
     loaded = CosmoLightningModule.load_from_checkpoint(
         str(ckpt_path),
-        output_transform=_AffineTransform(scale=0.0),
+        prediction_head=_AffineTransform(scale=0.0),
     )
     actual = loaded(inputs)
 
-    assert isinstance(loaded.output_transform, _AffineTransform)
-    torch.testing.assert_close(loaded.output_transform.scale, torch.tensor(3.0))
+    assert isinstance(loaded.prediction_head, _AffineTransform)
+    torch.testing.assert_close(loaded.prediction_head.scale, torch.tensor(3.0))
     torch.testing.assert_close(actual, expected)
