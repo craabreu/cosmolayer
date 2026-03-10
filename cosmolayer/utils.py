@@ -5,6 +5,8 @@
 .. functionauthor:: Charlles Abreu <craabreu@gmail.com>
 """
 
+import inspect
+
 import torch
 
 
@@ -26,3 +28,20 @@ def log_matmul_exp(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     if A.shape[-1] != B.shape[-2]:
         raise ValueError("Last dimension of A must match second-to-last dimension of B")
     return torch.logsumexp(A.unsqueeze(-1) + B.unsqueeze(-3), dim=-2)
+
+
+def is_loss_function(func: object) -> bool:
+    if not callable(func):
+        return False
+
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+
+    params = list(sig.parameters.values())
+
+    if len(params) < 2:  # noqa: PLR2004
+        return False
+
+    return params[0].name == "input" and params[1].name == "target"

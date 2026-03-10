@@ -33,6 +33,15 @@ class _ScaleTransform(torch.nn.Module):
         return 10.0 * x
 
 
+class _AffineTransform(torch.nn.Module):
+    def __init__(self, scale: float) -> None:
+        super().__init__()
+        self.scale = torch.nn.Parameter(torch.tensor(scale))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.scale * x
+
+
 def _make_batch() -> tuple[InputsType, Tensor1D]:
     temp = torch.tensor(300.0)
     fracs = torch.tensor([0.1, 0.3, 0.6])
@@ -133,7 +142,7 @@ def test_rejects_non_module_output_transform() -> None:
 
 
 def test_rejects_unknown_loss_function() -> None:
-    with pytest.raises(ValueError, match="Unknown loss function"):
+    with pytest.raises(ValueError, match="Unsupported loss_function 'not_a_loss'."):
         CosmoLightningModule(
             num_segment_types=4,
             temperature_exponents=(1,),
@@ -165,4 +174,33 @@ def test_checkpoint_roundtrip_restores_predictions(tmp_path: Path) -> None:
     loaded = CosmoLightningModule.load_from_checkpoint(str(ckpt_path))
     actual = loaded(inputs)
 
+    torch.testing.assert_close(actual, expected)
+
+
+def test_checkpoint_roundtrip_restores_output_transform(tmp_path: Path) -> None:
+    module = CosmoLightningModule(
+        num_segment_types=4,
+        temperature_exponents=(1,),
+        area_per_segment=1.0,
+        output_transform=_AffineTransform(scale=3.0),
+        initialization=123,
+    )
+    inputs, _ = _make_batch()
+    expected = module(inputs)
+
+    ckpt_path = tmp_path / "model_with_transform.ckpt"
+    torch.save(
+        {
+            "state_dict": module.state_dict(),
+            "hyper_parameters": dict(module.hparams),
+            "pytorch-lightning_version": "2.0.0",
+        },
+        ckpt_path,
+    )
+
+    loaded = CosmoLightningModule.load_from_checkpoint(str(ckpt_path))
+    actual = loaded(inputs)
+
+    assert isinstance(loaded.output_transform, _AffineTransform)
+    torch.testing.assert_close(loaded.output_transform.scale, torch.tensor(3.0))
     torch.testing.assert_close(actual, expected)

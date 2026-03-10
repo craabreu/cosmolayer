@@ -281,7 +281,7 @@ class MixtureTrainingDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
     def __init__(
         self,
         mixtures: Sequence[MixtureDatapoint],
-        dtype: torch.dtype,
+        dtype: torch.dtype = torch.float64,
     ):
         if len(mixtures) == 0:
             raise ValueError("MixtureTrainingDataset must contain at least one mixture")
