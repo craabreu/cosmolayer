@@ -20,10 +20,15 @@ requirements:
     - pip
   run:
     - python
-    - numpy
-    - pytorch
+    - cmap
     - lightning
+    - networkx
+    - numpy
+    - open3d
     - opt-einsum
+    - pandas
+    - periodictable
+    - pytorch
     - pyyaml
 
 test:
