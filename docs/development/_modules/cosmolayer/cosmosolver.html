@@ -26,8 +26,8 @@
   </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../../_static/styles/theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
-<link href="../../_static/styles/pydata-sphinx-theme.css?digest=7f76b32a3354e82990f2" rel="stylesheet" />
+  <link href="../../_static/styles/theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d75fae25" />
     <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -36,10 +36,10 @@
     <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
   
   <!-- So that users can add custom icons -->
-  <script defer src="../../_static/scripts/fontawesome.js?digest=7f76b32a3354e82990f2"></script>
+  <script defer src="../../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2" />
-<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2" />
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
     <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
@@ -71,7 +71,9 @@
   
   <button type="button" class="btn rounded-pill" id="pst-back-to-top">
     <i class="fa-solid fa-arrow-up"></i>Back to top</button>
-
+  
+  
+  
   
   <dialog id="pst-search-dialog">
     
@@ -181,11 +183,18 @@
       
         <div class="navbar-item">
 
-<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
-  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
-  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
-  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
-</button></div>
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
       
         <div class="navbar-item"><ul class="navbar-icon-links"
     aria-label="Icon Links">
@@ -198,8 +207,7 @@
           
           
           
-          <a href="https://github.com/craabreu/cosmolayer" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
-            <span class="sr-only">GitHub</span></a>
+          <a href="https://github.com/craabreu/cosmolayer" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
         </li>
 </ul></div>
       
@@ -303,11 +311,18 @@
         
           <div class="navbar-item">
 
-<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
-  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
-  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
-  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
-</button></div>
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
         
           <div class="navbar-item"><ul class="navbar-icon-links"
     aria-label="Icon Links">
@@ -320,8 +335,7 @@
           
           
           
-          <a href="https://github.com/craabreu/cosmolayer" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
-            <span class="sr-only">GitHub</span></a>
+          <a href="https://github.com/craabreu/cosmolayer" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
         </li>
 </ul></div>
         
@@ -473,7 +487,7 @@
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    RuntimeError</span>
-<span class="sd">        If the fixed-point solver does not converge within ``max_iter`` iterations.</span>
+<span class="sd">        If the Newton solver does not converge within ``max_iter`` iterations.</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
@@ -509,33 +523,63 @@
 <span class="sd">            [-6.6...e+02, -6.3...e+02, ...  7.4...e+02]])</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
+<div class="viewcode-block" id="CosmoSolver.logspace_newton_solver">
+<a class="viewcode-back" href="../../api/CosmoSolver.html#cosmolayer.CosmoSolver.logspace_newton_solver">[docs]</a>
     <span class="nd">@staticmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_logspace_newton_solver</span><span class="p">(</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">logspace_newton_solver</span><span class="p">(</span>
         <span class="n">p</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">U_RT</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">max_iter</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">]:</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Solve the COSMO self-consistent equations with a log-space Newton method.</span>
+
+<span class="sd">        Iterates in log-space for numerical stability. Runs under ``torch.no_grad()``</span>
+<span class="sd">        when called from :meth:`forward`, but can also be called directly with</span>
+<span class="sd">        gradient tracking enabled to backpropagate through the Newton iterations</span>
+<span class="sd">        themselves, as an alternative to the implicit differentiation performed by</span>
+<span class="sd">        :meth:`backward`.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        p : torch.Tensor</span>
+<span class="sd">            Segment-type probability distribution vector. Must be nonnegative.</span>
+<span class="sd">            Shape: (..., num_segment_types).</span>
+<span class="sd">        U_RT : torch.Tensor</span>
+<span class="sd">            Reduced interaction energy matrix :math:`\mathbf{U}/(RT)`.</span>
+<span class="sd">            Shape: (..., num_segment_types, num_segment_types).</span>
+<span class="sd">        max_iter : int</span>
+<span class="sd">            Maximum number of Newton iterations.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        log_gamma : torch.Tensor</span>
+<span class="sd">            The logarithm of the segment activity coefficient vector.</span>
+<span class="sd">            Shape: (..., num_segment_types, 1).</span>
+<span class="sd">        converged : torch.Tensor</span>
+<span class="sd">            Boolean tensor indicating whether the iteration converged within</span>
+<span class="sd">            ``max_iter`` steps.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">step_tol</span> <span class="o">=</span> <span class="n">NEWTON_STEP_TOLERANCE</span><span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">dtype</span><span class="p">]</span>
         <span class="n">resid_tol</span> <span class="o">=</span> <span class="n">NEWTON_RESIDUAL_TOLERANCE</span><span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">dtype</span><span class="p">]</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">log_t</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">log</span><span class="p">()</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-            <span class="n">log_A</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">log</span><span class="p">()</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">U_RT</span>
-            <span class="n">Id</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">log_A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">log_A</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">log_A</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-            <span class="n">log_gamma</span> <span class="o">=</span> <span class="o">-</span><span class="n">torch</span><span class="o">.</span><span class="n">logsumexp</span><span class="p">(</span><span class="n">log_A</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">log_t</span>
+        <span class="n">log_t</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">log</span><span class="p">()</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">log_A</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">log</span><span class="p">()</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">U_RT</span>
+        <span class="n">Id</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">log_A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">log_A</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">log_A</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">log_gamma</span> <span class="o">=</span> <span class="o">-</span><span class="n">torch</span><span class="o">.</span><span class="n">logsumexp</span><span class="p">(</span><span class="n">log_A</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">log_t</span>
+        <span class="n">log_A_gamma</span> <span class="o">=</span> <span class="n">log_matmul_exp</span><span class="p">(</span><span class="n">log_A</span><span class="p">,</span> <span class="n">log_gamma</span><span class="p">)</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">log_gamma</span> <span class="o">+</span> <span class="n">log_A_gamma</span> <span class="o">-</span> <span class="n">log_t</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span><span class="p">):</span>
+            <span class="n">J</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_gamma</span><span class="o">.</span><span class="n">mT</span> <span class="o">+</span> <span class="n">log_A</span> <span class="o">-</span> <span class="n">log_A_gamma</span><span class="p">)</span> <span class="o">+</span> <span class="n">Id</span>
+            <span class="n">delta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">J</span><span class="p">,</span> <span class="o">-</span><span class="n">f</span><span class="p">)</span>
+            <span class="n">log_gamma</span> <span class="o">=</span> <span class="n">log_gamma</span> <span class="o">+</span> <span class="n">delta</span>
             <span class="n">log_A_gamma</span> <span class="o">=</span> <span class="n">log_matmul_exp</span><span class="p">(</span><span class="n">log_A</span><span class="p">,</span> <span class="n">log_gamma</span><span class="p">)</span>
             <span class="n">f</span> <span class="o">=</span> <span class="n">log_gamma</span> <span class="o">+</span> <span class="n">log_A_gamma</span> <span class="o">-</span> <span class="n">log_t</span>
-            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span><span class="p">):</span>
-                <span class="n">J</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_gamma</span><span class="o">.</span><span class="n">mT</span> <span class="o">+</span> <span class="n">log_A</span> <span class="o">-</span> <span class="n">log_A_gamma</span><span class="p">)</span> <span class="o">+</span> <span class="n">Id</span>
-                <span class="n">delta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">J</span><span class="p">,</span> <span class="o">-</span><span class="n">f</span><span class="p">)</span>
-                <span class="n">log_gamma</span> <span class="o">+=</span> <span class="n">delta</span>
-                <span class="n">log_A_gamma</span> <span class="o">=</span> <span class="n">log_matmul_exp</span><span class="p">(</span><span class="n">log_A</span><span class="p">,</span> <span class="n">log_gamma</span><span class="p">)</span>
-                <span class="n">f</span> <span class="o">=</span> <span class="n">log_gamma</span> <span class="o">+</span> <span class="n">log_A_gamma</span> <span class="o">-</span> <span class="n">log_t</span>
-                <span class="n">delta_norm</span> <span class="o">=</span> <span class="n">delta</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">amax</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
-                <span class="n">f_norm</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">amax</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
-                <span class="n">converged</span> <span class="o">=</span> <span class="p">(</span><span class="n">delta_norm</span> <span class="o">&lt;</span> <span class="n">step_tol</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">f_norm</span> <span class="o">&lt;</span> <span class="n">resid_tol</span><span class="p">)</span>
-                <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">converged</span><span class="o">.</span><span class="n">all</span><span class="p">()):</span>
-                    <span class="k">break</span>
-            <span class="k">return</span> <span class="n">log_gamma</span><span class="p">,</span> <span class="n">converged</span>
+            <span class="n">delta_norm</span> <span class="o">=</span> <span class="n">delta</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">amax</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+            <span class="n">f_norm</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">amax</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+            <span class="n">converged</span> <span class="o">=</span> <span class="p">(</span><span class="n">delta_norm</span> <span class="o">&lt;</span> <span class="n">step_tol</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">f_norm</span> <span class="o">&lt;</span> <span class="n">resid_tol</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">converged</span><span class="o">.</span><span class="n">all</span><span class="p">()):</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="n">log_gamma</span><span class="p">,</span> <span class="n">converged</span></div>
+
 
 <div class="viewcode-block" id="CosmoSolver.forward">
 <a class="viewcode-back" href="../../api/CosmoSolver.html#cosmolayer.CosmoSolver.forward">[docs]</a>
@@ -557,9 +601,10 @@
         <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">invalid</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Segment-type probabilities are invalid&quot;</span><span class="p">)</span>
 
-        <span class="n">log_gamma</span><span class="p">,</span> <span class="n">converged</span> <span class="o">=</span> <span class="n">CosmoSolver</span><span class="o">.</span><span class="n">_logspace_newton_solver</span><span class="p">(</span>
-            <span class="n">p</span><span class="p">,</span> <span class="n">U_RT</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter</span>
-        <span class="p">)</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">log_gamma</span><span class="p">,</span> <span class="n">converged</span> <span class="o">=</span> <span class="n">CosmoSolver</span><span class="o">.</span><span class="n">logspace_newton_solver</span><span class="p">(</span>
+                <span class="n">p</span><span class="p">,</span> <span class="n">U_RT</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter</span>
+            <span class="p">)</span>
         <span class="n">ctx</span><span class="o">.</span><span class="n">save_for_backward</span><span class="p">(</span><span class="n">log_gamma</span><span class="p">,</span> <span class="n">p</span><span class="p">,</span> <span class="n">U_RT</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">log_gamma</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">converged</span></div>
@@ -639,8 +684,8 @@
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script defer src="../../_static/scripts/bootstrap.js?digest=7f76b32a3354e82990f2"></script>
-<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=7f76b32a3354e82990f2"></script>
+  <script defer src="../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
@@ -674,7 +719,7 @@
         <div class="footer-item">
 <p class="theme-version">
   <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
-  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.0.
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.19.0.
 </p></div>
       
     </div>

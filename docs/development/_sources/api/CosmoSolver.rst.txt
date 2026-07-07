@@ -11,3 +11,5 @@ CosmoSolver
         :no-index-entry:
     .. automethod:: forward
         :no-index-entry:
+    .. automethod:: logspace_newton_solver
+        :no-index-entry:
