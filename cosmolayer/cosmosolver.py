@@ -148,7 +148,7 @@ class CosmoSolver(torch.autograd.Function):
         for _ in range(max_iter):
             J = torch.exp(log_gamma.mT + log_A - log_A_gamma) + Id
             delta = torch.linalg.solve(J, -f)
-            log_gamma += delta
+            log_gamma = log_gamma + delta
             log_A_gamma = log_matmul_exp(log_A, log_gamma)
             f = log_gamma + log_A_gamma - log_t
             delta_norm = delta.abs().amax(dim=(-2, -1))
