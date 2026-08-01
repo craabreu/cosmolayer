@@ -5,12 +5,15 @@
 .. classauthor:: Charlles Abreu <craabreu@gmail.com>
 """
 
+import math
 from types import ModuleType
 
 import pandas as pd
 
 from . import dmol3, turbomole
 from .utils import parse_table, parse_value
+
+AREA_RELATIVE_TOLERANCE = 1e-2
 
 
 def get_atom_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
@@ -43,6 +46,20 @@ def get_volume(module: ModuleType, file_contents: str) -> float:
         parse_value(file_contents, module.VOLUME_REGEX)
         * module.VOLUME_CONVERSION_FACTOR
     )
+
+
+def get_total_area(module: ModuleType, file_contents: str) -> float:
+    return float(
+        parse_value(file_contents, module.TOTAL_AREA_REGEX)
+        * module.AREA_CONVERSION_FACTOR
+    )
+
+
+def get_num_segments(module: ModuleType, file_contents: str) -> int:
+    match = module.NUM_SEGMENTS_REGEX.search(file_contents)
+    if not match:
+        raise ValueError("Could not parse number of segments.")
+    return int(match.group(1))
 
 
 def parse_cosmo_file(
@@ -81,8 +98,9 @@ def parse_cosmo_file(
     Raises
     ------
     ValueError
-        If the file format is not recognized or does not contain the required
-        COSMO sections.
+        If the file format is not recognized, does not contain the required
+        COSMO sections, or the declared total area/number of segments does not
+        match the values derived from the parsed segment table.
     FileNotFoundError
         If the specified file does not exist.
 
@@ -134,9 +152,29 @@ def parse_cosmo_file(
         raise ValueError(
             "Could not parse COSMO file contents. Supported formats: TURBOMOLE, DMol-3"
         )
+    segment_df = get_segment_dataframe(module, contents)
+
+    declared_num_segments = get_num_segments(module, contents)
+    actual_num_segments = len(segment_df)
+    if actual_num_segments != declared_num_segments:
+        raise ValueError(
+            f"Number of parsed segments ({actual_num_segments}) does not match "
+            f"the declared number of segments ({declared_num_segments})."
+        )
+
+    declared_total_area = get_total_area(module, contents)
+    actual_total_area = float(segment_df["area"].sum())
+    if not math.isclose(
+        actual_total_area, declared_total_area, rel_tol=AREA_RELATIVE_TOLERANCE
+    ):
+        raise ValueError(
+            f"Total area of parsed segments ({actual_total_area:.5f}) does not "
+            f"match the declared total area ({declared_total_area:.5f})."
+        )
+
     return (
         format,
         get_atom_dataframe(module, contents),
-        get_segment_dataframe(module, contents),
+        segment_df,
         get_volume(module, contents),
     )

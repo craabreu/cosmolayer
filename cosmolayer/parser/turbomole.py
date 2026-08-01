@@ -1,6 +1,7 @@
 import re
 
 from .common import (  # noqa: F401
+    AREA_CONVERSION_FACTOR,
     ATOM_INFO_SCHEMA,
     ATOM_POSITION_CONVERSION_FACTOR,
     ATOM_ROW_REGEX,
@@ -21,3 +22,5 @@ ATOM_SECTION_REGEX = re.compile(
 )
 
 VOLUME_REGEX = re.compile(r"volume=\s+(\d+(?:\.\d+)?)")
+TOTAL_AREA_REGEX = re.compile(r"^\s*area=\s+(\d+(?:\.\d+)?)", re.MULTILINE)
+NUM_SEGMENTS_REGEX = re.compile(r"^\s*nps=\s+(\d+)", re.MULTILINE)

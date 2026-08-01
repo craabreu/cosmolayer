@@ -28,6 +28,11 @@ ATOM_SECTION_REGEX = re.compile(
 )
 
 VOLUME_REGEX = re.compile(r"Total volume of cavity \(A\*\*3\)\s*=\s*(\d+(?:\.\d+)?)")
+TOTAL_AREA_REGEX = re.compile(
+    r"Total surface area of cavity \(A\*\*2\)\s*=\s*(\d+(?:\.\d+)?)"
+)
+NUM_SEGMENTS_REGEX = re.compile(r"total number of segments:\s*(\d+)")
 
 ATOM_POSITION_CONVERSION_FACTOR = 1.0
 VOLUME_CONVERSION_FACTOR = 1.0
+AREA_CONVERSION_FACTOR = 1.0
