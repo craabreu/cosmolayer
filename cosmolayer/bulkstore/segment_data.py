@@ -40,7 +40,6 @@ DATA_FILE: pathlib.Path = pathlib.Path("data.npy")
 ATOM_INDICES_FILE: pathlib.Path = pathlib.Path("atom_indices.npy")
 MOLECULES_FILE: pathlib.Path = pathlib.Path("molecules.parquet")
 METADATA_FILE: pathlib.Path = pathlib.Path("metadata.json")
-AVERAGING_METADATA_FILE: pathlib.Path = pathlib.Path("averaging_metadata.json")
 
 AVERAGING_SCHEMES: dict[str, tuple[float, float]] = {
     "cosmo-rs": (0.5, 1.0),
@@ -74,7 +73,10 @@ class SegmentStore:
         One row per molecule, with columns ``smiles``, ``segment_offsets``,
         ``atom_offsets``, ``num_atoms``, and ``volume``.
     metadata : dict
-        ``num_molecules`` and ``num_cosmo_parse_failures`` for this store.
+        ``num_molecules`` and ``num_cosmo_parse_failures`` for this store,
+        plus a ``schemes`` entry (scheme name -> ``averaging_radius``,
+        ``f_decay``) once any averaged sigmas have been computed for it
+        (see ``_populate_averaged_sigmas``).
     averaged_sigmas : dict[str, np.ndarray]
         Scheme name -> ``(n_segs_total,)`` averaged charge density,
         computed automatically by ``from_cosmo_files`` for whatever
@@ -168,8 +170,10 @@ class SegmentStore:
         ``<name>.npy`` to ``self.storage_dir`` for every ``name`` in
         ``schemes``, each of shape ``(n_segs_total,)`` and dtype float32 --
         aligned index for index with this store's own ``data``/
-        ``atom_indices``. ``AVERAGING_METADATA_FILE`` records every
-        scheme's ``averaging_radius`` and ``f_decay``.
+        ``atom_indices``. Records every scheme's ``averaging_radius`` and
+        ``f_decay`` in ``self.metadata["schemes"]``, merging into (not
+        replacing) whatever was already recorded there, and rewrites
+        ``METADATA_FILE`` with the updated ``self.metadata``.
 
         The freshly computed arrays are kept in memory (in
         ``self.averaged_sigmas``) rather than reloaded from the files just
@@ -216,18 +220,14 @@ class SegmentStore:
             self.averaged_sigmas[name] = f32_arr
             paths[name] = path
 
-        with open(self.storage_dir / AVERAGING_METADATA_FILE, "w") as f:
-            json.dump(
-                {
-                    "source_storage_dir": str(self.storage_dir.resolve()),
-                    "schemes": {
-                        name: {"averaging_radius": r_av, "f_decay": f_decay}
-                        for name, (r_av, f_decay) in schemes.items()
-                    },
-                },
-                f,
-                indent=2,
-            )
+        self.metadata.setdefault("schemes", {}).update(
+            {
+                name: {"averaging_radius": r_av, "f_decay": f_decay}
+                for name, (r_av, f_decay) in schemes.items()
+            }
+        )
+        with open(self.storage_dir / METADATA_FILE, "w") as f:
+            json.dump(self.metadata, f, indent=2)
 
         return paths
 
@@ -618,15 +618,11 @@ class SegmentStore:
         atom_indices = np.load(storage_dir / ATOM_INDICES_FILE, mmap_mode="r")
         molecules_df = pd.read_parquet(storage_dir / MOLECULES_FILE)
 
-        averaged_sigmas: dict[str, np.ndarray] = {}
-        averaged_sigmas_metadata_path = storage_dir / AVERAGING_METADATA_FILE
-        if averaged_sigmas_metadata_path.exists():
-            with open(averaged_sigmas_metadata_path) as f:
-                scheme_names = sorted(json.load(f)["schemes"])
-            averaged_sigmas = {
-                name: np.load(storage_dir / f"{name}.npy", mmap_mode="r")
-                for name in scheme_names
-            }
+        scheme_names = sorted(metadata.get("schemes", {}))
+        averaged_sigmas = {
+            name: np.load(storage_dir / f"{name}.npy", mmap_mode="r")
+            for name in scheme_names
+        }
 
         return cls(
             storage_dir, data, atom_indices, molecules_df, metadata, averaged_sigmas
@@ -655,7 +651,9 @@ class SegmentStore:
         via ``_reorder_molecule`` onto that same indexing.
 
         Also computes and writes averaged sigmas for the new store (see
-        ``_populate_averaged_sigmas``), unless ``schemes`` is an empty dict.
+        ``_populate_averaged_sigmas``), unless ``schemes`` is an empty
+        dict -- this adds a ``schemes`` entry to ``metadata.json`` rather
+        than writing it as a separate file.
 
         Parameters
         ----------
