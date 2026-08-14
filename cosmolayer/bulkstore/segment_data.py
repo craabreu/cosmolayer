@@ -49,37 +49,71 @@ DEFAULT_NUM_POINTS = 52
 
 
 class SegmentStore:
-    """A segment-data store: memory-mapped segment arrays plus the
-    per-molecule ``molecules_df`` table describing them.
+    """A segment-data store: segment arrays plus the per-molecule
+    ``molecules_df`` table describing them.
+
+    Construct directly only if you already have every component in hand
+    (e.g. re-wrapping arrays); normal callers use ``load`` (read an
+    existing store from disk, memory-mapped) or ``from_cosmo_files``
+    (build a new one).
 
     Parameters
     ----------
     storage_dir : pathlib.Path
-        Directory holding a store built by ``from_cosmo_files`` (i.e. for
-        which ``segment_data_exists`` is True).
-
-    Attributes
-    ----------
-    storage_dir : pathlib.Path
-        Directory this store was loaded from.
+        Directory this store's files live in (or will be written to).
     data : np.ndarray
-        Memory-mapped ``(n_segs_total, 5)`` array, columns
-        ``[x, y, z, charge, area]``.
+        ``(n_segs_total, 5)`` array, columns ``[x, y, z, charge, area]``.
     atom_indices : np.ndarray
-        Memory-mapped ``(n_segs_total,)`` global atom index of each segment.
+        ``(n_segs_total,)`` global atom index of each segment.
     molecules_df : pd.DataFrame
         One row per molecule, with columns ``smiles``, ``segment_offsets``,
         ``atom_offsets``, ``num_atoms``, and ``volume``.
+    metadata : dict
+        ``num_molecules`` and ``num_cosmo_parse_failures`` for this store.
+
+    Attributes
+    ----------
     coords, charges, areas : np.ndarray
         Views into ``data``'s columns.
-
-    Raises
-    ------
-    FileNotFoundError
-        If ``storage_dir`` doesn't hold a complete store.
     """
 
-    def __init__(self, storage_dir: pathlib.Path):
+    def __init__(
+        self,
+        storage_dir: pathlib.Path,
+        data: np.ndarray,
+        atom_indices: np.ndarray,
+        molecules_df: pd.DataFrame,
+        metadata: dict,
+    ):
+        self.storage_dir = pathlib.Path(storage_dir)
+        self.data = data
+        self.atom_indices = atom_indices
+        self.molecules_df = molecules_df
+        self.metadata = metadata
+        self.coords = data[:, :3]
+        self.charges = data[:, 3]
+        self.areas = data[:, 4]
+
+    @classmethod
+    def load(cls, storage_dir: pathlib.Path | str) -> "SegmentStore":
+        """Load an existing segment-data store from disk, memory-mapped.
+
+        Parameters
+        ----------
+        storage_dir : pathlib.Path | str
+            Directory holding a store built by ``from_cosmo_files`` (i.e.
+            for which ``segment_data_exists`` is True).
+
+        Returns
+        -------
+        SegmentStore
+            ``data`` and ``atom_indices`` are memory-mapped (``mmap_mode="r"``).
+
+        Raises
+        ------
+        FileNotFoundError
+            If ``storage_dir`` doesn't hold a complete store.
+        """
         storage_dir = pathlib.Path(storage_dir)
         if not segment_data_exists(storage_dir):
             raise FileNotFoundError(
@@ -87,13 +121,12 @@ class SegmentStore:
                 f"{DATA_FILE}, {ATOM_INDICES_FILE}, {MOLECULES_FILE}, "
                 f"{METADATA_FILE}; see SegmentStore.from_cosmo_files)."
             )
-        self.storage_dir = storage_dir
-        self.data = np.load(self.storage_dir / DATA_FILE, mmap_mode="r")
-        self.atom_indices = np.load(self.storage_dir / ATOM_INDICES_FILE, mmap_mode="r")
-        self.molecules_df = pd.read_parquet(self.storage_dir / MOLECULES_FILE)
-        self.coords = self.data[:, :3]
-        self.charges = self.data[:, 3]
-        self.areas = self.data[:, 4]
+        with open(storage_dir / METADATA_FILE) as f:
+            metadata = json.load(f)
+        data = np.load(storage_dir / DATA_FILE, mmap_mode="r")
+        atom_indices = np.load(storage_dir / ATOM_INDICES_FILE, mmap_mode="r")
+        molecules_df = pd.read_parquet(storage_dir / MOLECULES_FILE)
+        return cls(storage_dir, data, atom_indices, molecules_df, metadata)
 
     @classmethod
     def from_cosmo_files(
@@ -187,8 +220,10 @@ class SegmentStore:
         storage_dir = pathlib.Path(storage_dir)
         storage_dir.mkdir(parents=True, exist_ok=True)
 
-        np.save(storage_dir / DATA_FILE, np.concatenate(data_chunks, axis=0))
-        np.save(storage_dir / ATOM_INDICES_FILE, np.concatenate(atoms_chunks))
+        data = np.concatenate(data_chunks, axis=0)
+        atom_indices = np.concatenate(atoms_chunks)
+        np.save(storage_dir / DATA_FILE, data)
+        np.save(storage_dir / ATOM_INDICES_FILE, atom_indices)
 
         molecules = pd.DataFrame(
             {
@@ -208,7 +243,7 @@ class SegmentStore:
         with open(storage_dir / METADATA_FILE, "w") as f:
             json.dump(metadata, f, indent=2)
 
-        return cls(storage_dir)
+        return cls(storage_dir, data, atom_indices, molecules, metadata)
 
 
 def sigma_bin_width(max_abs_sigma: float, num_points: int) -> float:
@@ -594,7 +629,7 @@ def store_averaged_sigmas(
         order as ``schemes``.
     """
     storage_dir = pathlib.Path(storage_dir)
-    store = SegmentStore(storage_dir)
+    store = SegmentStore.load(storage_dir)
     segment_offsets = store.molecules_df["segment_offsets"].values.astype("int64")
 
     scheme_names = list(schemes)
@@ -1304,7 +1339,7 @@ if __name__ == "__main__":
         print("Segment data already exists.")
 
     start_time = time.time()
-    store = SegmentStore(storage_dir)
+    store = SegmentStore.load(storage_dir)
     coords, charges, areas, atom_indices, molecules_df = (
         store.coords,
         store.charges,
