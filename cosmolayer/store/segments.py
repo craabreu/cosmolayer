@@ -51,6 +51,16 @@ METADATA_FILE = pathlib.Path("metadata.json")
 
 _STORE_FILES = (DATA_FILE, ATOM_INDICES_FILE, MOLECULES_FILE, METADATA_FILE)
 
+# A scheme's averaged sigmas are written to "<name>.npy" (see save()), so
+# only the store's own *.npy files can actually collide with one -- not
+# MOLECULES_FILE or METADATA_FILE, which have different suffixes and so
+# can never share a name with a "<name>.npy" scheme output. Derived from
+# _STORE_FILES itself rather than a second, hand-maintained set, so the
+# two can't drift apart.
+_RESERVED_SCHEME_NAMES = frozenset(
+    f.stem for f in _STORE_FILES if f.suffix == DATA_FILE.suffix
+)
+
 # A .cosmo file's atom table always lists every atom explicitly, hydrogens
 # included, and _reorder_molecule's atom-mapping contract requires each
 # SMILES atom to correspond 1:1 with a COSMO atom -- so explicit hydrogens
@@ -259,9 +269,22 @@ class SegmentStore:
         dict[str, np.ndarray]
             Scheme name -> ``(n_segs_total,)`` float32 averaged charge
             density, one entry per scheme in ``schemes``.
+
+        Raises
+        ------
+        ValueError
+            If a scheme's name collides with a reserved store filename
+            stem (i.e. would overwrite ``DATA_FILE`` or
+            ``ATOM_INDICES_FILE`` on ``save``).
         """
         if schemes is None:
             schemes = AVERAGING_SCHEMES
+        for scheme in schemes:
+            if scheme.name in _RESERVED_SCHEME_NAMES:
+                raise ValueError(
+                    f"Averaging scheme name {scheme.name!r} collides with a "
+                    f"reserved store filename ({sorted(_RESERVED_SCHEME_NAMES)})."
+                )
         segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
 
         averaged = average_sigmas_by_molecule(
@@ -445,7 +468,9 @@ class SegmentStore:
         ------
         ValueError
             If a molecule's SMILES or COSMO file cannot be parsed and
-            ``ignore_errors`` is False, or if no molecule could be stored.
+            ``ignore_errors`` is False, if no molecule could be stored, or
+            if a scheme's name collides with a reserved store filename
+            stem (see ``compute_averaged_sigmas``).
         """
         data_chunks, atoms_chunks = [], []
         segment_offsets, segment_offset = [], 0

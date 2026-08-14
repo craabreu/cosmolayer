@@ -23,21 +23,11 @@ from cosmolayer.store import (
     StoreMetadata,
 )
 from cosmolayer.store.__main__ import main as store_main
-from cosmolayer.store.averaging import (
-    RESERVED_SCHEME_NAMES,
-    average_sigmas,
-    average_sigmas_by_molecule,
-)
+from cosmolayer.store.averaging import average_sigmas, average_sigmas_by_molecule
 from cosmolayer.store.binning import (
     compute_per_atom_properties,
     compute_per_molecule_properties,
     row_indices_from_offsets,
-)
-from cosmolayer.store.segments import (
-    ATOM_INDICES_FILE,
-    DATA_FILE,
-    METADATA_FILE,
-    MOLECULES_FILE,
 )
 
 COSMO_DATA_DIR = pathlib.Path(str(files("cosmolayer.data")))
@@ -103,22 +93,16 @@ class TestSigmaGrid:
 
 
 class TestAveragingScheme:
-    def test_reserved_name_rejected(self) -> None:
-        with pytest.raises(ValueError, match="reserved"):
-            AveragingScheme("metadata", averaging_radius=0.5, f_decay=1.0)
+    def test_construction_never_validates_the_name(self) -> None:
+        """AveragingScheme is a pure value object -- it has no notion of
+        storage, so any name is constructible; collision with a store's
+        own files is SegmentStore's concern (see TestReservedSchemeNames)."""
+        for name in ("data", "atom_indices", "molecules", "metadata", "anything"):
+            assert AveragingScheme(name, averaging_radius=0.5, f_decay=1.0).name == name
 
     def test_default_schemes_present(self) -> None:
         assert {"cosmo-rs", "cosmo-sac-2002", "cosmo-sac-2010"} == {
             scheme.name for scheme in AVERAGING_SCHEMES
-        }
-
-    def test_reserved_names_match_the_actual_store_filenames(self) -> None:
-        """``averaging`` cannot import ``segments`` (that would be a cycle),
-        so it hardcodes the reserved stems. Guard against the two drifting:
-        a scheme named after a store file would overwrite it on save."""
-        assert RESERVED_SCHEME_NAMES == {
-            path.stem
-            for path in (DATA_FILE, ATOM_INDICES_FILE, MOLECULES_FILE, METADATA_FILE)
         }
 
 
@@ -253,6 +237,30 @@ class TestSegmentStoreRoundTrip:
         bad_mapping = {"CCCC": "O.cosmo"}
         with pytest.raises(ValueError):
             SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
+
+
+class TestReservedSchemeNames:
+    """A scheme's averaged sigmas are written to "<name>.npy" (see
+    SegmentStore.save), so only a name matching one of the store's own
+    *.npy* files can actually collide -- molecules.parquet and
+    metadata.json have different suffixes and can never collide with any
+    "<name>.npy", so schemes named after them must be allowed."""
+
+    @pytest.mark.parametrize("name", ["data", "atom_indices"])
+    def test_npy_colliding_name_rejected(self, store: SegmentStore, name: str) -> None:
+        with pytest.raises(ValueError, match="reserved"):
+            store.compute_averaged_sigmas(
+                schemes=[AveragingScheme(name, 0.5, 1.0)], num_threads=1
+            )
+
+    @pytest.mark.parametrize("name", ["molecules", "metadata"])
+    def test_non_npy_colliding_name_allowed(
+        self, store: SegmentStore, name: str
+    ) -> None:
+        result = store.compute_averaged_sigmas(
+            schemes=[AveragingScheme(name, 0.5, 1.0)], num_threads=1
+        )
+        assert name in result
 
 
 class TestSegmentStoreSigmas:

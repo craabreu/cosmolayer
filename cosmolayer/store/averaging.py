@@ -27,41 +27,31 @@ from cosmolayer.cosmosac.constants import (
 
 from .parallel import run_in_threads
 
-RESERVED_SCHEME_NAMES = frozenset({"data", "atom_indices", "molecules", "metadata"})
-
 
 @dataclass(frozen=True)
 class AveragingScheme:
     """One COSMO-SAC-style segment-averaging scheme.
 
+    A pure value object describing the physics of a scheme -- it has no
+    notion of storage, so it does not (and cannot, without an import
+    cycle) validate its name against a ``SegmentStore``'s on-disk layout.
+    ``SegmentStore`` becomes the stem of the ``<name>.npy`` file it writes
+    this scheme's averaged sigmas to, and rejects a colliding name itself
+    (see ``SegmentStore.compute_averaged_sigmas``).
+
     Parameters
     ----------
     name : str
-        Scheme identifier. Becomes the stem of the ``.npy`` file a
-        ``SegmentStore`` writes this scheme's averaged sigmas to, so it
-        must not collide with a reserved store filename (see
-        ``RESERVED_SCHEME_NAMES``).
+        Scheme identifier.
     averaging_radius : float
         Effective averaging radius ``r_av``, in Å.
     f_decay : float
         Exponential decay factor.
-
-    Raises
-    ------
-    ValueError
-        If ``name`` collides with a reserved store filename stem.
     """
 
     name: str
     averaging_radius: float
     f_decay: float
-
-    def __post_init__(self) -> None:
-        if self.name in RESERVED_SCHEME_NAMES:
-            raise ValueError(
-                f"Averaging scheme name {self.name!r} collides with a reserved "
-                f"store filename ({sorted(RESERVED_SCHEME_NAMES)})."
-            )
 
 
 COSMO_RS = AveragingScheme("cosmo-rs", averaging_radius=0.5, f_decay=1.0)
