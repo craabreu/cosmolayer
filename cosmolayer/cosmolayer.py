@@ -56,6 +56,18 @@ class CosmoLayer(torch.nn.Module):
     learn_matrices : bool, optional
         Whether to register all scaled interaction energy matrices as trainable
         parameters. Default is False.
+    implicit_diff : bool, optional
+        Whether to differentiate through the Newton solver using the implicit
+        function theorem (:class:`~cosmolayer.cosmosolver.CosmoSolver`), rather than
+        backpropagating through the Newton iterations directly. Implicit
+        differentiation is exact regardless of ``max_iter`` and is cheaper for
+        backward passes, but requires the forward solve to have converged. Default
+        is True.
+    max_iter : int, optional
+        Maximum number of iterations used by the Newton solver. If not
+        given, defaults to 100 when ``implicit_diff`` is True and to 5 when it is
+        False, since autograd-through-iterations becomes increasingly expensive to
+        differentiate as ``max_iter`` grows.
 
     Examples
     --------
@@ -105,9 +117,14 @@ class CosmoLayer(torch.nn.Module):
         *,
         reference_temperature: float = 298.15,  # K
         learn_matrices: bool = False,
-        max_iter: int = 100,
+        implicit_diff: bool = True,
+        max_iter: int | None = None,
     ):
         super().__init__()
+        self._implicit_diff = implicit_diff
+        if max_iter is None:
+            max_iter = 100 if implicit_diff else 5
+        self._max_iter = max_iter
 
         num_matrices = len(interaction_matrices)
         if len(exponents) != num_matrices:
@@ -268,10 +285,20 @@ class CosmoLayer(torch.nn.Module):
         torch.Tensor
             Log-activity coefficients of segment types in pure compounds.
             Shape: (..., num_components, num_segment_types).
+
+        .. note::
+            Uses implicit differentiation through
+            :meth:`CosmoSolver.apply <cosmolayer.cosmosolver.CosmoSolver.forward>` if
+            ``implicit_diff`` is True, or backpropagates directly through the Newton
+            iterations of :meth:`CosmoSolver.logspace_newton_solver
+            <cosmolayer.cosmosolver.CosmoSolver.logspace_newton_solver>` otherwise.
         """
-        log_gamma_pure, converged = CosmoSolver.apply(
-            probs, scaled_interactions.unsqueeze(-3), self._max_iter
-        )
+        args = (probs, scaled_interactions.unsqueeze(-3), self._max_iter)
+        if self._implicit_diff:
+            log_gamma_pure, converged = CosmoSolver.apply(*args)
+        else:
+            log_gamma_pure, converged = CosmoSolver.logspace_newton_solver(*args)
+            log_gamma_pure = log_gamma_pure.squeeze(-1)
         self._check_convergence(converged)
         return cast(torch.Tensor, log_gamma_pure)
 
@@ -305,12 +332,24 @@ class CosmoLayer(torch.nn.Module):
         torch.Tensor
             Log-activity coefficients of segment types in the mixture.
             Shape: (..., num_segment_types).
+
+        .. note::
+            Uses implicit differentiation through
+            :meth:`CosmoSolver.apply <cosmolayer.cosmosolver.CosmoSolver.forward>` if
+            ``implicit_diff`` is True, or backpropagates directly through the Newton
+            iterations of :meth:`CosmoSolver.logspace_newton_solver
+            <cosmolayer.cosmosolver.CosmoSolver.logspace_newton_solver>` otherwise.
         """
-        log_gamma_mix, converged = CosmoSolver.apply(
+        args = (
             self.mixture_probabilities(fracs, areas, probs),
             scaled_interactions,
             self._max_iter,
         )
+        if self._implicit_diff:
+            log_gamma_mix, converged = CosmoSolver.apply(*args)
+        else:
+            log_gamma_mix, converged = CosmoSolver.logspace_newton_solver(*args)
+            log_gamma_mix = log_gamma_mix.squeeze(-1)
         self._check_convergence(converged)
         return cast(torch.Tensor, log_gamma_mix)
 

@@ -67,7 +67,7 @@ class CosmoSolver(torch.autograd.Function):
     Raises
     ------
     RuntimeError
-        If the fixed-point solver does not converge within ``max_iter`` iterations.
+        If the Newton solver does not converge within ``max_iter`` iterations.
 
     Examples
     --------
@@ -104,32 +104,59 @@ class CosmoSolver(torch.autograd.Function):
     """
 
     @staticmethod
-    def _logspace_newton_solver(
+    def logspace_newton_solver(
         p: torch.Tensor,
         U_RT: torch.Tensor,
         max_iter: int,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        r"""Solve the COSMO self-consistent equations with a log-space Newton method.
+
+        Iterates in log-space for numerical stability. Runs under ``torch.no_grad()``
+        when called from :meth:`forward`, but can also be called directly with
+        gradient tracking enabled to backpropagate through the Newton iterations
+        themselves, as an alternative to the implicit differentiation performed by
+        :meth:`backward`.
+
+        Parameters
+        ----------
+        p : torch.Tensor
+            Segment-type probability distribution vector. Must be nonnegative.
+            Shape: (..., num_segment_types).
+        U_RT : torch.Tensor
+            Reduced interaction energy matrix :math:`\mathbf{U}/(RT)`.
+            Shape: (..., num_segment_types, num_segment_types).
+        max_iter : int
+            Maximum number of Newton iterations.
+
+        Returns
+        -------
+        log_gamma : torch.Tensor
+            The logarithm of the segment activity coefficient vector.
+            Shape: (..., num_segment_types, 1).
+        converged : torch.Tensor
+            Boolean tensor indicating whether the iteration converged within
+            ``max_iter`` steps.
+        """
         step_tol = NEWTON_STEP_TOLERANCE[p.dtype]
         resid_tol = NEWTON_RESIDUAL_TOLERANCE[p.dtype]
-        with torch.no_grad():
-            log_t = p.sum(dim=-1, keepdim=True).log().unsqueeze(-1)
-            log_A = p.log().unsqueeze(-2) - U_RT
-            Id = torch.eye(log_A.shape[-1], dtype=log_A.dtype, device=log_A.device)
-            log_gamma = -torch.logsumexp(log_A, dim=-1, keepdim=True) + 0.5 * log_t
+        log_t = p.sum(dim=-1, keepdim=True).log().unsqueeze(-1)
+        log_A = p.log().unsqueeze(-2) - U_RT
+        Id = torch.eye(log_A.shape[-1], dtype=log_A.dtype, device=log_A.device)
+        log_gamma = -torch.logsumexp(log_A, dim=-1, keepdim=True) + 0.5 * log_t
+        log_A_gamma = log_matmul_exp(log_A, log_gamma)
+        f = log_gamma + log_A_gamma - log_t
+        for _ in range(max_iter):
+            J = torch.exp(log_gamma.mT + log_A - log_A_gamma) + Id
+            delta = torch.linalg.solve(J, -f)
+            log_gamma = log_gamma + delta
             log_A_gamma = log_matmul_exp(log_A, log_gamma)
             f = log_gamma + log_A_gamma - log_t
-            for _ in range(max_iter):
-                J = torch.exp(log_gamma.mT + log_A - log_A_gamma) + Id
-                delta = torch.linalg.solve(J, -f)
-                log_gamma += delta
-                log_A_gamma = log_matmul_exp(log_A, log_gamma)
-                f = log_gamma + log_A_gamma - log_t
-                delta_norm = delta.abs().amax(dim=(-2, -1))
-                f_norm = f.abs().amax(dim=(-2, -1))
-                converged = (delta_norm < step_tol) & (f_norm < resid_tol)
-                if bool(converged.all()):
-                    break
-            return log_gamma, converged
+            delta_norm = delta.abs().amax(dim=(-2, -1))
+            f_norm = f.abs().amax(dim=(-2, -1))
+            converged = (delta_norm < step_tol) & (f_norm < resid_tol)
+            if bool(converged.all()):
+                break
+        return log_gamma, converged
 
     @staticmethod
     def forward(
@@ -149,9 +176,10 @@ class CosmoSolver(torch.autograd.Function):
         if bool(invalid):
             raise ValueError("Segment-type probabilities are invalid")
 
-        log_gamma, converged = CosmoSolver._logspace_newton_solver(
-            p, U_RT, max_iter=max_iter
-        )
+        with torch.no_grad():
+            log_gamma, converged = CosmoSolver.logspace_newton_solver(
+                p, U_RT, max_iter=max_iter
+            )
         ctx.save_for_backward(log_gamma, p, U_RT)
 
         return log_gamma.squeeze(-1), converged

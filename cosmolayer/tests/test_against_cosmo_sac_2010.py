@@ -377,11 +377,13 @@ def test_composition_and_temperature_differentiation(
     )
 
 
+@pytest.mark.parametrize("implicit_diff", [True, False], ids=["implicit", "autograd"])
 @pytest.mark.parametrize("n", [2, 3], ids=["binary", "ternary"])
 @pytest.mark.parametrize("seed", [3445, 90745], ids=["seed0", "seed1"])
 def test_parameter_differentiation(
     seed: int,
     n: int,
+    implicit_diff: bool,
     temperatures: list[float],
     mixtures: dict[int, list[_MixtureType]],
 ) -> None:
@@ -393,6 +395,7 @@ def test_parameter_differentiation(
         CosmoSac2010Model.temperature_exponents,
         CosmoSac2010Model.area_per_segment,
         learn_matrices=True,
+        implicit_diff=implicit_diff,
     )
 
     rng = np.random.default_rng(seed)

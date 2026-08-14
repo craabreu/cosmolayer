@@ -7,7 +7,7 @@ dependencies:
   - python
   - pip
   - lightning
-  - numpy
+  - numpy <2.4
   - pandas
   - periodictable
   - pytorch
