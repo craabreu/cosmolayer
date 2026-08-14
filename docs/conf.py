@@ -7,6 +7,7 @@ import sys
 
 import cosmolayer
 from cosmolayer import cosmosac
+from cosmolayer import store as cosmolayer_store
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -145,6 +146,9 @@ def create_module_docs(module, module_name, title, output_dir="api"):
 
 main_toctree = create_module_docs(cosmolayer, "cosmolayer", "Core API")
 sac_toctree = create_module_docs(cosmosac, "cosmolayer.cosmosac", "COSMO-SAC")
+store_toctree = create_module_docs(
+    cosmolayer_store, "cosmolayer.store", "cosmolayer.store"
+)
 
 with open("api/index.rst", "w") as f:
     entries = []
@@ -152,6 +156,8 @@ with open("api/index.rst", "w") as f:
         entries.append(f"    {main_toctree}\n")
     if sac_toctree:
         entries.append(f"    {sac_toctree}\n")
+    if store_toctree:
+        entries.append(f"    {store_toctree}\n")
 
     f.write(
         "API Reference\n"

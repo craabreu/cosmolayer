@@ -32,8 +32,12 @@ dependencies = [
     "opt-einsum",
     "pandas",
     "periodictable",
+    "pyarrow",
     "pyyaml",
+    "rdkit",
+    "threadpoolctl",
     "torch",
+    "tqdm",
 ]
 
 [project.scripts]
