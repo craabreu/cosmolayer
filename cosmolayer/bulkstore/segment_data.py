@@ -39,13 +39,16 @@ DATA_FILE: pathlib.Path = pathlib.Path("data.npy")
 ATOM_INDICES_FILE: pathlib.Path = pathlib.Path("atom_indices.npy")
 MOLECULES_FILE: pathlib.Path = pathlib.Path("molecules.parquet")
 METADATA_FILE: pathlib.Path = pathlib.Path("metadata.json")
+AVERAGING_METADATA_FILE: pathlib.Path = pathlib.Path("averaging_metadata.json")
 
-AVERAGED_SIGMAS_METADATA_FILE: pathlib.Path = pathlib.Path(
-    "averaged_sigmas_metadata.json"
-)
+AVERAGING_SCHEMES: dict[str, tuple[float, float]] = {
+    "cosmo-rs": (0.5, 1.0),
+    "cosmo-sac-2002": (COSMO_SAC_2002_AVERAGING_RADIUS, COSMO_SAC_2002_F_DECAY),
+    "cosmo-sac-2010": (COSMO_SAC_2010_AVERAGING_RADIUS, COSMO_SAC_2010_F_DECAY),
+}
 
-DEFAULT_MAX_ABS_SIGMA = 0.0255
-DEFAULT_NUM_POINTS = 52
+DEFAULT_MAX_ABS_SIGMA = 0.025
+DEFAULT_NUM_POINTS = 51
 
 
 class SegmentStore:
@@ -136,7 +139,7 @@ class SegmentStore:
         molecules_df = pd.read_parquet(storage_dir / MOLECULES_FILE)
 
         averaged_sigmas: dict[str, np.ndarray] = {}
-        averaged_sigmas_metadata_path = storage_dir / AVERAGED_SIGMAS_METADATA_FILE
+        averaged_sigmas_metadata_path = storage_dir / AVERAGING_METADATA_FILE
         if averaged_sigmas_metadata_path.exists():
             with open(averaged_sigmas_metadata_path) as f:
                 scheme_names = sorted(json.load(f)["schemes"])
@@ -145,7 +148,9 @@ class SegmentStore:
                 for name in scheme_names
             }
 
-        return cls(storage_dir, data, atom_indices, molecules_df, metadata, averaged_sigmas)
+        return cls(
+            storage_dir, data, atom_indices, molecules_df, metadata, averaged_sigmas
+        )
 
     @classmethod
     def from_cosmo_files(
@@ -222,7 +227,7 @@ class SegmentStore:
                         f"SMILES {smi!r} has {mol.GetNumAtoms()} atoms, but "
                         f"{filename} has {len(atom_df)}"
                     )
-                mol = _reorder_molecule(mol)
+                mol = cls._reorder_molecule(mol)
             except (ValueError, AssertionError) as e:
                 if ignore_errors:
                     tqdm.write(f"Error parsing {smi}->{filename}: {e}")
@@ -281,6 +286,48 @@ class SegmentStore:
             )
         return store
 
+    @staticmethod
+    def _reorder_molecule(mol: Chem.Mol) -> Chem.Mol:
+        """Reorder a molecule's atoms by their AtomMapNum property.
+
+        Sorts atoms into ascending AtomMapNum order, so atom ``i`` ends up
+        carrying ``AtomMapNum == i`` (0-based mapping) or ``AtomMapNum ==
+        i + 1`` (1-based). ``from_cosmo_files`` relies on this: it uses
+        each segment's COSMO-file atom index directly as its global atom
+        index, which only matches a molecule's atom-mapped SMILES once the
+        atoms are in this order.
+
+        Parameters
+        ----------
+        mol : Chem.Mol
+            Molecule to reorder.
+
+        Returns
+        -------
+        Chem.Mol
+            Reordered molecule.
+
+        Raises
+        ------
+        ValueError
+            If the molecule has bad atom map numbers.
+        """
+        num_atoms = mol.GetNumAtoms()
+        map_nums = {atom.GetAtomMapNum() for atom in mol.GetAtoms()}
+        if map_nums == {0}:
+            return mol
+
+        if map_nums in (set(range(num_atoms)), set(range(1, num_atoms + 1))):
+            new_order = sorted(
+                range(num_atoms), key=lambda i: mol.GetAtomWithIdx(i).GetAtomMapNum()
+            )
+            return Chem.RenumberAtoms(mol, new_order)
+
+        raise ValueError(
+            "Bad atom map numbers: must be all 0, or a 0-based or 1-based "
+            "permutation of the atom indices"
+        )
+
     def compute_averaged_sigmas(
         self,
         schemes: dict[str, tuple[float, float]] | None = None,
@@ -290,14 +337,14 @@ class SegmentStore:
         ``schemes``, writing one file per scheme and updating
         ``self.averaged_sigmas`` in place.
 
-        Calls ``smooth_segment_sigmas`` once for every scheme, sharing the
+        Calls ``_smooth_segment_sigmas`` once for every scheme, sharing the
         pairwise-distance computation across all of them (see
-        ``compute_averaged_sigmas`` [the module-level function] for the
-        measured saving over calling this once per scheme). Writes
+        ``_compute_averaged_sigmas`` for the measured saving over calling
+        this once per scheme). Writes
         ``<name>.npy`` to ``self.storage_dir`` for every ``name`` in
         ``schemes``, each of shape ``(n_segs_total,)`` and dtype float32 --
         aligned index for index with this store's own ``data``/
-        ``atom_indices``. ``AVERAGED_SIGMAS_METADATA_FILE`` records every
+        ``atom_indices``. ``AVERAGING_METADATA_FILE`` records every
         scheme's ``averaging_radius`` and ``f_decay``.
 
         The freshly computed arrays are kept in memory (in
@@ -328,7 +375,7 @@ class SegmentStore:
         segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
 
         scheme_names = list(schemes)
-        averaged = smooth_segment_sigmas(
+        averaged = self._smooth_segment_sigmas(
             np.asarray(self.coords),
             np.asarray(self.charges),
             np.asarray(self.areas),
@@ -339,13 +386,13 @@ class SegmentStore:
 
         paths: dict[str, pathlib.Path] = {}
         for name, arr in zip(scheme_names, averaged, strict=True):
-            arr = arr.astype(np.float32)
+            f32_arr = arr.astype(np.float32)
             path = self.storage_dir / f"{name}.npy"
-            np.save(path, arr)
-            self.averaged_sigmas[name] = arr
+            np.save(path, f32_arr)
+            self.averaged_sigmas[name] = f32_arr
             paths[name] = path
 
-        with open(self.storage_dir / AVERAGED_SIGMAS_METADATA_FILE, "w") as f:
+        with open(self.storage_dir / AVERAGING_METADATA_FILE, "w") as f:
             json.dump(
                 {
                     "source_storage_dir": str(self.storage_dir.resolve()),
@@ -359,6 +406,353 @@ class SegmentStore:
             )
 
         return paths
+
+    @staticmethod
+    def _smooth_segment_sigmas(
+        coords: np.ndarray,
+        charges: np.ndarray,
+        areas: np.ndarray,
+        segment_offsets: np.ndarray,
+        schemes: Sequence[tuple[float, float]],
+        num_threads: int = os.cpu_count(),
+    ) -> np.ndarray:
+        """Apply one or more COSMO-SAC-style averaging schemes to every
+        segment, in one threaded pass over the dataset.
+
+        Calls ``_compute_averaged_sigmas`` once per molecule -- each thread
+        handles a disjoint range of whole molecules, so this is safe with no
+        locking. Output row ``i`` (``_smooth_segment_sigmas(...)[i]``) can be
+        passed straight into ``compute_per_atom_sigma_profiles`` /
+        ``compute_per_molecule_sigma_profiles`` as their ``sigmas`` argument,
+        alongside the same ``areas``.
+
+        Parameters
+        ----------
+        coords : np.ndarray
+            Segment centroid coordinates, shape ``(n_segs_total, 3)``.
+        charges : np.ndarray
+            Segment charges, shape ``(n_segs_total,)``.
+        areas : np.ndarray
+            Segment areas, shape ``(n_segs_total,)``.
+        segment_offsets : np.ndarray
+            Start index of each molecule's segments within the segment-level
+            arrays. Must describe *exactly* the molecules present in
+            ``coords`` / ``charges`` / ``areas``: the last molecule's
+            segments are assumed to run to the end of those arrays (see
+            ``compute_per_atom_sigma_profiles`` for the subsetting caveat).
+        schemes : Sequence[tuple[float, float]]
+            ``(averaging_radius, f_decay)`` per scheme, in the order the
+            result rows are returned -- see ``_compute_averaged_sigmas``.
+        num_threads : int, optional
+            Number of threads to use, by default the number of available
+            CPU cores.
+
+        Returns
+        -------
+        np.ndarray, shape (len(schemes), n_segs_total)
+            Averaged charge density (sigma) for every segment under every
+            scheme, in e/Å², row ``i`` matching ``schemes[i]``.
+        """
+        num_segs = len(charges)
+        num_mols = len(segment_offsets)
+        averaged_sigmas = np.empty((len(schemes), num_segs), dtype=np.float64)
+
+        def process_range(start_mol: int, stop_mol: int) -> None:
+            for mol in range(start_mol, stop_mol):
+                start_seg = segment_offsets[mol]
+                stop_seg = segment_offsets[mol + 1] if mol + 1 < num_mols else num_segs
+                if stop_seg == start_seg:
+                    continue
+                averaged_sigmas[:, start_seg:stop_seg] = (
+                    SegmentStore._compute_averaged_sigmas(
+                        coords[start_seg:stop_seg],
+                        charges[start_seg:stop_seg],
+                        areas[start_seg:stop_seg],
+                        schemes,
+                    )
+                )
+
+        chunk_size = (num_mols + num_threads - 1) // num_threads
+        with (
+            threadpoolctl.threadpool_limits(limits=1),
+            ThreadPoolExecutor(max_workers=num_threads) as executor,
+        ):
+            futures = []
+            for thread_id in range(num_threads):
+                start_mol = thread_id * chunk_size
+                if start_mol >= num_mols:
+                    continue
+                stop_mol = min(start_mol + chunk_size, num_mols)
+                futures.append(executor.submit(process_range, start_mol, stop_mol))
+            for future in as_completed(futures):
+                future.result()
+
+        return averaged_sigmas
+
+    @staticmethod
+    def _compute_averaged_sigmas(
+        coords: np.ndarray,
+        charges: np.ndarray,
+        areas: np.ndarray,
+        schemes: Sequence[tuple[float, float]],
+    ) -> np.ndarray:
+        """Distance-weighted average of one molecule's segment charge
+        densities, under one or more averaging schemes at once.
+
+        Implements the COSMO-SAC segment-averaging procedure (Klamt;
+        re-derived in Wang et al. 2007). For every segment ``m``, replaces
+        its raw charge density ``sigma_m = q_m / A_m`` with a weighted
+        average over every segment ``n`` in the same molecule, including
+        itself::
+
+            sigma_avg[m] = sum_n(sigma[n] * w[m, n]) / sum_n(w[m, n])
+            w[m, n] = (r_n^2 * r_av^2 / (r_n^2 + r_av^2))
+                      * exp(-f_decay * d_mn^2 / (r_n^2 + r_av^2))
+
+        where ``r_n = sqrt(A_n / pi)`` is segment ``n``'s own effective
+        radius and ``d_mn`` is the distance between segment centroids ``m``
+        and ``n``. The weight uses the *neighbor* segment's radius ``r_n``,
+        not the segment being averaged -- easy to get backwards, since it
+        makes ``w`` asymmetric even though ``d_mn`` itself is symmetric. In
+        COSMO-RS and COSMO-SAC, this averaged density *is* what "sigma"
+        refers to, not an optional smoothing step on top of the raw one.
+
+        Accepts a list of ``(averaging_radius, f_decay)`` pairs so multiple
+        schemes can share one pairwise-distance computation and each
+        scheme's result is returned as its own row. O(n^2) in the
+        molecule's own segment count, computed densely (no distance
+        cutoff), matching the reference implementation exactly. Always
+        upcast to float64 internally regardless of input dtype, since the
+        store's own arrays are float32 and the Gram-matrix distance
+        expansion loses significant precision at that width.
+
+        The caller must never pass segments from more than one molecule at
+        once (see ``_smooth_segment_sigmas`` for the whole-dataset wrapper).
+
+        Parameters
+        ----------
+        coords : np.ndarray
+            Segment centroid coordinates for one molecule, shape
+            ``(n_segs, 3)``.
+        charges : np.ndarray
+            Segment charges for the same molecule, shape ``(n_segs,)``.
+        areas : np.ndarray
+            Segment areas for the same molecule, shape ``(n_segs,)``.
+        schemes : Sequence[tuple[float, float]]
+            ``(averaging_radius, f_decay)`` per scheme, in the order the
+            result rows are returned. ``averaging_radius`` is the effective
+            averaging radius ``r_av``, in Å; ``f_decay`` is the exponential
+            decay factor. COSMO-SAC 2010 uses ``(sqrt(7.25 / pi), 3.57)``;
+            COSMO-SAC 2002 uses ``(0.8176300195, 1.0)``; Klamt's original
+            COSMO-RS scheme uses ``(0.5, 1.0)``.
+
+        Returns
+        -------
+        np.ndarray, shape (len(schemes), n_segs)
+            Averaged charge density for each segment under each scheme, in
+            e/Å², row ``i`` matching ``schemes[i]``.
+        """
+        coords = coords.astype(np.float64, copy=False)
+        charges = charges.astype(np.float64, copy=False)
+        areas = areas.astype(np.float64, copy=False)
+
+        sigmas = charges / areas
+        squared_norms = np.sum(np.square(coords), axis=1)
+        squared_distances = (
+            squared_norms[:, None] + squared_norms[None, :] - 2.0 * (coords @ coords.T)
+        )
+        np.clip(squared_distances, 0.0, None, out=squared_distances)
+        squared_radii = areas / np.pi
+
+        results = np.empty((len(schemes), len(charges)), dtype=np.float64)
+        for i, (averaging_radius, f_decay) in enumerate(schemes):
+            sums = squared_radii + averaging_radius**2
+            prods = squared_radii * averaging_radius**2
+            weights = np.exp(-f_decay * squared_distances / sums) * prods / sums
+            results[i] = np.sum(weights * sigmas, axis=1) / np.sum(weights, axis=1)
+
+        return results
+
+    @staticmethod
+    def _add_per_atom_area_contributions(
+        atom_areas: np.ndarray,
+        atom_charges: np.ndarray,
+        sigma_profiles: np.ndarray,
+        sigmas: np.ndarray,
+        areas: np.ndarray,
+        atom_indices: np.ndarray,
+        max_abs_sigma: float,
+        num_points: int,
+        shift: bool,
+    ) -> None:
+        """Accumulate a batch of segments' area into per-atom sigma
+        profiles.
+
+        Each segment's charge density is linearly interpolated between the
+        two nearest sigma-profile bins, and its area split between those
+        bins accordingly. Charge densities outside ``[-max_abs_sigma,
+        max_abs_sigma]`` are folded into the nearest boundary point. Each
+        atom's profile ends up summing to 1 (all-zero for atoms with no
+        surface segments).
+
+        Takes each segment's charge density directly, as ``sigmas``, rather
+        than deriving it from ``charge / area`` -- pass raw (``charges /
+        areas``) or an averaged density from ``_smooth_segment_sigmas`` /
+        ``averaged_sigmas``. ``atom_charges`` accumulates ``sigmas *
+        areas``, the true net charge when ``sigmas`` is raw.
+
+        Safe to call concurrently on disjoint segment ranges split on
+        *molecule* boundaries (see ``compute_per_atom_sigma_profiles``):
+        every segment of an atom must land in the same batch, since
+        ``atom_areas``/``atom_charges`` are read back mid-call to
+        normalize.
+
+        Parameters
+        ----------
+        atom_areas : np.ndarray
+            Per-atom areas to accumulate into, of shape ``(num_atoms,)``.
+            Modified in place.
+        atom_charges : np.ndarray
+            Per-atom charges to accumulate into, of shape ``(num_atoms,)``.
+            Modified in place.
+        sigma_profiles : np.ndarray
+            Per-atom sigma profiles to accumulate into, of shape
+            ``(num_atoms, num_points)``. Modified in place.
+        sigmas : np.ndarray
+            Charge density of the surface segments in this batch, in e/Å²
+            -- raw or averaged, at the caller's choice. Not modified in
+            place.
+        areas : np.ndarray
+            Areas of the surface segments in this batch.
+        atom_indices : np.ndarray
+            Global atom index associated with each segment in this batch.
+        max_abs_sigma : float
+            Bounded sigma-profile value at each end of the range: the
+            profile spans ``[-max_abs_sigma, max_abs_sigma]``.
+        num_points : int
+            Number of sigma-profile points. May be even (no point exactly
+            at zero) or odd (a point exactly at zero).
+        shift : bool
+            Whether to shift each atom's profile onto its own mean charge
+            density ``q_a / A_a``, centering it so its first moment is
+            zero.
+
+        Returns
+        -------
+        None
+            ``atom_areas``, ``atom_charges``, and ``sigma_profiles`` are
+            updated in place.
+        """
+        np.add.at(atom_areas, atom_indices, areas)
+        np.add.at(atom_charges, atom_indices, sigmas * areas)
+
+        min_sigma = -max_abs_sigma
+        bin_width = sigma_bin_width(max_abs_sigma, num_points)
+
+        summed_areas = atom_areas[atom_indices]
+
+        if shift:
+            sigmas = sigmas - atom_charges[atom_indices] / summed_areas
+
+        fractional_bins = (sigmas - min_sigma) / bin_width
+
+        points_at_left = np.floor(fractional_bins).astype(int)
+        points_at_right = points_at_left + 1
+
+        normalized_areas = areas / summed_areas
+        contributions_at_left = normalized_areas * (points_at_right - fractional_bins)
+        contributions_at_right = normalized_areas * (fractional_bins - points_at_left)
+
+        np.add.at(
+            sigma_profiles,
+            (atom_indices, points_at_left.clip(0, num_points - 1)),
+            contributions_at_left,
+        )
+        np.add.at(
+            sigma_profiles,
+            (atom_indices, points_at_right.clip(0, num_points - 1)),
+            contributions_at_right,
+        )
+
+    @staticmethod
+    def _add_shifted_profile_contributions(
+        molecule_profiles: np.ndarray,
+        molecule_indices: np.ndarray,
+        atom_areas: np.ndarray,
+        shifts: np.ndarray,
+        sigma_profiles: np.ndarray,
+        max_abs_sigma: float,
+        num_points: int,
+        molecule_num_points: int,
+    ) -> None:
+        """Accumulate a batch of atoms' shifted, area-weighted profiles
+        into per-molecule sigma profiles.
+
+        The molecule grid shares the atom grid's ``bin_width`` (see
+        ``shifted_grid``), so a zero shift places atom column ``k`` at
+        molecule column ``k + grid_offset``, where ``grid_offset =
+        (molecule_num_points - num_points) / 2`` -- an integer when the
+        point counts share parity, a half-integer otherwise. Each row is
+        redistributed with the same two-tap linear interpolation
+        ``_add_per_atom_area_contributions`` uses for a single value, with
+        out-of-range destinations folded into the nearest boundary column.
+
+        Safe to call concurrently on disjoint atom ranges (see
+        ``aggregate_sigma_profiles``) as long as no two calls share a
+        molecule.
+
+        Parameters
+        ----------
+        molecule_profiles : np.ndarray
+            Per-molecule sigma profiles to accumulate into, of shape
+            ``(num_molecules, molecule_num_points)``. Modified in place.
+        molecule_indices : np.ndarray
+            Global molecule index associated with each atom in this batch.
+        atom_areas : np.ndarray
+            Areas of the atoms in this batch.
+        shifts : np.ndarray
+            Amount to shift each atom's profile by, in sigma units
+            (positive shifts move mass toward the positive end of the
+            grid). Pass zeros to accumulate profiles unshifted.
+        sigma_profiles : np.ndarray
+            Per-atom sigma profiles for the atoms in this batch, of shape
+            ``(len(atom_areas), num_points)``.
+        max_abs_sigma : float
+            Bounded sigma-profile value at each end of the range: the
+            per-atom profile spans ``[-max_abs_sigma, max_abs_sigma]``.
+        num_points : int
+            Number of per-atom sigma-profile points.
+        molecule_num_points : int
+            Number of per-molecule sigma-profile points.
+
+        Returns
+        -------
+        None
+            ``molecule_profiles`` is updated in place.
+        """
+        bin_width = sigma_bin_width(max_abs_sigma, num_points)
+        grid_offset = (molecule_num_points - num_points) / 2
+
+        fractional_shift = grid_offset + shifts / bin_width
+        points_shift = np.floor(fractional_shift).astype(np.int64)
+        weight_right = (fractional_shift - points_shift)[:, None]
+
+        contributions = atom_areas[:, None].astype(np.float64) * sigma_profiles.astype(
+            np.float64
+        )
+        points_at_left = np.arange(num_points)[None, :] + points_shift[:, None]
+        points_at_right = points_at_left + 1
+
+        np.add.at(
+            molecule_profiles,
+            (molecule_indices[:, None], points_at_left.clip(0, molecule_num_points - 1)),
+            contributions * (1.0 - weight_right),
+        )
+        np.add.at(
+            molecule_profiles,
+            (molecule_indices[:, None], points_at_right.clip(0, molecule_num_points - 1)),
+            contributions * weight_right,
+        )
 
 
 def sigma_bin_width(max_abs_sigma: float, num_points: int) -> float:
@@ -425,55 +819,6 @@ def shifted_grid(max_abs_sigma: float, num_points: int) -> tuple[float, int]:
         return max_abs_sigma, num_points
     bin_width = sigma_bin_width(max_abs_sigma, num_points)
     return max_abs_sigma + bin_width / 2, num_points + 1
-
-
-AVERAGING_SCHEMES: dict[str, tuple[float, float]] = {
-    "cosmo-rs": (0.5, 1.0),
-    "cosmo-sac-2002": (COSMO_SAC_2002_AVERAGING_RADIUS, COSMO_SAC_2002_F_DECAY),
-    "cosmo-sac-2010": (COSMO_SAC_2010_AVERAGING_RADIUS, COSMO_SAC_2010_F_DECAY),
-}
-
-
-def _reorder_molecule(mol: Chem.Mol) -> Chem.Mol:
-    """Reorder a molecule's atoms by their AtomMapNum property.
-
-    Sorts atoms into ascending AtomMapNum order, so atom ``i`` ends up
-    carrying ``AtomMapNum == i`` (0-based mapping) or ``AtomMapNum == i + 1``
-    (1-based). ``SegmentStore.from_cosmo_files`` relies on this: it uses
-    each segment's COSMO-file atom index directly as its global atom
-    index, which only matches a molecule's atom-mapped SMILES once the
-    atoms are in this order.
-
-    Parameters
-    ----------
-    mol : Chem.Mol
-        Molecule to reorder.
-
-    Returns
-    -------
-    Chem.Mol
-        Reordered molecule.
-
-    Raises
-    ------
-    ValueError
-        If the molecule has bad atom map numbers.
-    """
-    num_atoms = mol.GetNumAtoms()
-    map_nums = {atom.GetAtomMapNum() for atom in mol.GetAtoms()}
-    if map_nums == {0}:
-        return mol
-
-    if map_nums in (set(range(num_atoms)), set(range(1, num_atoms + 1))):
-        new_order = sorted(
-            range(num_atoms), key=lambda i: mol.GetAtomWithIdx(i).GetAtomMapNum()
-        )
-        return Chem.RenumberAtoms(mol, new_order)
-
-    raise ValueError(
-        "Bad atom map numbers: must be all 0, or a 0-based or 1-based "
-        "permutation of the atom indices"
-    )
 
 
 def segment_data_exists(storage_dir: pathlib.Path | str) -> bool:
@@ -543,263 +888,6 @@ def compute_per_molecule_properties(
     return np.add.reduceat(properties, offsets)
 
 
-def compute_averaged_sigmas(
-    coords: np.ndarray,
-    charges: np.ndarray,
-    areas: np.ndarray,
-    schemes: Sequence[tuple[float, float]],
-) -> np.ndarray:
-    """Distance-weighted average of one molecule's segment charge densities,
-    under one or more averaging schemes at once.
-
-    Implements the COSMO-SAC segment-averaging procedure (Klamt; re-derived
-    in Wang et al. 2007). For every segment ``m``, replaces its raw charge
-    density ``sigma_m = q_m / A_m`` with a weighted average over every
-    segment ``n`` in the same molecule, including itself::
-
-        sigma_avg[m] = sum_n(sigma[n] * w[m, n]) / sum_n(w[m, n])
-        w[m, n] = (r_n^2 * r_av^2 / (r_n^2 + r_av^2))
-                  * exp(-f_decay * d_mn^2 / (r_n^2 + r_av^2))
-
-    where ``r_n = sqrt(A_n / pi)`` is segment ``n``'s own effective radius
-    and ``d_mn`` is the distance between segment centroids ``m`` and ``n``.
-    The weight uses the *neighbor* segment's radius ``r_n``, not the
-    segment being averaged -- easy to get backwards, since it makes ``w``
-    asymmetric even though ``d_mn`` itself is symmetric. In COSMO-RS and
-    COSMO-SAC, this averaged density *is* what "sigma" refers to, not an
-    optional smoothing step on top of the raw one.
-
-    Accepts a list of ``(averaging_radius, f_decay)`` pairs so multiple
-    schemes can share one pairwise-distance computation and each scheme's
-    result is returned as its own row. O(n^2) in the molecule's own segment
-    count, computed densely (no distance cutoff), matching the reference
-    implementation exactly. Always upcast to float64 internally regardless
-    of input dtype, since the store's own arrays are float32 and the
-    Gram-matrix distance expansion loses significant precision at that
-    width.
-
-    The caller must never pass segments from more than one molecule at
-    once (see ``smooth_segment_sigmas`` for the whole-dataset wrapper).
-
-    Parameters
-    ----------
-    coords : np.ndarray
-        Segment centroid coordinates for one molecule, shape ``(n_segs, 3)``.
-    charges : np.ndarray
-        Segment charges for the same molecule, shape ``(n_segs,)``.
-    areas : np.ndarray
-        Segment areas for the same molecule, shape ``(n_segs,)``.
-    schemes : Sequence[tuple[float, float]]
-        ``(averaging_radius, f_decay)`` per scheme, in the order the result
-        rows are returned. ``averaging_radius`` is the effective averaging
-        radius ``r_av``, in Å; ``f_decay`` is the exponential decay factor.
-        COSMO-SAC 2010 uses ``(sqrt(7.25 / pi), 3.57)``; COSMO-SAC 2002
-        uses ``(0.8176300195, 1.0)``; Klamt's original COSMO-RS scheme uses
-        ``(0.5, 1.0)``.
-
-    Returns
-    -------
-    np.ndarray, shape (len(schemes), n_segs)
-        Averaged charge density for each segment under each scheme, in
-        e/Å², row ``i`` matching ``schemes[i]``.
-    """
-    coords = coords.astype(np.float64, copy=False)
-    charges = charges.astype(np.float64, copy=False)
-    areas = areas.astype(np.float64, copy=False)
-
-    sigmas = charges / areas
-    squared_norms = np.sum(np.square(coords), axis=1)
-    squared_distances = (
-        squared_norms[:, None] + squared_norms[None, :] - 2.0 * (coords @ coords.T)
-    )
-    np.clip(squared_distances, 0.0, None, out=squared_distances)
-    squared_radii = areas / np.pi
-
-    results = np.empty((len(schemes), len(charges)), dtype=np.float64)
-    for i, (averaging_radius, f_decay) in enumerate(schemes):
-        sums = squared_radii + averaging_radius**2
-        prods = squared_radii * averaging_radius**2
-        weights = np.exp(-f_decay * squared_distances / sums) * prods / sums
-        results[i] = np.sum(weights * sigmas, axis=1) / np.sum(weights, axis=1)
-
-    return results
-
-
-def smooth_segment_sigmas(
-    coords: np.ndarray,
-    charges: np.ndarray,
-    areas: np.ndarray,
-    segment_offsets: np.ndarray,
-    schemes: Sequence[tuple[float, float]],
-    num_threads: int = os.cpu_count(),
-) -> np.ndarray:
-    """Apply one or more COSMO-SAC-style averaging schemes to every segment,
-    in one threaded pass over the dataset.
-
-    Calls ``compute_averaged_sigmas`` once per molecule -- each thread
-    handles a disjoint range of whole molecules, so this is safe with no
-    locking. Output row ``i`` (``smooth_segment_sigmas(...)[i]``) can be
-    passed straight into ``compute_per_atom_sigma_profiles`` /
-    ``compute_per_molecule_sigma_profiles`` as their ``sigmas`` argument,
-    alongside the same ``areas``.
-
-    Parameters
-    ----------
-    coords : np.ndarray
-        Segment centroid coordinates, shape ``(n_segs_total, 3)``.
-    charges : np.ndarray
-        Segment charges, shape ``(n_segs_total,)``.
-    areas : np.ndarray
-        Segment areas, shape ``(n_segs_total,)``.
-    segment_offsets : np.ndarray
-        Start index of each molecule's segments within the segment-level
-        arrays. Must describe *exactly* the molecules present in ``coords``
-        / ``charges`` / ``areas``: the last molecule's segments are assumed
-        to run to the end of those arrays (see
-        ``compute_per_atom_sigma_profiles`` for the subsetting caveat).
-    schemes : Sequence[tuple[float, float]]
-        ``(averaging_radius, f_decay)`` per scheme, in the order the result
-        rows are returned -- see ``compute_averaged_sigmas``.
-    num_threads : int, optional
-        Number of threads to use, by default the number of available CPU
-        cores.
-
-    Returns
-    -------
-    np.ndarray, shape (len(schemes), n_segs_total)
-        Averaged charge density (sigma) for every segment under every
-        scheme, in e/Å², row ``i`` matching ``schemes[i]``.
-    """
-    num_segs = len(charges)
-    num_mols = len(segment_offsets)
-    averaged_sigmas = np.empty((len(schemes), num_segs), dtype=np.float64)
-
-    def process_range(start_mol: int, stop_mol: int) -> None:
-        for mol in range(start_mol, stop_mol):
-            start_seg = segment_offsets[mol]
-            stop_seg = segment_offsets[mol + 1] if mol + 1 < num_mols else num_segs
-            if stop_seg == start_seg:
-                continue
-            averaged_sigmas[:, start_seg:stop_seg] = compute_averaged_sigmas(
-                coords[start_seg:stop_seg],
-                charges[start_seg:stop_seg],
-                areas[start_seg:stop_seg],
-                schemes,
-            )
-
-    chunk_size = (num_mols + num_threads - 1) // num_threads
-    with (
-        threadpoolctl.threadpool_limits(limits=1),
-        ThreadPoolExecutor(max_workers=num_threads) as executor,
-    ):
-        futures = []
-        for thread_id in range(num_threads):
-            start_mol = thread_id * chunk_size
-            if start_mol >= num_mols:
-                continue
-            stop_mol = min(start_mol + chunk_size, num_mols)
-            futures.append(executor.submit(process_range, start_mol, stop_mol))
-        for future in as_completed(futures):
-            future.result()
-
-    return averaged_sigmas
-
-
-def add_per_atom_area_contributions(
-    atom_areas: np.ndarray,
-    atom_charges: np.ndarray,
-    sigma_profiles: np.ndarray,
-    sigmas: np.ndarray,
-    areas: np.ndarray,
-    atom_indices: np.ndarray,
-    max_abs_sigma: float,
-    num_points: int,
-    shift: bool,
-) -> None:
-    """Accumulate a batch of segments' area into per-atom sigma profiles.
-
-    Each segment's charge density is linearly interpolated between the two
-    nearest sigma-profile bins, and its area split between those bins
-    accordingly. Charge densities outside ``[-max_abs_sigma, max_abs_sigma]``
-    are folded into the nearest boundary point. Each atom's profile ends up
-    summing to 1 (all-zero for atoms with no surface segments).
-
-    Takes each segment's charge density directly, as ``sigmas``, rather
-    than deriving it from ``charge / area`` -- pass raw (``charges /
-    areas``) or an averaged density from ``smooth_segment_sigmas`` /
-    ``SegmentStore.averaged_sigmas``. ``atom_charges`` accumulates ``sigmas
-    * areas``, the true net charge when ``sigmas`` is raw.
-
-    Safe to call concurrently on disjoint segment ranges split on
-    *molecule* boundaries (see ``compute_per_atom_sigma_profiles``): every
-    segment of an atom must land in the same batch, since
-    ``atom_areas``/``atom_charges`` are read back mid-call to normalize.
-
-    Parameters
-    ----------
-    atom_areas : np.ndarray
-        Per-atom areas to accumulate into, of shape ``(num_atoms,)``.
-        Modified in place.
-    atom_charges : np.ndarray
-        Per-atom charges to accumulate into, of shape ``(num_atoms,)``.
-        Modified in place.
-    sigma_profiles : np.ndarray
-        Per-atom sigma profiles to accumulate into, of shape
-        ``(num_atoms, num_points)``. Modified in place.
-    sigmas : np.ndarray
-        Charge density of the surface segments in this batch, in e/Å² --
-        raw or averaged, at the caller's choice. Not modified in place.
-    areas : np.ndarray
-        Areas of the surface segments in this batch.
-    atom_indices : np.ndarray
-        Global atom index associated with each segment in this batch.
-    max_abs_sigma : float
-        Bounded sigma-profile value at each end of the range: the profile
-        spans ``[-max_abs_sigma, max_abs_sigma]``.
-    num_points : int
-        Number of sigma-profile points. May be even (no point exactly at
-        zero) or odd (a point exactly at zero).
-    shift : bool
-        Whether to shift each atom's profile onto its own mean charge
-        density ``q_a / A_a``, centering it so its first moment is zero.
-
-    Returns
-    -------
-    None
-        ``atom_areas``, ``atom_charges``, and ``sigma_profiles`` are updated in place.
-    """
-    np.add.at(atom_areas, atom_indices, areas)
-    np.add.at(atom_charges, atom_indices, sigmas * areas)
-
-    min_sigma = -max_abs_sigma
-    bin_width = sigma_bin_width(max_abs_sigma, num_points)
-
-    summed_areas = atom_areas[atom_indices]
-
-    if shift:
-        sigmas = sigmas - atom_charges[atom_indices] / summed_areas
-
-    fractional_bins = (sigmas - min_sigma) / bin_width
-
-    points_at_left = np.floor(fractional_bins).astype(int)
-    points_at_right = points_at_left + 1
-
-    normalized_areas = areas / summed_areas
-    contributions_at_left = normalized_areas * (points_at_right - fractional_bins)
-    contributions_at_right = normalized_areas * (fractional_bins - points_at_left)
-
-    np.add.at(
-        sigma_profiles,
-        (atom_indices, points_at_left.clip(0, num_points - 1)),
-        contributions_at_left,
-    )
-    np.add.at(
-        sigma_profiles,
-        (atom_indices, points_at_right.clip(0, num_points - 1)),
-        contributions_at_right,
-    )
-
-
 def compute_per_atom_sigma_profiles(
     sigmas: np.ndarray,
     areas: np.ndarray,
@@ -815,8 +903,8 @@ def compute_per_atom_sigma_profiles(
 
     Takes each segment's charge density directly, as ``sigmas`` -- pass
     raw ``charges / areas``, or an averaged density from
-    ``smooth_segment_sigmas`` / ``SegmentStore.averaged_sigmas`` (see
-    ``add_per_atom_area_contributions``).
+    ``SegmentStore._smooth_segment_sigmas`` / ``SegmentStore.averaged_sigmas``
+    (see ``SegmentStore._add_per_atom_area_contributions``).
 
     ``max_abs_sigma``/``num_points`` describe the unshifted grid. With
     ``shift=True``, profiles are actually binned onto
@@ -897,7 +985,7 @@ def compute_per_atom_sigma_profiles(
             stop_seg = segment_offsets[stop_mol] if stop_mol < num_mols else num_segs
             futures.append(
                 executor.submit(
-                    add_per_atom_area_contributions,
+                    SegmentStore._add_per_atom_area_contributions,
                     atom_areas,
                     atom_charges,
                     sigma_profiles,
@@ -912,86 +1000,6 @@ def compute_per_atom_sigma_profiles(
         for future in as_completed(futures):
             future.result()
     return atom_areas, atom_charges, sigma_profiles
-
-
-def add_shifted_profile_contributions(
-    molecule_profiles: np.ndarray,
-    molecule_indices: np.ndarray,
-    atom_areas: np.ndarray,
-    shifts: np.ndarray,
-    sigma_profiles: np.ndarray,
-    max_abs_sigma: float,
-    num_points: int,
-    molecule_num_points: int,
-) -> None:
-    """Accumulate a batch of atoms' shifted, area-weighted profiles into
-    per-molecule sigma profiles.
-
-    The molecule grid shares the atom grid's ``bin_width`` (see
-    ``shifted_grid``), so a zero shift places atom column ``k`` at
-    molecule column ``k + grid_offset``, where ``grid_offset =
-    (molecule_num_points - num_points) / 2`` -- an integer when the point
-    counts share parity, a half-integer otherwise. Each row is
-    redistributed with the same two-tap linear interpolation
-    ``add_per_atom_area_contributions`` uses for a single value, with
-    out-of-range destinations folded into the nearest boundary column.
-
-    Safe to call concurrently on disjoint atom ranges (see
-    ``aggregate_sigma_profiles``) as long as no two calls share a
-    molecule.
-
-    Parameters
-    ----------
-    molecule_profiles : np.ndarray
-        Per-molecule sigma profiles to accumulate into, of shape
-        ``(num_molecules, molecule_num_points)``. Modified in place.
-    molecule_indices : np.ndarray
-        Global molecule index associated with each atom in this batch.
-    atom_areas : np.ndarray
-        Areas of the atoms in this batch.
-    shifts : np.ndarray
-        Amount to shift each atom's profile by, in sigma units (positive
-        shifts move mass toward the positive end of the grid). Pass zeros
-        to accumulate profiles unshifted.
-    sigma_profiles : np.ndarray
-        Per-atom sigma profiles for the atoms in this batch, of shape
-        ``(len(atom_areas), num_points)``.
-    max_abs_sigma : float
-        Bounded sigma-profile value at each end of the range: the per-atom
-        profile spans ``[-max_abs_sigma, max_abs_sigma]``.
-    num_points : int
-        Number of per-atom sigma-profile points.
-    molecule_num_points : int
-        Number of per-molecule sigma-profile points.
-
-    Returns
-    -------
-    None
-        ``molecule_profiles`` is updated in place.
-    """
-    bin_width = sigma_bin_width(max_abs_sigma, num_points)
-    grid_offset = (molecule_num_points - num_points) / 2
-
-    fractional_shift = grid_offset + shifts / bin_width
-    points_shift = np.floor(fractional_shift).astype(np.int64)
-    weight_right = (fractional_shift - points_shift)[:, None]
-
-    contributions = atom_areas[:, None].astype(np.float64) * sigma_profiles.astype(
-        np.float64
-    )
-    points_at_left = np.arange(num_points)[None, :] + points_shift[:, None]
-    points_at_right = points_at_left + 1
-
-    np.add.at(
-        molecule_profiles,
-        (molecule_indices[:, None], points_at_left.clip(0, molecule_num_points - 1)),
-        contributions * (1.0 - weight_right),
-    )
-    np.add.at(
-        molecule_profiles,
-        (molecule_indices[:, None], points_at_right.clip(0, molecule_num_points - 1)),
-        contributions * weight_right,
-    )
 
 
 def compute_per_molecule_sigma_profiles(
@@ -1093,7 +1101,7 @@ def aggregate_sigma_profiles(
     must first be shifted back by that same amount before summing, since a
     molecule has one shared sigma axis, not one per atom; the shift is
     redistributed by linear interpolation (see
-    ``add_shifted_profile_contributions``). ``shift`` here undoes the
+    ``SegmentStore._add_shifted_profile_contributions``). ``shift`` here undoes the
     centering ``compute_per_atom_sigma_profiles`` applies, so pass
     ``shift=True`` exactly when the profiles were built with
     ``shift=True`` there.
@@ -1178,7 +1186,7 @@ def aggregate_sigma_profiles(
             stop_atom = atom_offsets[stop_mol] if stop_mol < num_mols else num_atoms
             futures.append(
                 executor.submit(
-                    add_shifted_profile_contributions,
+                    SegmentStore._add_shifted_profile_contributions,
                     molecule_profiles,
                     molecule_indices[start_atom:stop_atom],
                     atom_areas[start_atom:stop_atom],
@@ -1330,7 +1338,9 @@ if __name__ == "__main__":
             cosmo_files_dir, smiles_to_filename, storage_dir, num_threads=num_threads
         )
         elapsed_time = time.time() - start_time
-        print(f"Time to store segment data and averaged sigmas: {elapsed_time:.2f} seconds")
+        print(
+            f"Time to store segment data and averaged sigmas: {elapsed_time:.2f} seconds"
+        )
     else:
         print("Segment data already exists.")
 
