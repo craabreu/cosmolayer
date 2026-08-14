@@ -2,8 +2,8 @@
 molecule properties.
 
 Turns a mapping of SMILES to ``.cosmo`` files into a compact,
-memory-mappable on-disk store (``store_segment_data`` / ``read_segment_data``):
-parallel segment-indexed arrays of coordinates, charges, and areas, a
+memory-mappable on-disk store (``SegmentStore``): parallel segment-indexed
+arrays of coordinates, charges, and areas, a
 global atom index per segment, and a ``molecules.parquet`` table of
 per-molecule offsets and cavity volume. Also provides COSMO-SAC-style
 segment averaging (``store_averaged_sigmas`` / ``load_averaged_sigmas``)
@@ -46,6 +46,169 @@ AVERAGED_SIGMAS_METADATA_FILE: pathlib.Path = pathlib.Path(
 
 DEFAULT_MAX_ABS_SIGMA = 0.0255
 DEFAULT_NUM_POINTS = 52
+
+
+class SegmentStore:
+    """A segment-data store: memory-mapped segment arrays plus the
+    per-molecule ``molecules_df`` table describing them.
+
+    Parameters
+    ----------
+    storage_dir : pathlib.Path
+        Directory holding a store built by ``from_cosmo_files`` (i.e. for
+        which ``segment_data_exists`` is True).
+
+    Attributes
+    ----------
+    storage_dir : pathlib.Path
+        Directory this store was loaded from.
+    data : np.ndarray
+        Memory-mapped ``(n_segs_total, 5)`` array, columns
+        ``[x, y, z, charge, area]``.
+    atom_indices : np.ndarray
+        Memory-mapped ``(n_segs_total,)`` global atom index of each segment.
+    molecules_df : pd.DataFrame
+        One row per molecule, with columns ``smiles``, ``segment_offsets``,
+        ``atom_offsets``, ``num_atoms``, and ``volume``.
+    coords, charges, areas : np.ndarray
+        Views into ``data``'s columns.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``storage_dir`` doesn't hold a complete store.
+    """
+
+    def __init__(self, storage_dir: pathlib.Path):
+        storage_dir = pathlib.Path(storage_dir)
+        if not segment_data_exists(storage_dir):
+            raise FileNotFoundError(
+                f"No segment-data store in {storage_dir} (missing one of "
+                f"{DATA_FILE}, {ATOM_INDICES_FILE}, {MOLECULES_FILE}, "
+                f"{METADATA_FILE}; see SegmentStore.from_cosmo_files)."
+            )
+        self.storage_dir = storage_dir
+        self.data = np.load(self.storage_dir / DATA_FILE, mmap_mode="r")
+        self.atom_indices = np.load(self.storage_dir / ATOM_INDICES_FILE, mmap_mode="r")
+        self.molecules_df = pd.read_parquet(self.storage_dir / MOLECULES_FILE)
+        self.coords = self.data[:, :3]
+        self.charges = self.data[:, 3]
+        self.areas = self.data[:, 4]
+
+    @classmethod
+    def from_cosmo_files(
+        cls,
+        cosmo_files_dir: pathlib.Path,
+        smiles_to_filename: dict[str, str],
+        storage_dir: pathlib.Path,
+        ignore_errors: bool = False,
+    ) -> "SegmentStore":
+        """Parse COSMO files and persist their segment data to a directory.
+
+        Writes ``data.npy`` (columns ``[x, y, z, charge, area]``),
+        ``atom_indices.npy`` (global atom index per segment), a
+        ``molecules.parquet`` table (columns ``smiles`` [RDKit canonical],
+        ``segment_offsets``, ``atom_offsets``, ``num_atoms``, ``volume``), and
+        a ``metadata.json`` (``num_molecules``, ``num_cosmo_parse_failures``).
+        A molecule's atoms are numbered by ``segment_df["atom"]`` (the COSMO
+        file's own 0-based order) directly, which is why each SMILES's atom
+        count is checked against its COSMO file and, if atom-mapped, reordered
+        via ``_reorder_molecule`` onto that same indexing.
+
+        Parameters
+        ----------
+        cosmo_files_dir : pathlib.Path
+            Directory containing the ``.cosmo`` files named by
+            ``smiles_to_filename``'s values.
+        smiles_to_filename : dict[str, str]
+            SMILES string -> ``.cosmo`` filename (relative to
+            ``cosmo_files_dir``), one entry per molecule to store.
+        storage_dir : pathlib.Path
+            Destination directory for the output files. Created if missing.
+        ignore_errors : bool, optional
+            If True, a molecule that fails to parse or validate is skipped
+            (and counted in ``num_cosmo_parse_failures``) instead of raising.
+            By default False.
+
+        Raises
+        ------
+        ValueError
+            If a molecule's SMILES or COSMO file cannot be parsed and
+            ``ignore_errors`` is False, or if no molecule could be stored.
+        """
+        data_chunks, atoms_chunks = [], []
+        segment_offsets, segment_offset = [], 0
+        atom_offsets, atom_offset = [], 0
+        num_atoms = []
+        volumes = []
+        successful_molecules = []
+        num_cosmo_parse_failures = 0
+
+        for smi, filename in tqdm(
+            smiles_to_filename.items(), desc="Processing COSMO files"
+        ):
+            try:
+                _, atom_df, segment_df, volume = parser.parse_cosmo_file(
+                    (cosmo_files_dir / filename).read_text()
+                )
+                mol = Chem.MolFromSmiles(smi)
+                if mol is None:
+                    raise ValueError(f"RDKit could not parse SMILES {smi!r}")
+                if mol.GetNumAtoms() != len(atom_df):
+                    raise ValueError(
+                        f"SMILES {smi!r} has {mol.GetNumAtoms()} atoms, but "
+                        f"{filename} has {len(atom_df)}"
+                    )
+                mol = _reorder_molecule(mol)
+            except (ValueError, AssertionError) as e:
+                if ignore_errors:
+                    tqdm.write(f"Error parsing {smi}->{filename}: {e}")
+                    num_cosmo_parse_failures += 1
+                    continue
+                else:
+                    raise e
+
+            data_chunks.append(
+                segment_df[["x", "y", "z", "charge", "area"]].values.astype("float32")
+            )
+            atoms_chunks.append(segment_df["atom"].values.astype("int64") + atom_offset)
+
+            segment_offsets.append(segment_offset)
+            segment_offset += len(segment_df)
+            atom_offsets.append(atom_offset)
+            atom_offset += len(atom_df)
+            num_atoms.append(len(atom_df))
+            volumes.append(volume)
+            successful_molecules.append((Chem.MolToSmiles(mol), mol))
+
+        if not successful_molecules:
+            raise ValueError("No COSMO files could be parsed successfully.")
+
+        storage_dir = pathlib.Path(storage_dir)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+
+        np.save(storage_dir / DATA_FILE, np.concatenate(data_chunks, axis=0))
+        np.save(storage_dir / ATOM_INDICES_FILE, np.concatenate(atoms_chunks))
+
+        molecules = pd.DataFrame(
+            {
+                "smiles": [smi for smi, _ in successful_molecules],
+                "segment_offsets": np.array(segment_offsets, dtype="int64"),
+                "atom_offsets": np.array(atom_offsets, dtype="int64"),
+                "num_atoms": np.array(num_atoms, dtype="int64"),
+                "volume": np.array(volumes, dtype="float64"),
+            }
+        )
+        molecules.to_parquet(storage_dir / MOLECULES_FILE, index=False)
+
+        metadata = {
+            "num_molecules": len(successful_molecules),
+            "num_cosmo_parse_failures": num_cosmo_parse_failures,
+        }
+        with open(storage_dir / METADATA_FILE, "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        return cls(storage_dir)
 
 
 def sigma_bin_width(max_abs_sigma: float, num_points: int) -> float:
@@ -126,10 +289,10 @@ def _reorder_molecule(mol: Chem.Mol) -> Chem.Mol:
 
     Sorts atoms into ascending AtomMapNum order, so atom ``i`` ends up
     carrying ``AtomMapNum == i`` (0-based mapping) or ``AtomMapNum == i + 1``
-    (1-based). ``store_segment_data`` relies on this: it uses each
-    segment's COSMO-file atom index directly as its global atom index,
-    which only matches a molecule's atom-mapped SMILES once the atoms are
-    in this order.
+    (1-based). ``SegmentStore.from_cosmo_files`` relies on this: it uses
+    each segment's COSMO-file atom index directly as its global atom
+    index, which only matches a molecule's atom-mapped SMILES once the
+    atoms are in this order.
 
     Parameters
     ----------
@@ -163,120 +326,6 @@ def _reorder_molecule(mol: Chem.Mol) -> Chem.Mol:
     )
 
 
-def store_segment_data(
-    cosmo_files_dir: pathlib.Path,
-    smiles_to_filename: dict[str, str],
-    storage_dir: pathlib.Path,
-    ignore_errors: bool = False,
-) -> None:
-    """Parse COSMO files and persist their segment data to a directory.
-
-    Writes ``data.npy`` (columns ``[x, y, z, charge, area]``),
-    ``atom_indices.npy`` (global atom index per segment), a
-    ``molecules.parquet`` table (columns ``smiles`` [RDKit canonical],
-    ``segment_offsets``, ``atom_offsets``, ``num_atoms``, ``volume``), and
-    a ``metadata.json`` (``num_molecules``, ``num_cosmo_parse_failures``).
-    A molecule's atoms are numbered by ``segment_df["atom"]`` (the COSMO
-    file's own 0-based order) directly, which is why each SMILES's atom
-    count is checked against its COSMO file and, if atom-mapped, reordered
-    via ``_reorder_molecule`` onto that same indexing.
-
-    Parameters
-    ----------
-    cosmo_files_dir : pathlib.Path
-        Directory containing the ``.cosmo`` files named by
-        ``smiles_to_filename``'s values.
-    smiles_to_filename : dict[str, str]
-        SMILES string -> ``.cosmo`` filename (relative to
-        ``cosmo_files_dir``), one entry per molecule to store.
-    storage_dir : pathlib.Path
-        Destination directory for the output files. Created if missing.
-    ignore_errors : bool, optional
-        If True, a molecule that fails to parse or validate is skipped
-        (and counted in ``num_cosmo_parse_failures``) instead of raising.
-        By default False.
-
-    Raises
-    ------
-    ValueError
-        If a molecule's SMILES or COSMO file cannot be parsed and
-        ``ignore_errors`` is False, or if no molecule could be stored.
-    """
-    data_chunks, atoms_chunks = [], []
-    segment_offsets, segment_offset = [], 0
-    atom_offsets, atom_offset = [], 0
-    num_atoms = []
-    volumes = []
-    successful_molecules = []
-    num_cosmo_parse_failures = 0
-
-    for smi, filename in tqdm(
-        smiles_to_filename.items(), desc="Processing COSMO files"
-    ):
-        try:
-            _, atom_df, segment_df, volume = parser.parse_cosmo_file(
-                (cosmo_files_dir / filename).read_text()
-            )
-            mol = Chem.MolFromSmiles(smi)
-            if mol is None:
-                raise ValueError(f"RDKit could not parse SMILES {smi!r}")
-            if mol.GetNumAtoms() != len(atom_df):
-                raise ValueError(
-                    f"SMILES {smi!r} has {mol.GetNumAtoms()} atoms, but "
-                    f"{filename} has {len(atom_df)}"
-                )
-            mol = _reorder_molecule(mol)
-        except (ValueError, AssertionError) as e:
-            if ignore_errors:
-                tqdm.write(f"Error parsing {smi}->{filename}: {e}")
-                num_cosmo_parse_failures += 1
-                continue
-            else:
-                raise e
-
-        data_chunks.append(
-            segment_df[["x", "y", "z", "charge", "area"]].values.astype("float32")
-        )
-        atoms_chunks.append(
-            segment_df["atom"].values.astype("int64") + atom_offset
-        )
-
-        segment_offsets.append(segment_offset)
-        segment_offset += len(segment_df)
-        atom_offsets.append(atom_offset)
-        atom_offset += len(atom_df)
-        num_atoms.append(len(atom_df))
-        volumes.append(volume)
-        successful_molecules.append((Chem.MolToSmiles(mol), mol))
-
-    if not successful_molecules:
-        raise ValueError("No COSMO files could be parsed successfully.")
-
-    storage_dir = pathlib.Path(storage_dir)
-    storage_dir.mkdir(parents=True, exist_ok=True)
-
-    np.save(storage_dir / DATA_FILE, np.concatenate(data_chunks, axis=0))
-    np.save(storage_dir / ATOM_INDICES_FILE, np.concatenate(atoms_chunks))
-
-    molecules = pd.DataFrame(
-        {
-            "smiles": [smi for smi, _ in successful_molecules],
-            "segment_offsets": np.array(segment_offsets, dtype="int64"),
-            "atom_offsets": np.array(atom_offsets, dtype="int64"),
-            "num_atoms": np.array(num_atoms, dtype="int64"),
-            "volume": np.array(volumes, dtype="float64"),
-        }
-    )
-    molecules.to_parquet(storage_dir / MOLECULES_FILE, index=False)
-
-    metadata = {
-        "num_molecules": len(successful_molecules),
-        "num_cosmo_parse_failures": num_cosmo_parse_failures,
-    }
-    with open(storage_dir / METADATA_FILE, "w") as f:
-        json.dump(metadata, f, indent=2)
-
-
 def segment_data_exists(storage_dir: pathlib.Path | str) -> bool:
     """Check if the segment data exists in a directory.
 
@@ -295,40 +344,6 @@ def segment_data_exists(storage_dir: pathlib.Path | str) -> bool:
         (storage_dir / file).exists()
         for file in [DATA_FILE, ATOM_INDICES_FILE, MOLECULES_FILE, METADATA_FILE]
     )
-
-
-def read_segment_data(
-    storage_dir: pathlib.Path | str,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, pd.DataFrame]:
-    """Read the segment data from a directory.
-
-    Parameters
-    ----------
-    storage_dir : pathlib.Path | str
-        Directory containing the segment data.
-
-    Returns
-    -------
-    coords : np.ndarray
-        Memory-mapped ``(n_segs_total, 3)`` coordinates of each segment.
-    charges : np.ndarray
-        Memory-mapped ``(n_segs_total,)`` charges of each segment.
-    areas : np.ndarray
-        Memory-mapped ``(n_segs_total,)`` areas of each segment.
-    atom_indices : np.ndarray
-        Memory-mapped ``(n_segs_total,)`` global atom index of each segment.
-    molecules_df : pd.DataFrame
-        One row per molecule, with columns ``smiles``, ``segment_offsets``,
-        ``atom_offsets``, ``num_atoms``, and ``volume``.
-    """
-    storage_dir = pathlib.Path(storage_dir)
-    data = np.load(storage_dir / DATA_FILE, mmap_mode="r")
-    atom_indices = np.load(storage_dir / ATOM_INDICES_FILE, mmap_mode="r")
-    molecules_df = pd.read_parquet(storage_dir / MOLECULES_FILE)
-    coords = data[:, :3]
-    charges = data[:, 3]
-    areas = data[:, 4]
-    return coords, charges, areas, atom_indices, molecules_df
 
 
 def compute_per_atom_properties(
@@ -579,14 +594,14 @@ def store_averaged_sigmas(
         order as ``schemes``.
     """
     storage_dir = pathlib.Path(storage_dir)
-    coords, charges, areas, _atom_indices, molecules_df = read_segment_data(storage_dir)
-    segment_offsets = molecules_df["segment_offsets"].values.astype("int64")
+    store = SegmentStore(storage_dir)
+    segment_offsets = store.molecules_df["segment_offsets"].values.astype("int64")
 
     scheme_names = list(schemes)
     averaged = smooth_segment_sigmas(
-        np.asarray(coords),
-        np.asarray(charges),
-        np.asarray(areas),
+        np.asarray(store.coords),
+        np.asarray(store.charges),
+        np.asarray(store.areas),
         segment_offsets,
         [schemes[name] for name in scheme_names],
         num_threads=num_threads,
@@ -620,7 +635,7 @@ def load_averaged_sigmas(
     """Load one scheme's averaged sigmas from a segment-data store.
 
     Reads the ``<scheme_name>.npy`` file ``store_averaged_sigmas`` wrote
-    for that scheme, memory-mapped like ``read_segment_data``'s arrays.
+    for that scheme, memory-mapped like ``SegmentStore``'s own arrays.
 
     Parameters
     ----------
@@ -826,7 +841,9 @@ def compute_per_atom_sigma_profiles(
         each profile also has zero first moment (up to folding error).
     """
     bin_max_abs_sigma, bin_num_points = (
-        shifted_grid(max_abs_sigma, num_points) if shift else (max_abs_sigma, num_points)
+        shifted_grid(max_abs_sigma, num_points)
+        if shift
+        else (max_abs_sigma, num_points)
     )
     atom_areas = np.zeros(num_atoms, dtype=np.float32)
     atom_charges = np.zeros(num_atoms, dtype=np.float32)
@@ -1102,7 +1119,9 @@ def aggregate_sigma_profiles(
         instead.
     """
     atom_max_abs_sigma, atom_num_points = (
-        shifted_grid(max_abs_sigma, num_points) if shift else (max_abs_sigma, num_points)
+        shifted_grid(max_abs_sigma, num_points)
+        if shift
+        else (max_abs_sigma, num_points)
     )
     num_atoms = len(atom_areas)
     num_mols = len(atom_offsets)
@@ -1230,8 +1249,8 @@ if __name__ == "__main__":
         help=(
             "Path to a JSON file mapping each SMILES string to its .cosmo "
             "filename (relative to --cosmo-files-dir); passed straight to "
-            "store_segment_data. Required only if --storage-dir doesn't "
-            "already hold a built store."
+            "SegmentStore.from_cosmo_files. Required only if --storage-dir "
+            "doesn't already hold a built store."
         ),
     )
     arg_parser.add_argument(
@@ -1275,7 +1294,7 @@ if __name__ == "__main__":
         cosmo_files_dir = pathlib.Path(args.cosmo_files_dir)
         with open(args.smiles_to_filename) as f:
             smiles_to_filename = json.load(f)
-        store_segment_data(cosmo_files_dir, smiles_to_filename, storage_dir)
+        SegmentStore.from_cosmo_files(cosmo_files_dir, smiles_to_filename, storage_dir)
         print("Computing averaged sigmas...")
         start_time = time.time()
         store_averaged_sigmas(storage_dir, num_threads=num_threads)
@@ -1285,7 +1304,14 @@ if __name__ == "__main__":
         print("Segment data already exists.")
 
     start_time = time.time()
-    coords, charges, areas, atom_indices, molecules_df = read_segment_data(storage_dir)
+    store = SegmentStore(storage_dir)
+    coords, charges, areas, atom_indices, molecules_df = (
+        store.coords,
+        store.charges,
+        store.areas,
+        store.atom_indices,
+        store.molecules_df,
+    )
 
     segment_offsets = molecules_df["segment_offsets"].values.astype("int64")
     elapsed_time = time.time() - start_time
