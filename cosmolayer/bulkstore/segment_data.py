@@ -407,6 +407,83 @@ class SegmentStore:
 
         return paths
 
+    def compute_atom_sigma_profiles(
+        self,
+        scheme: str | None = None,
+        max_abs_sigma: float = DEFAULT_MAX_ABS_SIGMA,
+        num_points: int = DEFAULT_NUM_POINTS,
+        num_threads: int = os.cpu_count(),
+        shift: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Compute this store's per-atom sigma profiles.
+
+        A thin wrapper around ``compute_per_atom_sigma_profiles`` that
+        supplies this store's own ``areas``/``atom_indices``/
+        ``segment_offsets``/``num_atoms``, and resolves ``sigmas`` from
+        ``scheme``.
+
+        Parameters
+        ----------
+        scheme : str | None, optional
+            Which charge density to bin: None (default) uses raw
+            ``charges / areas``; a scheme name uses
+            ``self.averaged_sigmas[scheme]`` (see
+            ``compute_averaged_sigmas``).
+        max_abs_sigma : float, optional
+            Bounded sigma-profile value at each end of the unshifted
+            range, by default ``DEFAULT_MAX_ABS_SIGMA``. With
+            ``shift=True``, profiles are actually binned onto
+            ``shifted_grid(max_abs_sigma, num_points)`` instead.
+        num_points : int, optional
+            Number of sigma-profile points of the unshifted grid, by
+            default ``DEFAULT_NUM_POINTS``.
+        num_threads : int, optional
+            Number of threads to use, by default the number of available
+            CPU cores.
+        shift : bool, optional
+            Whether to shift each atom's profile onto its own mean charge
+            density, centering it, by default False.
+
+        Returns
+        -------
+        atom_areas : np.ndarray, shape (num_atoms,)
+            Per-atom areas.
+        atom_charges : np.ndarray, shape (num_atoms,)
+            Per-atom charges -- the true net charge when ``scheme`` is
+            None, or a smoothed "equivalent charge" when it isn't.
+        sigma_profiles : np.ndarray, shape (num_atoms, num_points or shifted_grid(...)[1])
+            Per-atom area-fraction profiles (see
+            ``compute_per_atom_sigma_profiles``).
+
+        Raises
+        ------
+        KeyError
+            If ``scheme`` is given but not in ``self.averaged_sigmas``.
+        """
+        if scheme is None:
+            sigmas = np.asarray(self.charges) / np.asarray(self.areas)
+        else:
+            if scheme not in self.averaged_sigmas:
+                raise KeyError(
+                    f"No averaged sigmas for scheme {scheme!r} in this "
+                    f"store. Known schemes: {sorted(self.averaged_sigmas)}."
+                )
+            sigmas = np.asarray(self.averaged_sigmas[scheme])
+
+        segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
+        total_num_atoms = int(self.molecules_df["num_atoms"].sum())
+        return compute_per_atom_sigma_profiles(
+            sigmas,
+            np.asarray(self.areas),
+            np.asarray(self.atom_indices),
+            segment_offsets,
+            total_num_atoms,
+            max_abs_sigma=max_abs_sigma,
+            num_points=num_points,
+            num_threads=num_threads,
+            shift=shift,
+        )
+
     @staticmethod
     def _smooth_segment_sigmas(
         coords: np.ndarray,
@@ -1393,12 +1470,8 @@ if __name__ == "__main__":
         print(f"Using averaged sigmas for scheme {sigma_scheme!r}...")
         sigmas = np.asarray(store.averaged_sigmas[sigma_scheme])
     start_time = time.time()
-    new_atom_areas, new_atom_charges, sigma_profiles = compute_per_atom_sigma_profiles(
-        sigmas,
-        areas,
-        atom_indices,
-        segment_offsets,
-        total_num_atoms,
+    new_atom_areas, new_atom_charges, sigma_profiles = store.compute_atom_sigma_profiles(
+        scheme=sigma_scheme,
         max_abs_sigma=max_abs_sigma,
         num_points=num_points,
         num_threads=num_threads,
@@ -1500,12 +1573,8 @@ if __name__ == "__main__":
         "Molecule sigma profiles must be on the unshifted grid"
     )
 
-    _, _, unshifted_profiles = compute_per_atom_sigma_profiles(
-        sigmas,
-        areas,
-        atom_indices,
-        segment_offsets,
-        total_num_atoms,
+    _, _, unshifted_profiles = store.compute_atom_sigma_profiles(
+        scheme=sigma_scheme,
         max_abs_sigma=max_abs_sigma,
         num_points=num_points,
         num_threads=num_threads,
