@@ -522,7 +522,7 @@ class SegmentStore:
         out-of-range destinations folded into the nearest boundary column.
 
         Safe to call concurrently on disjoint atom ranges (see
-        ``aggregate_sigma_profiles``) as long as no two calls share a
+        ``BulkSigmaProfiles.aggregate``) as long as no two calls share a
         molecule.
 
         Parameters
@@ -772,13 +772,12 @@ class SegmentStore:
         num_points: int = DEFAULT_NUM_POINTS,
         num_threads: int = os.cpu_count(),
         shift: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> "BulkSigmaProfiles":
         """Compute this store's per-atom sigma profiles.
 
-        A thin wrapper around ``compute_per_atom_sigma_profiles`` that
-        supplies this store's own ``areas``/``atom_indices``/
-        ``segment_offsets``/``num_atoms``, and resolves ``sigmas`` from
-        ``scheme``.
+        A thin wrapper around ``BulkSigmaProfiles`` that supplies this
+        store's own ``areas``/``atom_indices``/``segment_offsets``/
+        ``num_atoms``, and resolves ``sigmas`` from ``scheme``.
 
         Parameters
         ----------
@@ -804,15 +803,12 @@ class SegmentStore:
 
         Returns
         -------
-        atom_areas : np.ndarray, shape (num_atoms,)
-            Per-atom areas.
-        atom_charges : np.ndarray, shape (num_atoms,)
-            Per-atom charges -- the true net charge when ``scheme`` is
-            None, or a smoothed "equivalent charge" when it isn't.
-        sigma_profiles : np.ndarray
-            Per-atom area-fraction profiles, shape ``(num_atoms, num_points)``
-            or ``(num_atoms, shifted_grid(...)[1])`` (see
-            ``compute_per_atom_sigma_profiles``).
+        BulkSigmaProfiles
+            Atom-level (``atom_offset`` derived, so the result can be
+            reassembled into molecule-level profiles via its own
+            ``aggregate`` method). ``charges`` is the true net charge when
+            ``scheme`` is None, or a smoothed "equivalent charge" when it
+            isn't.
 
         Raises
         ------
@@ -831,16 +827,273 @@ class SegmentStore:
 
         segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
         total_num_atoms = int(self.molecules_df["num_atoms"].sum())
-        return compute_per_atom_sigma_profiles(
-            sigmas,
+        return BulkSigmaProfiles(
             np.asarray(self.areas),
-            np.asarray(self.atom_indices),
+            sigmas,
             segment_offsets,
-            total_num_atoms,
+            atom_indices=np.asarray(self.atom_indices),
+            num_atoms=total_num_atoms,
             max_abs_sigma=max_abs_sigma,
             num_points=num_points,
             num_threads=num_threads,
             shift=shift,
+        )
+
+
+class BulkSigmaProfiles:
+    """A set of area-weighted sigma profiles, at atom or molecule level.
+
+    Computes profiles itself from raw segment-level data and keeps its
+    own copies of everything needed to interpret and, if applicable,
+    aggregate them -- independent of whatever ``SegmentStore`` the inputs
+    came from.
+
+    Parameters
+    ----------
+    areas : np.ndarray
+        Areas of the surface segments, shape ``(n_segs,)``.
+    sigmas : np.ndarray
+        Charge density of the surface segments, in e/Å² -- raw or
+        averaged, at the caller's choice.
+    segment_offsets : np.ndarray
+        Start index of each molecule's segments within the segment-level
+        arrays. Must describe *exactly* the molecules present in
+        ``areas`` / ``sigmas`` / ``atom_indices``: the last molecule's
+        segments run to the end of those arrays.
+    atom_indices : np.ndarray | None, optional
+        Global atom index associated with each segment. By default None,
+        meaning build one profile *per molecule* instead of per atom --
+        segments are grouped straight by ``segment_offsets`` (faking one
+        monoatomic "atom" per molecule), and ``self.atom_offset`` stays
+        None. When given, one profile is built *per atom* instead,
+        grouped via ``atom_indices``, and ``self.atom_offset`` (each
+        molecule's first atom index, so ``aggregate`` can later
+        reassemble these into molecule-level profiles) is derived as
+        ``atom_indices[segment_offsets]`` -- correct because segments are
+        grouped by ascending atom index within a molecule (true of the
+        COSMO file formats this module parses; verified against a real
+        TURBOMOLE file).
+    num_atoms : int | None, optional
+        Total number of atoms, i.e. the number of profile rows to build
+        when ``atom_indices`` is given. By default None, meaning
+        ``int(atom_indices.max()) + 1`` -- correct for a full store, but
+        potentially wrong for an already-subsetted one (see
+        ``compute_per_atom_sigma_profiles``'s subsetting caveat); pass it
+        explicitly when subsetting.
+    max_abs_sigma : float, optional
+        Bounded sigma-profile value at each end of the unshifted range,
+        by default ``DEFAULT_MAX_ABS_SIGMA``. With ``shift=True``,
+        profiles are actually binned onto ``shifted_grid(max_abs_sigma,
+        num_points)`` instead, and ``self.sigma_grid`` reflects that.
+    num_points : int, optional
+        Number of sigma-profile points of the unshifted grid, by default
+        ``DEFAULT_NUM_POINTS``.
+    num_threads : int, optional
+        Number of threads to use, by default the number of available CPU
+        cores.
+    shift : bool, optional
+        Whether to shift each profile onto its own mean charge density,
+        centering it, by default False.
+
+    Attributes
+    ----------
+    areas, charges : np.ndarray
+        Per-row area and net (or smoothed "equivalent") charge, shape
+        ``(n,)``.
+    profiles : np.ndarray
+        Per-row area-fraction sigma profile, shape ``(n, len(sigma_grid))``.
+    sigma_grid : np.ndarray
+        Sigma value at each profile column (see ``sigma_grid_points``).
+    atom_offset : np.ndarray | None
+        See ``atom_indices`` above.
+    """
+
+    def __init__(
+        self,
+        areas: np.ndarray,
+        sigmas: np.ndarray,
+        segment_offsets: np.ndarray,
+        atom_indices: np.ndarray | None = None,
+        num_atoms: int | None = None,
+        max_abs_sigma: float = DEFAULT_MAX_ABS_SIGMA,
+        num_points: int = DEFAULT_NUM_POINTS,
+        num_threads: int = os.cpu_count(),
+        shift: bool = False,
+    ):
+        areas = np.asarray(areas)
+        sigmas = np.asarray(sigmas)
+        segment_offsets = np.asarray(segment_offsets)
+
+        if atom_indices is None:
+            num_rows = len(segment_offsets)
+            row_indices = np.repeat(
+                np.arange(num_rows, dtype=np.int64),
+                np.diff(np.append(segment_offsets, len(sigmas))),
+            )
+            atom_offset = None
+        else:
+            row_indices = np.asarray(atom_indices)
+            num_rows = int(row_indices.max()) + 1 if num_atoms is None else num_atoms
+            atom_offset = row_indices[segment_offsets].astype(np.int64)
+
+        bin_max_abs_sigma, bin_num_points = (
+            shifted_grid(max_abs_sigma, num_points)
+            if shift
+            else (max_abs_sigma, num_points)
+        )
+
+        self.areas, self.charges, self.profiles = compute_per_atom_sigma_profiles(
+            sigmas,
+            areas,
+            row_indices,
+            segment_offsets,
+            num_rows,
+            max_abs_sigma=max_abs_sigma,
+            num_points=num_points,
+            num_threads=num_threads,
+            shift=shift,
+        )
+        self.sigma_grid = sigma_grid_points(bin_max_abs_sigma, bin_num_points)
+        self.atom_offset = atom_offset
+
+    @classmethod
+    def _from_arrays(
+        cls,
+        areas: np.ndarray,
+        charges: np.ndarray,
+        profiles: np.ndarray,
+        sigma_grid: np.ndarray,
+        atom_offset: np.ndarray | None,
+    ) -> "BulkSigmaProfiles":
+        """Wrap already-computed profile arrays with no further binning.
+
+        Used internally by ``aggregate`` to build its molecule-level
+        result, since that reassembles existing profiles rather than
+        binning fresh segment-level data. Ordinary construction should go
+        through ``__init__`` instead.
+        """
+        self = cls.__new__(cls)
+        self.areas = np.asarray(areas)
+        self.charges = np.asarray(charges)
+        self.profiles = np.asarray(profiles)
+        self.sigma_grid = np.asarray(sigma_grid)
+        self.atom_offset = None if atom_offset is None else np.asarray(atom_offset)
+        return self
+
+    def aggregate(
+        self,
+        shift: bool = True,
+        output_sigma_grid: np.ndarray | None = None,
+        num_threads: int = os.cpu_count(),
+        normalize: bool = False,
+    ) -> "BulkSigmaProfiles":
+        """Reassemble per-molecule profiles from these per-atom ones.
+
+        Mirrors ``SegmentStore._add_shifted_profile_contributions``'s
+        reassembly (area-weighted sum of atom profiles onto a shared
+        molecule axis, with each atom's own mean charge density
+        un-shifted first when ``shift=True``) but reads the atom grid
+        straight from ``self.sigma_grid`` instead of re-deriving it from
+        separate max_abs_sigma/num_points arguments.
+
+        Parameters
+        ----------
+        shift : bool, optional
+            Whether these profiles are centered on each atom's own mean
+            charge density and need un-shifting before summing, by
+            default True. Pass the same value used to build ``self``.
+        output_sigma_grid : np.ndarray | None, optional
+            Sigma grid for the output molecule profiles, by default None,
+            meaning ``self.sigma_grid`` (same grid, no change of extent
+            or point count).
+        num_threads : int, optional
+            Number of threads to use, by default the number of available
+            CPU cores.
+        normalize : bool, optional
+            Whether to divide each molecule's profile by its total area
+            so it sums to 1, by default False.
+
+        Returns
+        -------
+        BulkSigmaProfiles
+            Molecule-level (``atom_offset is None``).
+
+        Raises
+        ------
+        ValueError
+            If ``self.atom_offset`` is None -- already at molecule level,
+            nothing to aggregate.
+        """
+        if self.atom_offset is None:
+            raise ValueError(
+                "This BulkSigmaProfiles has no atom_offset -- it is "
+                "already at molecule level, so there is nothing to "
+                "aggregate."
+            )
+        if output_sigma_grid is None:
+            output_sigma_grid = self.sigma_grid
+        output_sigma_grid = np.asarray(output_sigma_grid)
+
+        num_atoms = len(self.areas)
+        num_mols = len(self.atom_offset)
+        atom_num_points = len(self.sigma_grid)
+        atom_max_abs_sigma = float(self.sigma_grid[-1])
+        molecule_num_points = len(output_sigma_grid)
+
+        molecule_indices = np.repeat(
+            np.arange(num_mols), np.diff(np.append(self.atom_offset, num_atoms))
+        )
+
+        shifts = np.zeros(num_atoms, dtype=np.float64)
+        if shift:
+            has_area = self.areas > 0
+            shifts[has_area] = self.charges[has_area] / self.areas[has_area]
+
+        molecule_profiles = np.zeros((num_mols, molecule_num_points), dtype=np.float64)
+        chunk_size = (num_mols + num_threads - 1) // num_threads
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = []
+            for thread_id in range(num_threads):
+                start_mol = thread_id * chunk_size
+                if start_mol >= num_mols:
+                    continue
+                stop_mol = min(start_mol + chunk_size, num_mols)
+                start_atom = self.atom_offset[start_mol]
+                stop_atom = (
+                    self.atom_offset[stop_mol] if stop_mol < num_mols else num_atoms
+                )
+                futures.append(
+                    executor.submit(
+                        SegmentStore._add_shifted_profile_contributions,
+                        molecule_profiles,
+                        molecule_indices[start_atom:stop_atom],
+                        self.areas[start_atom:stop_atom],
+                        shifts[start_atom:stop_atom],
+                        self.profiles[start_atom:stop_atom],
+                        atom_max_abs_sigma,
+                        atom_num_points,
+                        molecule_num_points,
+                    )
+                )
+            for future in as_completed(futures):
+                future.result()
+
+        if normalize:
+            molecule_profiles = molecule_profiles / molecule_profiles.sum(
+                axis=1, keepdims=True
+            )
+
+        molecule_areas = compute_per_molecule_properties(self.areas, self.atom_offset)
+        molecule_charges = compute_per_molecule_properties(
+            self.charges, self.atom_offset
+        )
+
+        return BulkSigmaProfiles._from_arrays(
+            molecule_areas,
+            molecule_charges,
+            molecule_profiles.astype(np.float32),
+            output_sigma_grid,
+            atom_offset=None,
         )
 
 
@@ -1171,132 +1424,6 @@ def compute_per_molecule_sigma_profiles(
     )
 
 
-def aggregate_sigma_profiles(
-    atom_areas: np.ndarray,
-    atom_charges: np.ndarray,
-    sigma_profiles: np.ndarray,
-    atom_offsets: np.ndarray,
-    max_abs_sigma: float = DEFAULT_MAX_ABS_SIGMA,
-    num_points: int = DEFAULT_NUM_POINTS,
-    num_threads: int = os.cpu_count(),
-    shift: bool = True,
-    normalize: bool = False,
-) -> np.ndarray:
-    """Reassemble per-molecule sigma profiles from per-atom ones.
-
-    A molecule's sigma profile is the area-weighted sum of its atoms'
-    profiles. If those profiles are centered on each atom's own mean
-    charge density (see ``compute_per_atom_sigma_profiles``), each one
-    must first be shifted back by that same amount before summing, since a
-    molecule has one shared sigma axis, not one per atom; the shift is
-    redistributed by linear interpolation (see
-    ``SegmentStore._add_shifted_profile_contributions``). ``shift`` here undoes the
-    centering ``compute_per_atom_sigma_profiles`` applies, so pass
-    ``shift=True`` exactly when the profiles were built with
-    ``shift=True`` there.
-
-    The output always lands on the unshifted ``(max_abs_sigma, num_points)``
-    grid; ``sigma_profiles`` itself is assumed to already be on that same
-    grid when ``shift=False``, or on ``shifted_grid(max_abs_sigma,
-    num_points)`` when ``shift=True`` -- matching what
-    ``compute_per_atom_sigma_profiles`` actually built for the same
-    ``shift`` value.
-
-    Parameters
-    ----------
-    atom_areas : np.ndarray
-        Per-atom areas, of shape ``(num_atoms,)``.
-    atom_charges : np.ndarray
-        Per-atom net charges, of shape ``(num_atoms,)``. Only used when
-        ``shift=True``, to recover each atom's shift as
-        ``atom_charges / atom_areas``.
-    sigma_profiles : np.ndarray
-        Per-atom sigma profiles, of shape ``(num_atoms, num_points)`` or
-        ``(num_atoms, shifted_grid(max_abs_sigma, num_points)[1])`` (see
-        above).
-    atom_offsets : np.ndarray
-        Global index of each molecule's first atom, i.e. the cumulative sum
-        of ``num_atoms`` for all preceding molecules (the ``atom_offsets``
-        column of the ``molecules`` table).
-    max_abs_sigma : float, optional
-        Bounded sigma-profile value at each end of the unshifted range, by
-        default 0.0255. See above for the shifted case.
-    num_points : int, optional
-        Number of sigma-profile points of the unshifted (output) grid, by
-        default 52. See above for the shifted case.
-    num_threads : int, optional
-        Number of threads to use, by default the number of available CPU
-        cores.
-    shift : bool, optional
-        Whether ``sigma_profiles`` is centered and needs un-shifting before
-        summing, by default True.
-    normalize : bool, optional
-        Whether to divide each molecule's profile by its total area so it
-        sums to 1, by default False (each bin otherwise holds surface
-        area, summing to the molecule's total area -- the standard
-        COSMO-SAC convention).
-
-    Returns
-    -------
-    np.ndarray, shape (num_molecules, num_points)
-        Per-molecule sigma profiles, on the unshifted ``(max_abs_sigma,
-        num_points)`` grid. Its first moment should not be read as
-        molecular charge -- use
-        ``compute_per_molecule_properties(atom_charges, atom_offsets)``
-        instead.
-    """
-    atom_max_abs_sigma, atom_num_points = (
-        shifted_grid(max_abs_sigma, num_points)
-        if shift
-        else (max_abs_sigma, num_points)
-    )
-    num_atoms = len(atom_areas)
-    num_mols = len(atom_offsets)
-
-    molecule_indices = np.repeat(
-        np.arange(num_mols), np.diff(np.append(atom_offsets, num_atoms))
-    )
-
-    shifts = np.zeros(num_atoms, dtype=np.float64)
-    if shift:
-        has_area = atom_areas > 0
-        shifts[has_area] = atom_charges[has_area] / atom_areas[has_area]
-
-    molecule_profiles = np.zeros((num_mols, num_points), dtype=np.float64)
-    chunk_size = (num_mols + num_threads - 1) // num_threads
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = []
-        for thread_id in range(num_threads):
-            start_mol = thread_id * chunk_size
-            if start_mol >= num_mols:
-                continue
-            stop_mol = min(start_mol + chunk_size, num_mols)
-            start_atom = atom_offsets[start_mol]
-            stop_atom = atom_offsets[stop_mol] if stop_mol < num_mols else num_atoms
-            futures.append(
-                executor.submit(
-                    SegmentStore._add_shifted_profile_contributions,
-                    molecule_profiles,
-                    molecule_indices[start_atom:stop_atom],
-                    atom_areas[start_atom:stop_atom],
-                    shifts[start_atom:stop_atom],
-                    sigma_profiles[start_atom:stop_atom],
-                    atom_max_abs_sigma,
-                    atom_num_points,
-                    num_points,
-                )
-            )
-        for future in as_completed(futures):
-            future.result()
-
-    if normalize:
-        molecule_profiles = molecule_profiles / molecule_profiles.sum(
-            axis=1, keepdims=True
-        )
-
-    return molecule_profiles.astype(np.float32)
-
-
 def print_stats(
     title: str,
     properties: np.ndarray,
@@ -1471,7 +1598,6 @@ if __name__ == "__main__":
     max_abs_sigma = DEFAULT_MAX_ABS_SIGMA
     num_points = DEFAULT_NUM_POINTS
     bin_width = sigma_bin_width(max_abs_sigma, num_points)
-    shifted_max_abs_sigma, shifted_num_points = shifted_grid(max_abs_sigma, num_points)
     if sigma_scheme is None:
         sigmas = charges / areas
     else:
@@ -1483,15 +1609,16 @@ if __name__ == "__main__":
         print(f"Using averaged sigmas for scheme {sigma_scheme!r}...")
         sigmas = np.asarray(store.averaged_sigmas[sigma_scheme])
     start_time = time.time()
-    new_atom_areas, new_atom_charges, sigma_profiles = (
-        store.compute_atom_sigma_profiles(
-            scheme=sigma_scheme,
-            max_abs_sigma=max_abs_sigma,
-            num_points=num_points,
-            num_threads=num_threads,
-            shift=True,
-        )
+    atom_sigma_profiles = store.compute_atom_sigma_profiles(
+        scheme=sigma_scheme,
+        max_abs_sigma=max_abs_sigma,
+        num_points=num_points,
+        num_threads=num_threads,
+        shift=True,
     )
+    new_atom_areas = atom_sigma_profiles.areas
+    new_atom_charges = atom_sigma_profiles.charges
+    sigma_profiles = atom_sigma_profiles.profiles
     elapsed_time = time.time() - start_time
 
     print(f"Time to compute atom sigma profiles: {elapsed_time:.2f} seconds")
@@ -1517,6 +1644,8 @@ if __name__ == "__main__":
         "Atoms with no surface segments must have all-zero profiles"
     )
 
+    shifted_sigma_grid = atom_sigma_profiles.sigma_grid
+    shifted_num_points = len(shifted_sigma_grid)
     mass_below_zero = centered_profiles[:, : shifted_num_points // 2].sum(axis=1)
     mass_above_zero = centered_profiles[:, shifted_num_points // 2 :].sum(axis=1)
     print_stats("Mass below zero", mass_below_zero)
@@ -1535,11 +1664,10 @@ if __name__ == "__main__":
         quantiles=(0.001, 0.01, 0.1, 0.5, 0.9, 0.99, 0.999),
     )
 
-    sigma_grid = sigma_grid_points(shifted_max_abs_sigma, shifted_num_points)
-    assert not np.any(sigma_grid == 0.0), (
+    assert not np.any(shifted_sigma_grid == 0.0), (
         "Shifted atom sigma grid must not contain a zero point"
     )
-    first_moments = centered_profiles.astype(np.float64) @ sigma_grid
+    first_moments = centered_profiles.astype(np.float64) @ shifted_sigma_grid
     print_stats("First moments", first_moments, value_format=".3e")
     print(
         f"Max |first moment| of centered profiles: "
@@ -1564,16 +1692,10 @@ if __name__ == "__main__":
     print_stats("Molecule charges", molecule_charges)
 
     start_time = time.time()
-    molecule_profiles = aggregate_sigma_profiles(
-        atom_areas,
-        new_atom_charges,
-        sigma_profiles,
-        atom_offsets,
-        max_abs_sigma=max_abs_sigma,
-        num_points=num_points,
-        num_threads=num_threads,
-        shift=True,
+    molecule_sigma_profiles = atom_sigma_profiles.aggregate(
+        shift=True, num_threads=num_threads
     )
+    molecule_profiles = molecule_sigma_profiles.profiles
     elapsed_time = time.time() - start_time
     print(f"Time to compute molecule sigma profiles: {elapsed_time:.2f} seconds")
 
@@ -1588,23 +1710,16 @@ if __name__ == "__main__":
         "Molecule sigma profiles must be on the unshifted grid"
     )
 
-    _, _, unshifted_profiles = store.compute_atom_sigma_profiles(
+    unshifted_atom_sigma_profiles = store.compute_atom_sigma_profiles(
         scheme=sigma_scheme,
         max_abs_sigma=max_abs_sigma,
         num_points=num_points,
         num_threads=num_threads,
         shift=False,
     )
-    exact_profiles = aggregate_sigma_profiles(
-        atom_areas,
-        atom_charges,
-        unshifted_profiles,
-        atom_offsets,
-        max_abs_sigma=max_abs_sigma,
-        num_points=num_points,
-        num_threads=num_threads,
-        shift=False,
-    )
+    exact_profiles = unshifted_atom_sigma_profiles.aggregate(
+        shift=False, num_threads=num_threads
+    ).profiles
     start_time = time.time()
     direct_areas, _, direct_profiles = compute_per_molecule_sigma_profiles(
         sigmas,
@@ -1637,17 +1752,9 @@ if __name__ == "__main__":
         value_format=".4f",
     )
 
-    normalized_molecule_profiles = aggregate_sigma_profiles(
-        atom_areas,
-        new_atom_charges,
-        sigma_profiles,
-        atom_offsets,
-        max_abs_sigma=max_abs_sigma,
-        num_points=num_points,
-        num_threads=num_threads,
-        shift=True,
-        normalize=True,
-    )
+    normalized_molecule_profiles = atom_sigma_profiles.aggregate(
+        shift=True, num_threads=num_threads, normalize=True
+    ).profiles
     assert np.allclose(normalized_molecule_profiles.sum(axis=1), 1.0), (
         "Normalized molecule sigma profiles do not sum to 1"
     )
