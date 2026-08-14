@@ -6,7 +6,7 @@ memory-mappable on-disk store (``SegmentStore``): parallel segment-indexed
 arrays of coordinates, charges, and areas, a
 global atom index per segment, and a ``molecules.parquet`` table of
 per-molecule offsets and cavity volume, plus any averaged sigmas
-computed for it (``SegmentStore.compute_averaged_sigmas``). Also provides
+computed for it. Also provides
 per-atom / per-molecule sigma profiles: distributions of surface area
 fraction over charge density.
 
@@ -25,6 +25,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 import threadpoolctl
+from rdkit import Chem
+from tqdm.auto import tqdm
+
 from cosmolayer import parser
 from cosmolayer.cosmosac.constants import (
     COSMO_SAC_2002_AVERAGING_RADIUS,
@@ -32,8 +35,6 @@ from cosmolayer.cosmosac.constants import (
     COSMO_SAC_2010_AVERAGING_RADIUS,
     COSMO_SAC_2010_F_DECAY,
 )
-from rdkit import Chem
-from tqdm.auto import tqdm
 
 DATA_FILE: pathlib.Path = pathlib.Path("data.npy")
 ATOM_INDICES_FILE: pathlib.Path = pathlib.Path("atom_indices.npy")
@@ -75,9 +76,10 @@ class SegmentStore:
     metadata : dict
         ``num_molecules`` and ``num_cosmo_parse_failures`` for this store.
     averaged_sigmas : dict[str, np.ndarray]
-        Scheme name -> ``(n_segs_total,)`` averaged charge density (see
-        ``compute_averaged_sigmas``), for whatever schemes have been
-        computed for this store so far. Empty if none have.
+        Scheme name -> ``(n_segs_total,)`` averaged charge density,
+        computed automatically by ``from_cosmo_files`` for whatever
+        schemes have been computed for this store so far. Empty if none
+        have.
 
     Attributes
     ----------
@@ -103,188 +105,6 @@ class SegmentStore:
         self.coords = data[:, :3]
         self.charges = data[:, 3]
         self.areas = data[:, 4]
-
-    @classmethod
-    def load(cls, storage_dir: pathlib.Path | str) -> "SegmentStore":
-        """Load an existing segment-data store from disk, memory-mapped.
-
-        Parameters
-        ----------
-        storage_dir : pathlib.Path | str
-            Directory holding a store built by ``from_cosmo_files`` (i.e.
-            for which ``segment_data_exists`` is True).
-
-        Returns
-        -------
-        SegmentStore
-            ``data``, ``atom_indices``, and any ``averaged_sigmas`` arrays
-            are memory-mapped (``mmap_mode="r"``).
-
-        Raises
-        ------
-        FileNotFoundError
-            If ``storage_dir`` doesn't hold a complete store.
-        """
-        storage_dir = pathlib.Path(storage_dir)
-        if not segment_data_exists(storage_dir):
-            raise FileNotFoundError(
-                f"No segment-data store in {storage_dir} (missing one of "
-                f"{DATA_FILE}, {ATOM_INDICES_FILE}, {MOLECULES_FILE}, "
-                f"{METADATA_FILE}; see SegmentStore.from_cosmo_files)."
-            )
-        with open(storage_dir / METADATA_FILE) as f:
-            metadata = json.load(f)
-        data = np.load(storage_dir / DATA_FILE, mmap_mode="r")
-        atom_indices = np.load(storage_dir / ATOM_INDICES_FILE, mmap_mode="r")
-        molecules_df = pd.read_parquet(storage_dir / MOLECULES_FILE)
-
-        averaged_sigmas: dict[str, np.ndarray] = {}
-        averaged_sigmas_metadata_path = storage_dir / AVERAGING_METADATA_FILE
-        if averaged_sigmas_metadata_path.exists():
-            with open(averaged_sigmas_metadata_path) as f:
-                scheme_names = sorted(json.load(f)["schemes"])
-            averaged_sigmas = {
-                name: np.load(storage_dir / f"{name}.npy", mmap_mode="r")
-                for name in scheme_names
-            }
-
-        return cls(
-            storage_dir, data, atom_indices, molecules_df, metadata, averaged_sigmas
-        )
-
-    @classmethod
-    def from_cosmo_files(
-        cls,
-        cosmo_files_dir: pathlib.Path,
-        smiles_to_filename: dict[str, str],
-        storage_dir: pathlib.Path,
-        ignore_errors: bool = False,
-        schemes: dict[str, tuple[float, float]] | None = None,
-        num_threads: int = os.cpu_count(),
-    ) -> "SegmentStore":
-        """Parse COSMO files and persist their segment data to a directory.
-
-        Writes ``data.npy`` (columns ``[x, y, z, charge, area]``),
-        ``atom_indices.npy`` (global atom index per segment), a
-        ``molecules.parquet`` table (columns ``smiles`` [RDKit canonical],
-        ``segment_offsets``, ``atom_offsets``, ``num_atoms``, ``volume``), and
-        a ``metadata.json`` (``num_molecules``, ``num_cosmo_parse_failures``).
-        A molecule's atoms are numbered by ``segment_df["atom"]`` (the COSMO
-        file's own 0-based order) directly, which is why each SMILES's atom
-        count is checked against its COSMO file and, if atom-mapped, reordered
-        via ``_reorder_molecule`` onto that same indexing.
-
-        Also computes and writes averaged sigmas for the new store (see
-        ``compute_averaged_sigmas``), unless ``schemes`` is an empty dict.
-
-        Parameters
-        ----------
-        cosmo_files_dir : pathlib.Path
-            Directory containing the ``.cosmo`` files named by
-            ``smiles_to_filename``'s values.
-        smiles_to_filename : dict[str, str]
-            SMILES string -> ``.cosmo`` filename (relative to
-            ``cosmo_files_dir``), one entry per molecule to store.
-        storage_dir : pathlib.Path
-            Destination directory for the output files. Created if missing.
-        ignore_errors : bool, optional
-            If True, a molecule that fails to parse or validate is skipped
-            (and counted in ``num_cosmo_parse_failures``) instead of raising.
-            By default False.
-        schemes : dict[str, tuple[float, float]] | None, optional
-            Passed to ``compute_averaged_sigmas``, by default None, meaning
-            ``AVERAGING_SCHEMES``. Pass ``{}`` to skip averaging entirely.
-        num_threads : int, optional
-            Passed to ``compute_averaged_sigmas``, by default the number of
-            available CPU cores.
-
-        Raises
-        ------
-        ValueError
-            If a molecule's SMILES or COSMO file cannot be parsed and
-            ``ignore_errors`` is False, or if no molecule could be stored.
-        """
-        data_chunks, atoms_chunks = [], []
-        segment_offsets, segment_offset = [], 0
-        atom_offsets, atom_offset = [], 0
-        num_atoms = []
-        volumes = []
-        successful_molecules = []
-        num_cosmo_parse_failures = 0
-
-        for smi, filename in tqdm(
-            smiles_to_filename.items(), desc="Processing COSMO files"
-        ):
-            try:
-                _, atom_df, segment_df, volume = parser.parse_cosmo_file(
-                    (cosmo_files_dir / filename).read_text()
-                )
-                mol = Chem.MolFromSmiles(smi)
-                if mol is None:
-                    raise ValueError(f"RDKit could not parse SMILES {smi!r}")
-                if mol.GetNumAtoms() != len(atom_df):
-                    raise ValueError(
-                        f"SMILES {smi!r} has {mol.GetNumAtoms()} atoms, but "
-                        f"{filename} has {len(atom_df)}"
-                    )
-                mol = cls._reorder_molecule(mol)
-            except (ValueError, AssertionError) as e:
-                if ignore_errors:
-                    tqdm.write(f"Error parsing {smi}->{filename}: {e}")
-                    num_cosmo_parse_failures += 1
-                    continue
-                else:
-                    raise e
-
-            data_chunks.append(
-                segment_df[["x", "y", "z", "charge", "area"]].values.astype("float32")
-            )
-            atoms_chunks.append(segment_df["atom"].values.astype("int64") + atom_offset)
-
-            segment_offsets.append(segment_offset)
-            segment_offset += len(segment_df)
-            atom_offsets.append(atom_offset)
-            atom_offset += len(atom_df)
-            num_atoms.append(len(atom_df))
-            volumes.append(volume)
-            successful_molecules.append((Chem.MolToSmiles(mol), mol))
-
-        if not successful_molecules:
-            raise ValueError("No COSMO files could be parsed successfully.")
-
-        storage_dir = pathlib.Path(storage_dir)
-        storage_dir.mkdir(parents=True, exist_ok=True)
-
-        data = np.concatenate(data_chunks, axis=0)
-        atom_indices = np.concatenate(atoms_chunks)
-        np.save(storage_dir / DATA_FILE, data)
-        np.save(storage_dir / ATOM_INDICES_FILE, atom_indices)
-
-        molecules = pd.DataFrame(
-            {
-                "smiles": [smi for smi, _ in successful_molecules],
-                "segment_offsets": np.array(segment_offsets, dtype="int64"),
-                "atom_offsets": np.array(atom_offsets, dtype="int64"),
-                "num_atoms": np.array(num_atoms, dtype="int64"),
-                "volume": np.array(volumes, dtype="float64"),
-            }
-        )
-        molecules.to_parquet(storage_dir / MOLECULES_FILE, index=False)
-
-        metadata = {
-            "num_molecules": len(successful_molecules),
-            "num_cosmo_parse_failures": num_cosmo_parse_failures,
-        }
-        with open(storage_dir / METADATA_FILE, "w") as f:
-            json.dump(metadata, f, indent=2)
-
-        store = cls(storage_dir, data, atom_indices, molecules, metadata, {})
-        if schemes is None or schemes:
-            store.compute_averaged_sigmas(
-                schemes=AVERAGING_SCHEMES if schemes is None else schemes,
-                num_threads=num_threads,
-            )
-        return store
 
     @staticmethod
     def _reorder_molecule(mol: Chem.Mol) -> Chem.Mol:
@@ -328,7 +148,7 @@ class SegmentStore:
             "permutation of the atom indices"
         )
 
-    def compute_averaged_sigmas(
+    def _populate_averaged_sigmas(
         self,
         schemes: dict[str, tuple[float, float]] | None = None,
         num_threads: int = os.cpu_count(),
@@ -336,6 +156,10 @@ class SegmentStore:
         """Compute averaged sigmas for this store, under every scheme in
         ``schemes``, writing one file per scheme and updating
         ``self.averaged_sigmas`` in place.
+
+        Called automatically by ``from_cosmo_files``; not otherwise
+        exposed, since a store's averaged sigmas are meant to be computed
+        once, at build time.
 
         Calls ``_smooth_segment_sigmas`` once for every scheme, sharing the
         pairwise-distance computation across all of them (see
@@ -406,83 +230,6 @@ class SegmentStore:
             )
 
         return paths
-
-    def compute_atom_sigma_profiles(
-        self,
-        scheme: str | None = None,
-        max_abs_sigma: float = DEFAULT_MAX_ABS_SIGMA,
-        num_points: int = DEFAULT_NUM_POINTS,
-        num_threads: int = os.cpu_count(),
-        shift: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Compute this store's per-atom sigma profiles.
-
-        A thin wrapper around ``compute_per_atom_sigma_profiles`` that
-        supplies this store's own ``areas``/``atom_indices``/
-        ``segment_offsets``/``num_atoms``, and resolves ``sigmas`` from
-        ``scheme``.
-
-        Parameters
-        ----------
-        scheme : str | None, optional
-            Which charge density to bin: None (default) uses raw
-            ``charges / areas``; a scheme name uses
-            ``self.averaged_sigmas[scheme]`` (see
-            ``compute_averaged_sigmas``).
-        max_abs_sigma : float, optional
-            Bounded sigma-profile value at each end of the unshifted
-            range, by default ``DEFAULT_MAX_ABS_SIGMA``. With
-            ``shift=True``, profiles are actually binned onto
-            ``shifted_grid(max_abs_sigma, num_points)`` instead.
-        num_points : int, optional
-            Number of sigma-profile points of the unshifted grid, by
-            default ``DEFAULT_NUM_POINTS``.
-        num_threads : int, optional
-            Number of threads to use, by default the number of available
-            CPU cores.
-        shift : bool, optional
-            Whether to shift each atom's profile onto its own mean charge
-            density, centering it, by default False.
-
-        Returns
-        -------
-        atom_areas : np.ndarray, shape (num_atoms,)
-            Per-atom areas.
-        atom_charges : np.ndarray, shape (num_atoms,)
-            Per-atom charges -- the true net charge when ``scheme`` is
-            None, or a smoothed "equivalent charge" when it isn't.
-        sigma_profiles : np.ndarray, shape (num_atoms, num_points or shifted_grid(...)[1])
-            Per-atom area-fraction profiles (see
-            ``compute_per_atom_sigma_profiles``).
-
-        Raises
-        ------
-        KeyError
-            If ``scheme`` is given but not in ``self.averaged_sigmas``.
-        """
-        if scheme is None:
-            sigmas = np.asarray(self.charges) / np.asarray(self.areas)
-        else:
-            if scheme not in self.averaged_sigmas:
-                raise KeyError(
-                    f"No averaged sigmas for scheme {scheme!r} in this "
-                    f"store. Known schemes: {sorted(self.averaged_sigmas)}."
-                )
-            sigmas = np.asarray(self.averaged_sigmas[scheme])
-
-        segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
-        total_num_atoms = int(self.molecules_df["num_atoms"].sum())
-        return compute_per_atom_sigma_profiles(
-            sigmas,
-            np.asarray(self.areas),
-            np.asarray(self.atom_indices),
-            segment_offsets,
-            total_num_atoms,
-            max_abs_sigma=max_abs_sigma,
-            num_points=num_points,
-            num_threads=num_threads,
-            shift=shift,
-        )
 
     @staticmethod
     def _smooth_segment_sigmas(
@@ -822,13 +569,280 @@ class SegmentStore:
 
         np.add.at(
             molecule_profiles,
-            (molecule_indices[:, None], points_at_left.clip(0, molecule_num_points - 1)),
+            (
+                molecule_indices[:, None],
+                points_at_left.clip(0, molecule_num_points - 1),
+            ),
             contributions * (1.0 - weight_right),
         )
         np.add.at(
             molecule_profiles,
-            (molecule_indices[:, None], points_at_right.clip(0, molecule_num_points - 1)),
+            (
+                molecule_indices[:, None],
+                points_at_right.clip(0, molecule_num_points - 1),
+            ),
             contributions * weight_right,
+        )
+
+    @classmethod
+    def load(cls, storage_dir: pathlib.Path | str) -> "SegmentStore":
+        """Load an existing segment-data store from disk, memory-mapped.
+
+        Parameters
+        ----------
+        storage_dir : pathlib.Path | str
+            Directory holding a store built by ``from_cosmo_files`` (i.e.
+            for which ``segment_data_exists`` is True).
+
+        Returns
+        -------
+        SegmentStore
+            ``data``, ``atom_indices``, and any ``averaged_sigmas`` arrays
+            are memory-mapped (``mmap_mode="r"``).
+
+        Raises
+        ------
+        FileNotFoundError
+            If ``storage_dir`` doesn't hold a complete store.
+        """
+        storage_dir = pathlib.Path(storage_dir)
+        if not segment_data_exists(storage_dir):
+            raise FileNotFoundError(
+                f"No segment-data store in {storage_dir} (missing one of "
+                f"{DATA_FILE}, {ATOM_INDICES_FILE}, {MOLECULES_FILE}, "
+                f"{METADATA_FILE}; see SegmentStore.from_cosmo_files)."
+            )
+        with open(storage_dir / METADATA_FILE) as f:
+            metadata = json.load(f)
+        data = np.load(storage_dir / DATA_FILE, mmap_mode="r")
+        atom_indices = np.load(storage_dir / ATOM_INDICES_FILE, mmap_mode="r")
+        molecules_df = pd.read_parquet(storage_dir / MOLECULES_FILE)
+
+        averaged_sigmas: dict[str, np.ndarray] = {}
+        averaged_sigmas_metadata_path = storage_dir / AVERAGING_METADATA_FILE
+        if averaged_sigmas_metadata_path.exists():
+            with open(averaged_sigmas_metadata_path) as f:
+                scheme_names = sorted(json.load(f)["schemes"])
+            averaged_sigmas = {
+                name: np.load(storage_dir / f"{name}.npy", mmap_mode="r")
+                for name in scheme_names
+            }
+
+        return cls(
+            storage_dir, data, atom_indices, molecules_df, metadata, averaged_sigmas
+        )
+
+    @classmethod
+    def from_cosmo_files(
+        cls,
+        cosmo_files_dir: pathlib.Path,
+        smiles_to_filename: dict[str, str],
+        storage_dir: pathlib.Path,
+        ignore_errors: bool = False,
+        schemes: dict[str, tuple[float, float]] | None = None,
+        num_threads: int = os.cpu_count(),
+    ) -> "SegmentStore":
+        """Parse COSMO files and persist their segment data to a directory.
+
+        Writes ``data.npy`` (columns ``[x, y, z, charge, area]``),
+        ``atom_indices.npy`` (global atom index per segment), a
+        ``molecules.parquet`` table (columns ``smiles`` [RDKit canonical],
+        ``segment_offsets``, ``atom_offsets``, ``num_atoms``, ``volume``), and
+        a ``metadata.json`` (``num_molecules``, ``num_cosmo_parse_failures``).
+        A molecule's atoms are numbered by ``segment_df["atom"]`` (the COSMO
+        file's own 0-based order) directly, which is why each SMILES's atom
+        count is checked against its COSMO file and, if atom-mapped, reordered
+        via ``_reorder_molecule`` onto that same indexing.
+
+        Also computes and writes averaged sigmas for the new store (see
+        ``_populate_averaged_sigmas``), unless ``schemes`` is an empty dict.
+
+        Parameters
+        ----------
+        cosmo_files_dir : pathlib.Path
+            Directory containing the ``.cosmo`` files named by
+            ``smiles_to_filename``'s values.
+        smiles_to_filename : dict[str, str]
+            SMILES string -> ``.cosmo`` filename (relative to
+            ``cosmo_files_dir``), one entry per molecule to store.
+        storage_dir : pathlib.Path
+            Destination directory for the output files. Created if missing.
+        ignore_errors : bool, optional
+            If True, a molecule that fails to parse or validate is skipped
+            (and counted in ``num_cosmo_parse_failures``) instead of raising.
+            By default False.
+        schemes : dict[str, tuple[float, float]] | None, optional
+            Passed to ``_populate_averaged_sigmas``, by default None,
+            meaning ``AVERAGING_SCHEMES``. Pass ``{}`` to skip averaging
+            entirely.
+        num_threads : int, optional
+            Passed to ``_populate_averaged_sigmas``, by default the number
+            of available CPU cores.
+
+        Raises
+        ------
+        ValueError
+            If a molecule's SMILES or COSMO file cannot be parsed and
+            ``ignore_errors`` is False, or if no molecule could be stored.
+        """
+        data_chunks, atoms_chunks = [], []
+        segment_offsets, segment_offset = [], 0
+        atom_offsets, atom_offset = [], 0
+        num_atoms = []
+        volumes = []
+        successful_molecules = []
+        num_cosmo_parse_failures = 0
+
+        for smi, filename in tqdm(
+            smiles_to_filename.items(), desc="Processing COSMO files"
+        ):
+            try:
+                _, atom_df, segment_df, volume = parser.parse_cosmo_file(
+                    (cosmo_files_dir / filename).read_text()
+                )
+                mol = Chem.MolFromSmiles(smi)
+                if mol is None:
+                    raise ValueError(f"RDKit could not parse SMILES {smi!r}")
+                if mol.GetNumAtoms() != len(atom_df):
+                    raise ValueError(
+                        f"SMILES {smi!r} has {mol.GetNumAtoms()} atoms, but "
+                        f"{filename} has {len(atom_df)}"
+                    )
+                mol = cls._reorder_molecule(mol)
+            except (ValueError, AssertionError) as e:
+                if ignore_errors:
+                    tqdm.write(f"Error parsing {smi}->{filename}: {e}")
+                    num_cosmo_parse_failures += 1
+                    continue
+                else:
+                    raise e
+
+            data_chunks.append(
+                segment_df[["x", "y", "z", "charge", "area"]].values.astype("float32")
+            )
+            atoms_chunks.append(segment_df["atom"].values.astype("int64") + atom_offset)
+
+            segment_offsets.append(segment_offset)
+            segment_offset += len(segment_df)
+            atom_offsets.append(atom_offset)
+            atom_offset += len(atom_df)
+            num_atoms.append(len(atom_df))
+            volumes.append(volume)
+            successful_molecules.append((Chem.MolToSmiles(mol), mol))
+
+        if not successful_molecules:
+            raise ValueError("No COSMO files could be parsed successfully.")
+
+        storage_dir = pathlib.Path(storage_dir)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+
+        data = np.concatenate(data_chunks, axis=0)
+        atom_indices = np.concatenate(atoms_chunks)
+        np.save(storage_dir / DATA_FILE, data)
+        np.save(storage_dir / ATOM_INDICES_FILE, atom_indices)
+
+        molecules = pd.DataFrame(
+            {
+                "smiles": [smi for smi, _ in successful_molecules],
+                "segment_offsets": np.array(segment_offsets, dtype="int64"),
+                "atom_offsets": np.array(atom_offsets, dtype="int64"),
+                "num_atoms": np.array(num_atoms, dtype="int64"),
+                "volume": np.array(volumes, dtype="float64"),
+            }
+        )
+        molecules.to_parquet(storage_dir / MOLECULES_FILE, index=False)
+
+        metadata = {
+            "num_molecules": len(successful_molecules),
+            "num_cosmo_parse_failures": num_cosmo_parse_failures,
+        }
+        with open(storage_dir / METADATA_FILE, "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        store = cls(storage_dir, data, atom_indices, molecules, metadata, {})
+        if schemes is None or schemes:
+            store._populate_averaged_sigmas(
+                schemes=AVERAGING_SCHEMES if schemes is None else schemes,
+                num_threads=num_threads,
+            )
+        return store
+
+    def compute_atom_sigma_profiles(
+        self,
+        scheme: str | None = None,
+        max_abs_sigma: float = DEFAULT_MAX_ABS_SIGMA,
+        num_points: int = DEFAULT_NUM_POINTS,
+        num_threads: int = os.cpu_count(),
+        shift: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Compute this store's per-atom sigma profiles.
+
+        A thin wrapper around ``compute_per_atom_sigma_profiles`` that
+        supplies this store's own ``areas``/``atom_indices``/
+        ``segment_offsets``/``num_atoms``, and resolves ``sigmas`` from
+        ``scheme``.
+
+        Parameters
+        ----------
+        scheme : str | None, optional
+            Which charge density to bin: None (default) uses raw
+            ``charges / areas``; a scheme name uses
+            ``self.averaged_sigmas[scheme]`` (populated automatically by
+            ``from_cosmo_files``).
+        max_abs_sigma : float, optional
+            Bounded sigma-profile value at each end of the unshifted
+            range, by default ``DEFAULT_MAX_ABS_SIGMA``. With
+            ``shift=True``, profiles are actually binned onto
+            ``shifted_grid(max_abs_sigma, num_points)`` instead.
+        num_points : int, optional
+            Number of sigma-profile points of the unshifted grid, by
+            default ``DEFAULT_NUM_POINTS``.
+        num_threads : int, optional
+            Number of threads to use, by default the number of available
+            CPU cores.
+        shift : bool, optional
+            Whether to shift each atom's profile onto its own mean charge
+            density, centering it, by default False.
+
+        Returns
+        -------
+        atom_areas : np.ndarray, shape (num_atoms,)
+            Per-atom areas.
+        atom_charges : np.ndarray, shape (num_atoms,)
+            Per-atom charges -- the true net charge when ``scheme`` is
+            None, or a smoothed "equivalent charge" when it isn't.
+        sigma_profiles : np.ndarray
+            Per-atom area-fraction profiles, shape ``(num_atoms, num_points)``
+            or ``(num_atoms, shifted_grid(...)[1])`` (see
+            ``compute_per_atom_sigma_profiles``).
+
+        Raises
+        ------
+        KeyError
+            If ``scheme`` is given but not in ``self.averaged_sigmas``.
+        """
+        if scheme is None:
+            sigmas = np.asarray(self.charges) / np.asarray(self.areas)
+        else:
+            if scheme not in self.averaged_sigmas:
+                raise KeyError(
+                    f"No averaged sigmas for scheme {scheme!r} in this "
+                    f"store. Known schemes: {sorted(self.averaged_sigmas)}."
+                )
+            sigmas = np.asarray(self.averaged_sigmas[scheme])
+
+        segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
+        total_num_atoms = int(self.molecules_df["num_atoms"].sum())
+        return compute_per_atom_sigma_profiles(
+            sigmas,
+            np.asarray(self.areas),
+            np.asarray(self.atom_indices),
+            segment_offsets,
+            total_num_atoms,
+            max_abs_sigma=max_abs_sigma,
+            num_points=num_points,
+            num_threads=num_threads,
+            shift=shift,
         )
 
 
@@ -1416,7 +1430,8 @@ if __name__ == "__main__":
         )
         elapsed_time = time.time() - start_time
         print(
-            f"Time to store segment data and averaged sigmas: {elapsed_time:.2f} seconds"
+            "Time to store segment data and averaged sigmas: "
+            f"{elapsed_time:.2f} seconds"
         )
     else:
         print("Segment data already exists.")
@@ -1470,12 +1485,14 @@ if __name__ == "__main__":
         print(f"Using averaged sigmas for scheme {sigma_scheme!r}...")
         sigmas = np.asarray(store.averaged_sigmas[sigma_scheme])
     start_time = time.time()
-    new_atom_areas, new_atom_charges, sigma_profiles = store.compute_atom_sigma_profiles(
-        scheme=sigma_scheme,
-        max_abs_sigma=max_abs_sigma,
-        num_points=num_points,
-        num_threads=num_threads,
-        shift=True,
+    new_atom_areas, new_atom_charges, sigma_profiles = (
+        store.compute_atom_sigma_profiles(
+            scheme=sigma_scheme,
+            max_abs_sigma=max_abs_sigma,
+            num_points=num_points,
+            num_threads=num_threads,
+            shift=True,
+        )
     )
     elapsed_time = time.time() - start_time
 
