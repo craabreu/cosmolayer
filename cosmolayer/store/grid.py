@@ -8,17 +8,22 @@ package is deliberately careful to keep them apart:
 
 - *centering* a profile: subtracting a row's own mean charge density from
   its segments before binning, so the resulting profile has zero first
-  moment. This is a per-row transform of the *data*.
-- *translating* a grid: :meth:`SigmaGrid.centered` derives a grid with no
-  point sitting exactly at sigma = 0, gaining one point when the original
-  point count is odd. This is a transform of the *grid* -- it does not
-  touch any data.
+  moment. This is a per-row transform of the *data*, tracked as a
+  ``centered`` flag alongside a table of profiles (e.g.
+  ``SigmaProfileTable.centered``).
+- *translating* a grid: :meth:`SigmaGrid.for_centered_profiles` derives a
+  grid with no point sitting exactly at sigma = 0, gaining one point when
+  the original point count is odd. This is a transform of the *grid* --
+  it does not touch any data, and does not by itself mean anything was
+  centered (an even-point-count grid is its own result either way, so the
+  grid alone can't record whether centering happened; hence the separate
+  flag above).
 
-A centered profile is binned onto a *centered grid* (via
-:meth:`SigmaGrid.centered`), because a value can land exactly at zero once
-each row's own mean has been removed, and no grid point should coincide
-with the "true zero" a centered profile now represents as `signed`
-deviation. An uncentered profile is binned directly onto its base grid.
+A centered profile is binned onto the grid :meth:`SigmaGrid.for_centered_profiles`
+returns, because a value can land exactly at zero once each row's own mean
+has been removed, and no grid point should coincide with the "true zero" a
+centered profile now represents as signed deviation. An uncentered profile
+is binned directly onto its base grid.
 """
 
 from dataclasses import dataclass
@@ -81,8 +86,13 @@ class SigmaGrid:
         """
         return np.linspace(-self.max_abs_sigma, self.max_abs_sigma, self.num_points)
 
-    def centered(self) -> "SigmaGrid":
+    def for_centered_profiles(self) -> "SigmaGrid":
         """The grid a centered profile should be binned onto.
+
+        Named for its purpose, not its mechanism, to avoid colliding with
+        the unrelated ``centered`` flag tables of profiles carry (see the
+        module docstring) -- this method never inspects or sets that flag,
+        it only derives a grid variant.
 
         If ``num_points`` is even, returns ``self`` unchanged -- an even
         grid never has a point at exactly zero. If odd, returns a grid
@@ -93,14 +103,14 @@ class SigmaGrid:
         Returns
         -------
         SigmaGrid
-            The centered grid.
+            The grid variant with no point at exactly zero.
 
         Examples
         --------
-        >>> centered = SigmaGrid(0.025, 51).centered()
+        >>> centered = SigmaGrid(0.025, 51).for_centered_profiles()
         >>> centered.num_points, round(centered.max_abs_sigma, 6)
         (52, 0.0255)
-        >>> SigmaGrid(0.025, 50).centered()
+        >>> SigmaGrid(0.025, 50).for_centered_profiles()
         SigmaGrid(max_abs_sigma=0.025, num_points=50)
         """
         if self.num_points % 2 == 0:

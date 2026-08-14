@@ -76,9 +76,15 @@ COSMO_SAC_2010 = AveragingScheme(
     f_decay=COSMO_SAC_2010_F_DECAY,
 )
 
-AVERAGING_SCHEMES: dict[str, AveragingScheme] = {
-    scheme.name: scheme for scheme in (COSMO_RS, COSMO_SAC_2002, COSMO_SAC_2010)
-}
+AVERAGING_SCHEMES: tuple[AveragingScheme, ...] = (
+    COSMO_RS,
+    COSMO_SAC_2002,
+    COSMO_SAC_2010,
+)
+"""Every scheme this package knows about. Each carries its own ``name``,
+so this is a plain sequence rather than a name-keyed mapping -- keying it
+by name too would just be a second copy of information ``AveragingScheme``
+already has."""
 
 
 def average_sigmas(

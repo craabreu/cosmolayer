@@ -79,16 +79,18 @@ class TestSigmaGrid:
         assert grid.values[0] == pytest.approx(-0.025)
         assert grid.values[-1] == pytest.approx(0.025)
 
-    def test_centered_odd_gains_a_point_and_preserves_bin_width(self) -> None:
+    def test_for_centered_profiles_odd_gains_a_point_and_preserves_bin_width(
+        self,
+    ) -> None:
         grid = SigmaGrid(0.025, 51)
-        centered = grid.centered()
+        centered = grid.for_centered_profiles()
         assert centered.num_points == 52
         assert centered.bin_width == pytest.approx(grid.bin_width)
         assert not np.any(centered.values == 0.0)
 
-    def test_centered_even_is_unchanged(self) -> None:
+    def test_for_centered_profiles_even_is_unchanged(self) -> None:
         grid = SigmaGrid(0.025, 50)
-        assert grid.centered() == grid
+        assert grid.for_centered_profiles() == grid
 
     def test_from_values_round_trips(self) -> None:
         grid = SigmaGrid(0.025, 51)
@@ -106,9 +108,9 @@ class TestAveragingScheme:
             AveragingScheme("metadata", averaging_radius=0.5, f_decay=1.0)
 
     def test_default_schemes_present(self) -> None:
-        assert {"cosmo-rs", "cosmo-sac-2002", "cosmo-sac-2010"} == set(
-            AVERAGING_SCHEMES
-        )
+        assert {"cosmo-rs", "cosmo-sac-2002", "cosmo-sac-2010"} == {
+            scheme.name for scheme in AVERAGING_SCHEMES
+        }
 
     def test_reserved_names_match_the_actual_store_filenames(self) -> None:
         """``averaging`` cannot import ``segments`` (that would be a cycle),
@@ -202,8 +204,9 @@ class TestSegmentStoreRoundTrip:
             "num_atoms",
             "volume",
         ]
-        assert sorted(reloaded.metadata.schemes) == sorted(AVERAGING_SCHEMES)
-        for name in AVERAGING_SCHEMES:
+        scheme_names = sorted(scheme.name for scheme in AVERAGING_SCHEMES)
+        assert sorted(reloaded.metadata.schemes) == scheme_names
+        for name in scheme_names:
             np.testing.assert_array_equal(
                 np.asarray(store.averaged_sigmas[name]),
                 np.asarray(reloaded.averaged_sigmas[name]),
@@ -216,7 +219,7 @@ class TestSegmentStoreRoundTrip:
         self, store: SegmentStore, tmp_path: pathlib.Path
     ) -> None:
         store.save(tmp_path)
-        scheme_file = tmp_path / f"{next(iter(AVERAGING_SCHEMES))}.npy"
+        scheme_file = tmp_path / f"{AVERAGING_SCHEMES[0].name}.npy"
         scheme_file.unlink()
         assert not SegmentStore.exists(tmp_path)
 
@@ -226,7 +229,7 @@ class TestSegmentStoreRoundTrip:
 
     def test_skip_averaging_with_empty_schemes(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes={}, num_threads=1
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
         )
         assert s.averaged_sigmas == {}
         assert s.metadata.schemes == {}

@@ -19,29 +19,6 @@ from .parallel import run_in_threads
 
 
 @dataclass(frozen=True)
-class BinningSpec:
-    """Which grid a table's profiles are binned on, and whether each row
-    is centered on its own mean charge density first.
-
-    Grouped into one object (rather than two loose parameters) mainly to
-    keep ``from_segments``'s own signature within this package's
-    argument-count limit; the two fields are otherwise independent. Mirrors
-    ``SigmaProfileTable``'s own ``grid``/``centered`` fields.
-
-    Parameters
-    ----------
-    grid : SigmaGrid, optional
-        Base grid to bin profiles onto, by default ``DEFAULT_SIGMA_GRID``.
-    centered : bool, optional
-        Whether to center each profile on its own mean charge density
-        before binning, by default False.
-    """
-
-    grid: SigmaGrid = DEFAULT_SIGMA_GRID
-    centered: bool = False
-
-
-@dataclass(frozen=True)
 class SigmaProfileTable:
     """A set of area-weighted sigma profiles, at atom or molecule level.
 
@@ -66,8 +43,8 @@ class SigmaProfileTable:
     centered : bool
         Whether each row's profile has been centered on its own mean
         charge density before binning (zero first moment), and is
-        therefore binned on ``grid.centered()`` rather than ``grid``
-        itself.
+        therefore binned on ``grid.for_centered_profiles()`` rather than
+        ``grid`` itself.
     atom_offsets : np.ndarray | None, optional
         Global index of each molecule's first atom, by default None,
         meaning this table is already at molecule level. When given, this
@@ -101,9 +78,10 @@ class SigmaProfileTable:
         Returns
         -------
         SigmaGrid
-            ``grid.centered()`` if ``centered``, else ``grid``.
+            ``grid.for_centered_profiles()`` if ``centered``, else
+            ``grid``.
         """
-        return self.grid.centered() if self.centered else self.grid
+        return self.grid.for_centered_profiles() if self.centered else self.grid
 
     @property
     def sigma_values(self) -> NDArray[np.float64]:
@@ -125,7 +103,8 @@ class SigmaProfileTable:
         *,
         atom_indices: NDArray[np.int64] | None = None,
         num_rows: int | None = None,
-        binning: BinningSpec | None = None,
+        grid: SigmaGrid = DEFAULT_SIGMA_GRID,
+        centered: bool = False,
         num_threads: int | None = None,
     ) -> "SigmaProfileTable":
         """Bin segment-level data into per-atom or per-molecule sigma
@@ -173,12 +152,14 @@ class SigmaProfileTable:
             full store, but potentially wrong for an already-subsetted one
             (see the ``segment_offsets`` caveat above); pass it explicitly
             when subsetting.
-        binning : BinningSpec | None, optional
-            Which grid to bin onto and whether to center each profile
-            first, by default None, meaning ``BinningSpec()``. With
-            ``centered=True``, profiles are actually binned onto
-            ``grid.centered()`` instead, and the result's ``binning_grid``
-            reflects that.
+        grid : SigmaGrid, optional
+            Base grid to bin profiles onto, by default
+            ``DEFAULT_SIGMA_GRID``. With ``centered=True``, profiles are
+            actually binned onto ``grid.for_centered_profiles()`` instead,
+            and the result's ``binning_grid`` reflects that.
+        centered : bool, optional
+            Whether to center each profile on its own mean charge density
+            before binning, by default False.
         num_threads : int | None, optional
             Number of threads to use, by default None, meaning every
             available CPU core.
@@ -193,8 +174,6 @@ class SigmaProfileTable:
         sigmas = np.asarray(sigmas)
         areas = np.asarray(areas)
         segment_offsets = np.asarray(segment_offsets)
-        binning = BinningSpec() if binning is None else binning
-        grid, centered = binning.grid, binning.centered
 
         if atom_indices is None:
             row_indices = row_indices_from_offsets(segment_offsets, len(sigmas))
@@ -205,7 +184,7 @@ class SigmaProfileTable:
             num_rows = int(row_indices.max()) + 1 if num_rows is None else num_rows
             atom_offsets = row_indices[segment_offsets].astype(np.int64)
 
-        binning_grid = grid.centered() if centered else grid
+        binning_grid = grid.for_centered_profiles() if centered else grid
 
         areas_out = np.zeros(num_rows, dtype=np.float32)
         charges_out = np.zeros(num_rows, dtype=np.float32)
@@ -259,16 +238,16 @@ class SigmaProfileTable:
         The result is always uncentered (``centered=False``) and binned on
         the base grid, since un-translating returns each atom's mass to
         absolute sigma. Aggregating a centered table therefore also
-        regrids it from ``self.grid.centered()`` back onto ``self.grid``,
-        one point narrower.
+        regrids it from ``self.grid.for_centered_profiles()`` back onto
+        ``self.grid``, one point narrower.
 
         Parameters
         ----------
         grid : SigmaGrid | None, optional
             Grid for the output molecule profiles, by default None,
             meaning ``self.grid``. Must share this table's ``bin_width``
-            (``SigmaGrid.centered`` preserves it, so the default always
-            does).
+            (``SigmaGrid.for_centered_profiles`` preserves it, so the
+            default always does).
         normalize : bool, optional
             Whether to divide each molecule's profile by its total area
             so it sums to 1, by default False.

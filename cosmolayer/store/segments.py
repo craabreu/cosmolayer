@@ -24,6 +24,7 @@ import json
 import os
 import pathlib
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -41,7 +42,7 @@ from .averaging import (
     average_sigmas_by_molecule,
 )
 from .grid import DEFAULT_SIGMA_GRID, SigmaGrid
-from .profiles import BinningSpec, SigmaProfileTable
+from .profiles import SigmaProfileTable
 
 DATA_FILE = pathlib.Path("data.npy")
 ATOM_INDICES_FILE = pathlib.Path("atom_indices.npy")
@@ -229,7 +230,7 @@ class SegmentStore:
 
     def compute_averaged_sigmas(
         self,
-        schemes: dict[str, AveragingScheme] | None = None,
+        schemes: Sequence[AveragingScheme] | None = None,
         num_threads: int | None = None,
     ) -> dict[str, NDArray[np.float32]]:
         """Compute averaged sigmas for this store under every scheme in
@@ -246,8 +247,8 @@ class SegmentStore:
 
         Parameters
         ----------
-        schemes : dict[str, AveragingScheme] | None, optional
-            Scheme name -> scheme, by default None, meaning
+        schemes : Sequence[AveragingScheme] | None, optional
+            Schemes to average under, by default None, meaning
             ``AVERAGING_SCHEMES`` (Klamt, COSMO-SAC 2002, COSMO-SAC 2010).
         num_threads : int | None, optional
             Number of threads to use, by default None, meaning every
@@ -257,24 +258,23 @@ class SegmentStore:
         -------
         dict[str, np.ndarray]
             Scheme name -> ``(n_segs_total,)`` float32 averaged charge
-            density, in the same order as ``schemes``.
+            density, one entry per scheme in ``schemes``.
         """
         if schemes is None:
             schemes = AVERAGING_SCHEMES
         segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
 
-        scheme_names = list(schemes)
         averaged = average_sigmas_by_molecule(
             np.asarray(self.coords),
             np.asarray(self.charges),
             np.asarray(self.areas),
             segment_offsets,
-            [schemes[name] for name in scheme_names],
+            schemes,
             num_threads=num_threads,
         )
         return {
-            name: arr.astype(np.float32)
-            for name, arr in zip(scheme_names, averaged, strict=True)
+            scheme.name: arr.astype(np.float32)
+            for scheme, arr in zip(schemes, averaged, strict=True)
         }
 
     def save(self, storage_dir: pathlib.Path | str | None = None) -> None:
@@ -398,7 +398,7 @@ class SegmentStore:
         smiles_to_filename: dict[str, str],
         storage_dir: pathlib.Path,
         ignore_errors: bool = False,
-        schemes: dict[str, AveragingScheme] | None = None,
+        schemes: Sequence[AveragingScheme] | None = None,
         num_threads: int | None = None,
     ) -> "SegmentStore":
         """Parse COSMO files, build a store in memory, and persist it to
@@ -410,7 +410,8 @@ class SegmentStore:
         ``_reorder_molecule`` onto that same indexing.
 
         Also computes and writes averaged sigmas for the new store (see
-        ``compute_averaged_sigmas``), unless ``schemes`` is an empty dict.
+        ``compute_averaged_sigmas``), unless ``schemes`` is an empty
+        sequence.
 
         Parameters
         ----------
@@ -427,9 +428,9 @@ class SegmentStore:
             If True, a molecule that fails to parse or validate is skipped
             (and counted in ``metadata.num_cosmo_parse_failures``) instead
             of raising. By default False.
-        schemes : dict[str, AveragingScheme] | None, optional
+        schemes : Sequence[AveragingScheme] | None, optional
             Passed to ``compute_averaged_sigmas``, by default None,
-            meaning ``AVERAGING_SCHEMES``. Pass ``{}`` to skip averaging
+            meaning ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging
             entirely.
         num_threads : int | None, optional
             Passed to ``compute_averaged_sigmas``, by default None,
@@ -520,7 +521,7 @@ class SegmentStore:
             store.averaged_sigmas = store.compute_averaged_sigmas(
                 schemes=resolved_schemes, num_threads=num_threads
             )
-            store.metadata.schemes.update(resolved_schemes)
+            store.metadata.schemes.update({s.name: s for s in resolved_schemes})
         store.save()
         return store
 
@@ -603,7 +604,8 @@ class SegmentStore:
             segment_offsets,
             atom_indices=np.asarray(self.atom_indices),
             num_rows=total_num_atoms,
-            binning=BinningSpec(grid, centered),
+            grid=grid,
+            centered=centered,
             num_threads=num_threads,
         )
 
@@ -646,7 +648,8 @@ class SegmentStore:
             np.asarray(self.areas),
             segment_offsets,
             num_rows=len(self.molecules_df),
-            binning=BinningSpec(grid, centered),
+            grid=grid,
+            centered=centered,
             num_threads=num_threads,
         )
 

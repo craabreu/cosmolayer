@@ -21,7 +21,7 @@ from .averaging import (
     AveragingScheme,
 )
 from .grid import SigmaGrid
-from .profiles import BinningSpec, SigmaProfileTable
+from .profiles import SigmaProfileTable
 from .segments import SegmentStore, StoreMetadata
 
 __all__ = [
@@ -30,7 +30,6 @@ __all__ = [
     "COSMO_SAC_2002",
     "COSMO_SAC_2010",
     "AveragingScheme",
-    "BinningSpec",
     "SegmentStore",
     "SigmaGrid",
     "SigmaProfileTable",

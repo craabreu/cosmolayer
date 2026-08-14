@@ -164,8 +164,8 @@ def accumulate_atom_profiles(
     atom_indices : np.ndarray
         Global atom index associated with each segment in this batch.
     grid : SigmaGrid
-        Grid to bin onto. Pass ``grid.centered()`` here (not ``grid``
-        itself) when ``centered=True`` -- this function does not derive
+        Grid to bin onto. Pass ``grid.for_centered_profiles()`` here (not
+        ``grid`` itself) when ``centered=True`` -- this function does not derive
         it.
     centered : bool
         Whether to center each atom's profile on its own mean charge
