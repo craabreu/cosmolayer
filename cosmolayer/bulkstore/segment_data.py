@@ -47,8 +47,6 @@ AVERAGED_SIGMAS_METADATA_FILE: pathlib.Path = pathlib.Path(
 DEFAULT_MAX_ABS_SIGMA = 0.0255
 DEFAULT_NUM_POINTS = 52
 
-DEFAULT_MOLECULE_NUM_POINTS = 51
-
 
 def sigma_bin_width(max_abs_sigma: float, num_points: int) -> float:
     """Bin width of a symmetric sigma grid spanning ``[-max_abs_sigma, max_abs_sigma]``.
@@ -86,29 +84,34 @@ def sigma_grid_points(max_abs_sigma: float, num_points: int) -> np.ndarray:
     return np.linspace(-max_abs_sigma, max_abs_sigma, num_points)
 
 
-def molecule_max_abs_sigma(
-    max_abs_sigma: float, num_points: int, molecule_num_points: int
-) -> float:
-    """Extent of the molecule grid implied by the atom grid's bin width.
+def shifted_grid(max_abs_sigma: float, num_points: int) -> tuple[float, int]:
+    """Grid to bin a shifted (centered) profile onto, given the unshifted
+    grid's own parameters.
 
-    The molecule grid shares the atom grid's ``bin_width`` by construction,
-    so its extent follows from ``molecule_num_points`` alone.
+    Treats ``(max_abs_sigma, num_points)`` as describing the unshifted
+    grid. If ``num_points`` is even, the shifted grid is identical. If
+    odd, the shifted grid gains one point and extends by half a bin width
+    on each side, preserving ``bin_width`` exactly -- so the shifted grid
+    always ends up with an even point count, with no point sitting exactly
+    at sigma = 0.
 
     Parameters
     ----------
     max_abs_sigma : float
-        Atom grid's bounded sigma-profile value at each end of its range.
+        Unshifted grid's bounded sigma-profile value at each end of its
+        range.
     num_points : int
-        Atom grid's number of points.
-    molecule_num_points : int
-        Molecule grid's number of points.
+        Unshifted grid's number of points.
 
     Returns
     -------
-    float
-        ``sigma_bin_width(max_abs_sigma, num_points) * (molecule_num_points - 1) / 2``.
+    tuple[float, int]
+        ``(max_abs_sigma, num_points)`` for the shifted grid.
     """
-    return sigma_bin_width(max_abs_sigma, num_points) * (molecule_num_points - 1) / 2
+    if num_points % 2 == 0:
+        return max_abs_sigma, num_points
+    bin_width = sigma_bin_width(max_abs_sigma, num_points)
+    return max_abs_sigma + bin_width / 2, num_points + 1
 
 
 AVERAGING_SCHEMES: dict[str, tuple[float, float]] = {
@@ -770,6 +773,13 @@ def compute_per_atom_sigma_profiles(
     ``smooth_segment_sigmas`` / ``load_averaged_sigmas`` (see
     ``add_per_atom_area_contributions``).
 
+    ``max_abs_sigma``/``num_points`` describe the unshifted grid. With
+    ``shift=True``, profiles are actually binned onto
+    ``shifted_grid(max_abs_sigma, num_points)`` instead -- so the returned
+    ``sigma_profiles``'s column count is ``num_points`` when
+    ``shift=False``, or the (possibly one point larger) shifted count when
+    ``shift=True``.
+
     Parameters
     ----------
     sigmas : np.ndarray
@@ -791,11 +801,11 @@ def compute_per_atom_sigma_profiles(
     num_atoms : int
         Total number of atoms in the dataset.
     max_abs_sigma : float, optional
-        Bounded sigma-profile value at each end of the range: the profile
-        spans ``[-max_abs_sigma, max_abs_sigma]``, by default 0.0255.
+        Bounded sigma-profile value at each end of the unshifted range, by
+        default 0.0255. See above for the shifted case.
     num_points : int, optional
-        Number of sigma-profile points, by default 52. May be even (no
-        point exactly at zero) or odd (a point exactly at zero).
+        Number of sigma-profile points of the unshifted grid, by default
+        52. See above for the shifted case.
     num_threads : int, optional
         Number of threads to use, by default the number of available CPU cores.
     shift : bool, optional
@@ -809,15 +819,18 @@ def compute_per_atom_sigma_profiles(
     atom_charges : np.ndarray, shape (num_atoms,)
         Per-atom charges -- the true net charge when ``sigmas`` is raw, or
         a smoothed "equivalent charge" when it isn't.
-    sigma_profiles : np.ndarray, shape (num_atoms, num_points)
+    sigma_profiles : np.ndarray, shape (num_atoms, num_points or shifted_grid(...)[1])
         Per-atom area-fraction profiles, each summing to 1 (all-zero for
         atoms with no surface segments). Charge densities outside the
         range are folded into the boundary columns. With ``shift=True``
         each profile also has zero first moment (up to folding error).
     """
+    bin_max_abs_sigma, bin_num_points = (
+        shifted_grid(max_abs_sigma, num_points) if shift else (max_abs_sigma, num_points)
+    )
     atom_areas = np.zeros(num_atoms, dtype=np.float32)
     atom_charges = np.zeros(num_atoms, dtype=np.float32)
-    sigma_profiles = np.zeros((num_atoms, num_points), dtype=np.float32)
+    sigma_profiles = np.zeros((num_atoms, bin_num_points), dtype=np.float32)
     assert int(atom_indices.max(initial=-1)) < num_atoms, (
         "atom_indices references an atom index >= num_atoms; segment_offsets "
         "must describe exactly the molecules present in the segment-level "
@@ -844,8 +857,8 @@ def compute_per_atom_sigma_profiles(
                     sigmas[start_seg:stop_seg],
                     areas[start_seg:stop_seg],
                     atom_indices[start_seg:stop_seg],
-                    max_abs_sigma,
-                    num_points,
+                    bin_max_abs_sigma,
+                    bin_num_points,
                     shift,
                 )
             )
@@ -868,8 +881,8 @@ def add_shifted_profile_contributions(
     per-molecule sigma profiles.
 
     The molecule grid shares the atom grid's ``bin_width`` (see
-    ``molecule_max_abs_sigma``), so a zero shift places atom column ``k``
-    at molecule column ``k + grid_offset``, where ``grid_offset =
+    ``shifted_grid``), so a zero shift places atom column ``k`` at
+    molecule column ``k + grid_offset``, where ``grid_offset =
     (molecule_num_points - num_points) / 2`` -- an integer when the point
     counts share parity, a half-integer otherwise. Each row is
     redistributed with the same two-tap linear interpolation
@@ -939,10 +952,8 @@ def compute_per_molecule_sigma_profiles(
     areas: np.ndarray,
     segment_offsets: np.ndarray,
     num_molecules: int,
-    max_abs_sigma: float = molecule_max_abs_sigma(
-        DEFAULT_MAX_ABS_SIGMA, DEFAULT_NUM_POINTS, DEFAULT_MOLECULE_NUM_POINTS
-    ),
-    num_points: int = DEFAULT_MOLECULE_NUM_POINTS,
+    max_abs_sigma: float = DEFAULT_MAX_ABS_SIGMA,
+    num_points: int = DEFAULT_NUM_POINTS,
     num_threads: int = os.cpu_count(),
     shift: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -972,13 +983,13 @@ def compute_per_molecule_sigma_profiles(
     num_molecules: int
         Total number of molecules in the dataset.
     max_abs_sigma: float, optional
-        Bounded sigma-profile value at each end of the range: the profile
-        spans ``[-max_abs_sigma, max_abs_sigma]``, by default the molecule
-        grid's derived extent (see ``molecule_max_abs_sigma``) under the
-        default atom and molecule point counts.
+        Bounded sigma-profile value at each end of the unshifted range, by
+        default 0.0255. With ``shift=True``, profiles are actually binned
+        onto ``shifted_grid(max_abs_sigma, num_points)`` instead (see
+        ``compute_per_atom_sigma_profiles``).
     num_points: int, optional
-        Number of sigma-profile points, by default
-        ``DEFAULT_MOLECULE_NUM_POINTS``.
+        Number of sigma-profile points of the unshifted grid, by default
+        52.
     num_threads: int
         Number of threads to use.
     shift: bool
@@ -1023,7 +1034,6 @@ def aggregate_sigma_profiles(
     atom_offsets: np.ndarray,
     max_abs_sigma: float = DEFAULT_MAX_ABS_SIGMA,
     num_points: int = DEFAULT_NUM_POINTS,
-    molecule_num_points: int | None = None,
     num_threads: int = os.cpu_count(),
     shift: bool = True,
     normalize: bool = False,
@@ -1041,6 +1051,13 @@ def aggregate_sigma_profiles(
     ``shift=True`` exactly when the profiles were built with
     ``shift=True`` there.
 
+    The output always lands on the unshifted ``(max_abs_sigma, num_points)``
+    grid; ``sigma_profiles`` itself is assumed to already be on that same
+    grid when ``shift=False``, or on ``shifted_grid(max_abs_sigma,
+    num_points)`` when ``shift=True`` -- matching what
+    ``compute_per_atom_sigma_profiles`` actually built for the same
+    ``shift`` value.
+
     Parameters
     ----------
     atom_areas : np.ndarray
@@ -1050,30 +1067,25 @@ def aggregate_sigma_profiles(
         ``shift=True``, to recover each atom's shift as
         ``atom_charges / atom_areas``.
     sigma_profiles : np.ndarray
-        Per-atom sigma profiles, of shape ``(num_atoms, num_points)``.
+        Per-atom sigma profiles, of shape ``(num_atoms, num_points)`` or
+        ``(num_atoms, shifted_grid(max_abs_sigma, num_points)[1])`` (see
+        above).
     atom_offsets : np.ndarray
         Global index of each molecule's first atom, i.e. the cumulative sum
         of ``num_atoms`` for all preceding molecules (the ``atom_offsets``
         column of the ``molecules`` table).
     max_abs_sigma : float, optional
-        Bounded sigma-profile value at each end of the range that
-        ``sigma_profiles`` (the atom grid) was built on, by default 0.0255.
+        Bounded sigma-profile value at each end of the unshifted range, by
+        default 0.0255. See above for the shifted case.
     num_points : int, optional
-        Number of sigma-profile points that ``sigma_profiles`` (the atom
-        grid) was built with, by default 52.
-    molecule_num_points : int | None, optional
-        Number of points for the output molecule grid, by default None,
-        meaning the same as ``num_points`` (the atom grid). The molecule
-        grid shares the atom grid's ``bin_width`` by construction, so its
-        extent follows from this point count alone (see
-        ``molecule_max_abs_sigma``).
+        Number of sigma-profile points of the unshifted (output) grid, by
+        default 52. See above for the shifted case.
     num_threads : int, optional
         Number of threads to use, by default the number of available CPU
         cores.
     shift : bool, optional
         Whether ``sigma_profiles`` is centered and needs un-shifting before
-        summing, by default True. With ``False``, the result is exact only
-        when ``molecule_num_points`` shares parity with ``num_points``.
+        summing, by default True.
     normalize : bool, optional
         Whether to divide each molecule's profile by its total area so it
         sums to 1, by default False (each bin otherwise holds surface
@@ -1082,15 +1094,16 @@ def aggregate_sigma_profiles(
 
     Returns
     -------
-    np.ndarray, shape (num_molecules, molecule_num_points)
-        Per-molecule sigma profiles, on the molecule grid implied by
-        ``molecule_num_points`` (see above). Its first moment should not
-        be read as molecular charge -- use
+    np.ndarray, shape (num_molecules, num_points)
+        Per-molecule sigma profiles, on the unshifted ``(max_abs_sigma,
+        num_points)`` grid. Its first moment should not be read as
+        molecular charge -- use
         ``compute_per_molecule_properties(atom_charges, atom_offsets)``
         instead.
     """
-    if molecule_num_points is None:
-        molecule_num_points = num_points
+    atom_max_abs_sigma, atom_num_points = (
+        shifted_grid(max_abs_sigma, num_points) if shift else (max_abs_sigma, num_points)
+    )
     num_atoms = len(atom_areas)
     num_mols = len(atom_offsets)
 
@@ -1103,7 +1116,7 @@ def aggregate_sigma_profiles(
         has_area = atom_areas > 0
         shifts[has_area] = atom_charges[has_area] / atom_areas[has_area]
 
-    molecule_profiles = np.zeros((num_mols, molecule_num_points), dtype=np.float64)
+    molecule_profiles = np.zeros((num_mols, num_points), dtype=np.float64)
     chunk_size = (num_mols + num_threads - 1) // num_threads
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         futures = []
@@ -1122,9 +1135,9 @@ def aggregate_sigma_profiles(
                     atom_areas[start_atom:stop_atom],
                     shifts[start_atom:stop_atom],
                     sigma_profiles[start_atom:stop_atom],
-                    max_abs_sigma,
+                    atom_max_abs_sigma,
+                    atom_num_points,
                     num_points,
-                    molecule_num_points,
                 )
             )
         for future in as_completed(futures):
@@ -1300,13 +1313,8 @@ if __name__ == "__main__":
 
     max_abs_sigma = DEFAULT_MAX_ABS_SIGMA
     num_points = DEFAULT_NUM_POINTS
-    molecule_num_points = DEFAULT_MOLECULE_NUM_POINTS
     bin_width = sigma_bin_width(max_abs_sigma, num_points)
-    mol_max_abs_sigma = molecule_max_abs_sigma(
-        max_abs_sigma, num_points, molecule_num_points
-    )
-    grid_offset = (molecule_num_points - num_points) / 2
-    grids_aligned = grid_offset == int(grid_offset)
+    shifted_max_abs_sigma, shifted_num_points = shifted_grid(max_abs_sigma, num_points)
     if sigma_scheme is None:
         sigmas = charges / areas
     else:
@@ -1349,8 +1357,8 @@ if __name__ == "__main__":
         "Atoms with no surface segments must have all-zero profiles"
     )
 
-    mass_below_zero = centered_profiles[:, : num_points // 2].sum(axis=1)
-    mass_above_zero = centered_profiles[:, num_points // 2 :].sum(axis=1)
+    mass_below_zero = centered_profiles[:, : shifted_num_points // 2].sum(axis=1)
+    mass_above_zero = centered_profiles[:, shifted_num_points // 2 :].sum(axis=1)
     print_stats("Mass below zero", mass_below_zero)
     print_stats("Mass above zero", mass_above_zero)
 
@@ -1367,9 +1375,9 @@ if __name__ == "__main__":
         quantiles=(0.001, 0.01, 0.1, 0.5, 0.9, 0.99, 0.999),
     )
 
-    sigma_grid = sigma_grid_points(max_abs_sigma, num_points)
+    sigma_grid = sigma_grid_points(shifted_max_abs_sigma, shifted_num_points)
     assert not np.any(sigma_grid == 0.0), (
-        "Atom sigma grid must not contain a zero point"
+        "Shifted atom sigma grid must not contain a zero point"
     )
     first_moments = centered_profiles.astype(np.float64) @ sigma_grid
     print_stats("First moments", first_moments, value_format=".3e")
@@ -1403,7 +1411,6 @@ if __name__ == "__main__":
         atom_offsets,
         max_abs_sigma=max_abs_sigma,
         num_points=num_points,
-        molecule_num_points=molecule_num_points,
         num_threads=num_threads,
         shift=True,
     )
@@ -1417,8 +1424,8 @@ if __name__ == "__main__":
     assert mass_err.max() < 1e-4, "Molecule sigma profiles do not conserve area"
     assert (molecule_profiles >= 0).all(), "Molecule sigma profiles have negative bins"
 
-    assert molecule_profiles.shape[1] == molecule_num_points, (
-        "Molecule sigma profiles must be on the molecule grid"
+    assert molecule_profiles.shape[1] == num_points, (
+        "Molecule sigma profiles must be on the unshifted grid"
     )
 
     _, _, unshifted_profiles = compute_per_atom_sigma_profiles(
@@ -1439,7 +1446,6 @@ if __name__ == "__main__":
         atom_offsets,
         max_abs_sigma=max_abs_sigma,
         num_points=num_points,
-        molecule_num_points=molecule_num_points,
         num_threads=num_threads,
         shift=False,
     )
@@ -1449,8 +1455,8 @@ if __name__ == "__main__":
         areas,
         segment_offsets,
         len(molecules_df),
-        max_abs_sigma=mol_max_abs_sigma,
-        num_points=molecule_num_points,
+        max_abs_sigma=max_abs_sigma,
+        num_points=num_points,
         num_threads=num_threads,
         shift=False,
     )
@@ -1460,23 +1466,9 @@ if __name__ == "__main__":
         "Directly binned molecule areas do not match the per-atom sums"
     )
     ground_truth = direct_areas[:, None].astype(np.float64) * direct_profiles
-    grids_same_extent = max_abs_sigma == mol_max_abs_sigma
-    if grids_aligned and grids_same_extent:
-        assert np.allclose(exact_profiles, ground_truth, atol=1e-3), (
-            "Unshifted molecule sigma profiles must match direct segment binning"
-        )
-    elif not grids_aligned:
-        print(
-            "Atom and molecule grids are offset by a half bin "
-            f"(grid_offset={grid_offset}); skipping the exact-match check."
-        )
-    else:
-        print(
-            f"Atom grid (+/-{max_abs_sigma}) is narrower than the molecule "
-            f"grid (+/-{mol_max_abs_sigma}); skipping the exact-match check "
-            "-- unshifted per-atom binning folds early relative to direct "
-            "segment binning, by design (see the comment above)."
-        )
+    assert np.allclose(exact_profiles, ground_truth, atol=1e-3), (
+        "Unshifted molecule sigma profiles must match direct segment binning"
+    )
 
     normalized_recon = molecule_profiles / molecule_profiles.sum(axis=1, keepdims=True)
     normalized_truth = ground_truth / ground_truth.sum(axis=1, keepdims=True)
@@ -1496,7 +1488,6 @@ if __name__ == "__main__":
         atom_offsets,
         max_abs_sigma=max_abs_sigma,
         num_points=num_points,
-        molecule_num_points=molecule_num_points,
         num_threads=num_threads,
         shift=True,
         normalize=True,
