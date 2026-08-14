@@ -59,3 +59,4 @@ A README-only deprecation is not enough: `pip install cosmolayer` and `conda ins
 - [ ] Rename `craabreu/cosmolayer` → `craabreu/cosmotools` on GitHub (old URLs redirect)
 - [ ] Confirm GitHub Pages moves to `https://craabreu.github.io/cosmotools/` and update remaining doc URLs
 - [ ] Update the conda recipe `home` / `doc_url` / `dev_url` if they still point at the old name
+- [ ] Delete this file (`docs/plans/rename-to-cosmotools.md`)
