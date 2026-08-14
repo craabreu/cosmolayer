@@ -1,5 +1,5 @@
 """
-.. module:: cosmolayer.cosmolayer
+.. module:: cosmolayer.cosmolayer.layer
    :synopsis: Differentiable COSMO-type activity coefficient layer.
 """
 
