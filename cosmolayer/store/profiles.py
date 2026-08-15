@@ -1,5 +1,6 @@
 """Area-weighted sigma profiles, at atom or molecule level."""
 
+import math
 from dataclasses import dataclass, replace
 from typing import Literal
 
@@ -34,17 +35,14 @@ class SigmaProfileTable:
     charges : np.ndarray
         Per-row net (or smoothed "equivalent") charge, shape ``(n,)``.
     profiles : np.ndarray
-        Per-row area-fraction sigma profile, shape
-        ``(n, len(binning_grid))``.
+        Per-row area-fraction sigma profile, shape ``(n, len(grid))``.
     grid : SigmaGrid
-        The *base* (uncentered) grid this table's profiles are described
-        against. Use ``binning_grid`` for the grid the profile columns are
-        actually binned on.
+        The grid these profiles are binned on -- exactly the one the
+        caller asked for, whether or not they are centered.
     centered : bool
-        Whether each row's profile has been centered on its own mean
-        charge density before binning (zero first moment), and is
-        therefore binned on ``grid.for_centered_profiles()`` rather than
-        ``grid`` itself.
+        Whether each row's profile was centered on its own mean charge
+        density before binning, giving it zero first moment. A property of
+        the *data*; it does not affect which grid is used.
     atom_offsets : np.ndarray | None, optional
         Global index of each molecule's first atom, by default None,
         meaning this table is already at molecule level. When given, this
@@ -72,27 +70,15 @@ class SigmaProfileTable:
         return "molecule" if self.atom_offsets is None else "atom"
 
     @property
-    def binning_grid(self) -> SigmaGrid:
-        """The grid ``profiles``'s columns are actually binned on.
-
-        Returns
-        -------
-        SigmaGrid
-            ``grid.for_centered_profiles()`` if ``centered``, else
-            ``grid``.
-        """
-        return self.grid.for_centered_profiles() if self.centered else self.grid
-
-    @property
     def sigma_values(self) -> NDArray[np.float64]:
         """Sigma value at every profile column, in e/Å².
 
         Returns
         -------
-        np.ndarray, shape (len(binning_grid),)
-            ``binning_grid.values``.
+        np.ndarray, shape (len(grid),)
+            ``grid.values``.
         """
-        return self.binning_grid.values
+        return self.grid.values
 
     @classmethod
     def from_segments(  # noqa: PLR0913
@@ -153,13 +139,13 @@ class SigmaProfileTable:
             (see the ``segment_offsets`` caveat above); pass it explicitly
             when subsetting.
         grid : SigmaGrid, optional
-            Base grid to bin profiles onto, by default
-            ``DEFAULT_SIGMA_GRID``. With ``centered=True``, profiles are
-            actually binned onto ``grid.for_centered_profiles()`` instead,
-            and the result's ``binning_grid`` reflects that.
+            Grid to bin profiles onto, by default ``DEFAULT_SIGMA_GRID``.
+            Used exactly as given, so the result's ``profiles`` always has
+            ``len(grid)`` columns regardless of ``centered``.
         centered : bool, optional
             Whether to center each profile on its own mean charge density
-            before binning, by default False.
+            before binning, by default False. Affects the binned values,
+            not the grid they land on.
         num_threads : int | None, optional
             Number of threads to use, by default None, meaning every
             available CPU core.
@@ -184,11 +170,9 @@ class SigmaProfileTable:
             num_rows = int(row_indices.max()) + 1 if num_rows is None else num_rows
             atom_offsets = row_indices[segment_offsets].astype(np.int64)
 
-        binning_grid = grid.for_centered_profiles() if centered else grid
-
         areas_out = np.zeros(num_rows, dtype=np.float32)
         charges_out = np.zeros(num_rows, dtype=np.float32)
-        profiles_out = np.zeros((num_rows, len(binning_grid)), dtype=np.float32)
+        profiles_out = np.zeros((num_rows, len(grid)), dtype=np.float32)
         assert int(row_indices.max(initial=-1)) < num_rows, (
             "atom_indices/segment_offsets reference a row index >= num_rows; "
             "segment_offsets must describe exactly the molecules present in "
@@ -207,7 +191,7 @@ class SigmaProfileTable:
                 sigmas[start_seg:stop_seg],
                 areas[start_seg:stop_seg],
                 row_indices[start_seg:stop_seg],
-                binning_grid,
+                grid,
                 centered,
             )
 
@@ -235,19 +219,18 @@ class SigmaProfileTable:
         with each atom's own mean charge density un-translated first when
         ``self.centered`` is True.
 
-        The result is always uncentered (``centered=False``) and binned on
-        the base grid, since un-translating returns each atom's mass to
-        absolute sigma. Aggregating a centered table therefore also
-        regrids it from ``self.grid.for_centered_profiles()`` back onto
-        ``self.grid``, one point narrower.
+        The result is always uncentered (``centered=False``): un-translating
+        returns each atom's mass to absolute sigma, so a centered atom table
+        aggregates into an uncentered molecule one.
 
         Parameters
         ----------
         grid : SigmaGrid | None, optional
             Grid for the output molecule profiles, by default None,
-            meaning ``self.grid``. Must share this table's ``bin_width``
-            (``SigmaGrid.for_centered_profiles`` preserves it, so the
-            default always does).
+            meaning ``self.grid`` (same axis as the atom profiles). A
+            different grid must share this table's ``bin_width``: the
+            column alignment is ``k -> k + (len(grid) - len(self.grid)) / 2``,
+            which is only valid for two symmetric grids of equal bin width.
         normalize : bool, optional
             Whether to divide each molecule's profile by its total area
             so it sums to 1, by default False.
@@ -264,8 +247,9 @@ class SigmaProfileTable:
         Raises
         ------
         ValueError
-            If ``self.atom_offsets`` is None -- already at molecule
-            level, nothing to aggregate.
+            If ``self.atom_offsets`` is None (already at molecule level,
+            nothing to aggregate), or if ``grid`` does not share this
+            table's ``bin_width``.
         """
         if self.atom_offsets is None:
             raise ValueError(
@@ -274,20 +258,17 @@ class SigmaProfileTable:
                 "aggregate."
             )
         output_grid = self.grid if grid is None else grid
-        # Aggregation un-translates every atom profile by that atom's own
-        # mean charge density, putting its mass back at absolute sigma. So
-        # the molecule result is never centered, whatever ``self`` was, and
-        # belongs on the base grid rather than a centered one. When ``self``
-        # *is* centered its profiles sit on a grid with one extra point,
-        # half a bin wider at each end, so atom column k lands on base
-        # column k - 0.5; accumulate_translated_profiles handles that
-        # half-integer offset with its usual two-tap split.
-        output_binning_grid = output_grid
+        if not math.isclose(output_grid.bin_width, self.grid.bin_width, rel_tol=1e-9):
+            raise ValueError(
+                f"Output grid bin width {output_grid.bin_width!r} does not "
+                f"match this table's {self.grid.bin_width!r}. Aggregation "
+                "aligns columns by point-count difference alone, which is "
+                "only valid between symmetric grids of equal bin width."
+            )
 
         num_atoms = len(self.areas)
         num_mols = len(self.atom_offsets)
-        atom_binning_grid = self.binning_grid
-        molecule_num_points = len(output_binning_grid)
+        molecule_num_points = len(output_grid)
 
         molecule_indices = row_indices_from_offsets(self.atom_offsets, num_atoms)
 
@@ -306,13 +287,13 @@ class SigmaProfileTable:
                 self.areas[start_atom:stop_atom],
                 translations[start_atom:stop_atom],
                 self.profiles[start_atom:stop_atom],
-                atom_binning_grid,
+                self.grid,
             )
             accumulate_translated_profiles(
                 molecule_profiles,
                 molecule_indices[start_atom:stop_atom],
                 batch,
-                output_binning_grid,
+                output_grid,
             )
 
         run_in_threads(process_range, num_mols, num_threads=num_threads)

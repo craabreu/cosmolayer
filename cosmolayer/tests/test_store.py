@@ -69,18 +69,15 @@ class TestSigmaGrid:
         assert grid.values[0] == pytest.approx(-0.025)
         assert grid.values[-1] == pytest.approx(0.025)
 
-    def test_for_centered_profiles_odd_gains_a_point_and_preserves_bin_width(
-        self,
+    @pytest.mark.parametrize(("num_points", "has_zero_node"), [(51, True), (52, False)])
+    def test_odd_and_even_point_counts_are_both_usable(
+        self, num_points: int, has_zero_node: bool
     ) -> None:
-        grid = SigmaGrid(0.025, 51)
-        centered = grid.for_centered_profiles()
-        assert centered.num_points == 52
-        assert centered.bin_width == pytest.approx(grid.bin_width)
-        assert not np.any(centered.values == 0.0)
-
-    def test_for_centered_profiles_even_is_unchanged(self) -> None:
-        grid = SigmaGrid(0.025, 50)
-        assert grid.for_centered_profiles() == grid
+        """Whether a node lands exactly on sigma = 0 is the caller's
+        choice, not something the package overrides."""
+        grid = SigmaGrid(0.025, num_points)
+        assert len(grid) == num_points
+        assert np.any(grid.values == 0.0) == has_zero_node
 
     def test_from_values_round_trips(self) -> None:
         grid = SigmaGrid(0.025, 51)
@@ -300,12 +297,8 @@ class TestSigmaProfileTable:
         table = store.compute_atom_sigma_profiles(num_threads=1, centered=True)
         has_area = table.areas > 0
         first_moments = table.profiles[has_area].astype(np.float64) @ table.sigma_values
-        bin_width = table.binning_grid.bin_width
+        bin_width = table.grid.bin_width
         assert np.abs(first_moments).max() < 1e-2 * bin_width
-
-    def test_centered_grid_has_no_zero_point(self, store: SegmentStore) -> None:
-        table = store.compute_atom_sigma_profiles(num_threads=1, centered=True)
-        assert not np.any(table.sigma_values == 0.0)
 
     def test_molecule_profiles_conserve_area_and_are_nonnegative(
         self, store: SegmentStore
@@ -334,30 +327,95 @@ class TestSigmaProfileTable:
         np.testing.assert_allclose(aggregated.profiles, ground_truth, atol=1e-3)
 
     @pytest.mark.parametrize("centered", [False, True])
-    def test_aggregate_lands_on_the_base_grid(
-        self, store: SegmentStore, centered: bool
+    @pytest.mark.parametrize("grid", [SigmaGrid(0.025, 51), SigmaGrid(0.03, 52)])
+    def test_binning_never_changes_the_requested_grid(
+        self, store: SegmentStore, grid: SigmaGrid, centered: bool
     ) -> None:
-        """Aggregating un-translates each atom profile back to absolute
-        sigma, so the molecule result is uncentered and on the base grid --
-        even when the atom profiles were centered onto a wider one."""
-        grid = SigmaGrid()
+        """The grid the caller asks for is the grid they get -- at atom
+        level, at molecule level, centered or not, odd or even point
+        count. This is the guard against a grid being silently
+        substituted, which previously produced 52 columns for a 51-point
+        request."""
         atom_table = store.compute_atom_sigma_profiles(
             num_threads=1, grid=grid, centered=centered
         )
-        molecule_table = atom_table.aggregate(num_threads=1)
+        assert atom_table.grid == grid
+        assert atom_table.centered is centered
+        assert atom_table.profiles.shape[1] == len(grid)
+        assert len(atom_table.sigma_values) == len(grid)
 
-        assert molecule_table.centered is False
+        molecule_table = atom_table.aggregate(num_threads=1)
         assert molecule_table.grid == grid
-        assert molecule_table.binning_grid == grid
         assert molecule_table.profiles.shape[1] == len(grid)
-        assert len(molecule_table.sigma_values) == len(grid)
+        # Aggregation un-translates each atom back to absolute sigma, so
+        # the molecule result is never centered whatever the input was.
+        assert molecule_table.centered is False
+
+        direct = store.compute_molecule_sigma_profiles(
+            num_threads=1, grid=grid, centered=centered
+        )
+        assert direct.grid == grid
+        assert direct.profiles.shape[1] == len(grid)
+
+    def test_aggregate_onto_a_wider_grid_of_equal_bin_width(
+        self, store: SegmentStore
+    ) -> None:
+        """A different output grid is allowed as long as it shares the
+        atom grid's bin width -- column alignment is by point-count
+        difference alone."""
+        grid = SigmaGrid(0.025, 51)
+        # Extending by N bins per side means +2N points and
+        # +N*bin_width of extent, which keeps bin_width identical.
+        extra_bins_per_side = 5
+        wider = SigmaGrid(
+            grid.max_abs_sigma + extra_bins_per_side * grid.bin_width,
+            grid.num_points + 2 * extra_bins_per_side,
+        )
+        assert wider.bin_width == pytest.approx(grid.bin_width)
+
+        atom_table = store.compute_atom_sigma_profiles(
+            num_threads=1, grid=grid, centered=True
+        )
+        molecules = atom_table.aggregate(num_threads=1, grid=wider)
+
+        assert molecules.grid == wider
+        assert molecules.profiles.shape[1] == len(wider)
+        # Widening the *output* grid only changes how much is clipped at
+        # the aggregate step; it cannot recover mass already clipped when
+        # the atom profiles were binned. So the total is unchanged, and
+        # the invariant that matters is that it still equals the summed
+        # atom area.
+        np.testing.assert_allclose(
+            molecules.profiles.sum(axis=1), molecules.areas, rtol=1e-4
+        )
+        np.testing.assert_allclose(
+            molecules.profiles.sum(),
+            atom_table.aggregate(num_threads=1).profiles.sum(),
+            rtol=1e-5,
+        )
+
+    def test_aggregate_onto_mismatched_bin_width_raises(
+        self, store: SegmentStore
+    ) -> None:
+        atom_table = store.compute_atom_sigma_profiles(
+            num_threads=1, grid=SigmaGrid(0.025, 51)
+        )
+        with pytest.raises(ValueError, match="bin width"):
+            atom_table.aggregate(num_threads=1, grid=SigmaGrid(0.025, 101))
 
     def test_centered_aggregate_approximates_direct_binning(
         self, store: SegmentStore
     ) -> None:
-        """The centered path loses a little resolution to the half-bin
-        regrid, so compare distributions by Wasserstein-1 distance (in bin
-        widths) rather than bin by bin."""
+        """Centering then un-centering quantizes twice (segments -> atom
+        bins, atom bins -> molecule bins), so compare distributions by
+        Wasserstein-1 distance in bin widths rather than bin by bin.
+
+        Measured at 0.12 bin widths on these fixtures. Binning onto a grid
+        one half-bin wider at each end -- ``SigmaGrid(0.0255, 52)``, which
+        earlier versions silently substituted here -- clips less tail mass
+        and gives 0.10; the difference is the cost of honouring the
+        requested ``max_abs_sigma`` exactly, and is the caller's to trade.
+        """
         atom_table = store.compute_atom_sigma_profiles(num_threads=1, centered=True)
         reconstructed = atom_table.aggregate(num_threads=1).profiles
         direct = store.compute_molecule_sigma_profiles(num_threads=1, centered=False)
@@ -368,7 +426,7 @@ class TestSigmaProfileTable:
         profile_w1 = np.abs(
             np.cumsum(normalized_truth, axis=1) - np.cumsum(normalized_recon, axis=1)
         ).sum(axis=1)
-        assert profile_w1.max() < 1.0
+        assert profile_w1.max() < 0.2
 
     def test_normalize_true_sums_to_one(self, store: SegmentStore) -> None:
         atom_table = store.compute_atom_sigma_profiles(num_threads=1, centered=True)

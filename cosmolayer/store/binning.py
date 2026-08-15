@@ -164,9 +164,7 @@ def accumulate_atom_profiles(
     atom_indices : np.ndarray
         Global atom index associated with each segment in this batch.
     grid : SigmaGrid
-        Grid to bin onto. Pass ``grid.for_centered_profiles()`` here (not
-        ``grid`` itself) when ``centered=True`` -- this function does not derive
-        it.
+        Grid to bin onto, used exactly as given.
     centered : bool
         Whether to center each atom's profile on its own mean charge
         density ``q_a / A_a`` before binning, so its first moment is
@@ -252,12 +250,13 @@ def accumulate_translated_profiles(
     """Accumulate a batch of atoms' translated, area-weighted profiles
     into per-molecule sigma profiles.
 
-    The molecule grid shares the atom grid's ``bin_width`` (callers derive
-    it via ``SigmaGrid.centered`` on a common base grid), so a zero
-    translation places atom column ``k`` at molecule column
+    Both grids are symmetric about zero and must share a ``bin_width``
+    (the caller enforces this -- see ``SigmaProfileTable.aggregate``), so a
+    zero translation places atom column ``k`` at molecule column
     ``k + grid_offset``, where
-    ``grid_offset = (len(molecule_grid) - len(batch.grid)) / 2`` -- an
-    integer when the point counts share parity, a half-integer otherwise.
+    ``grid_offset = (len(molecule_grid) - len(batch.grid)) / 2`` -- zero
+    when the two grids are identical, an integer when their point counts
+    share parity, a half-integer otherwise.
     Each row is redistributed with the same two-tap linear interpolation
     ``accumulate_atom_profiles`` uses for a single value, with
     out-of-range destinations folded into the nearest boundary column.
