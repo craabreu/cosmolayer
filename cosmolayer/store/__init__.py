@@ -1,11 +1,15 @@
 """Build and query on-disk segment-level COSMO datasets.
 
-This subpackage is an offline dataset-building tool -- it depends on
-``rdkit``, ``tqdm``, and a parquet engine, which the rest of
-``cosmolayer`` does not need, so it is not imported eagerly by
-``cosmolayer``'s top-level ``__init__``. Import it explicitly::
+An offline dataset-building tool: parse ``.cosmo`` files into an on-disk
+segment-data store, then derive per-atom or per-molecule sigma profiles
+from it::
 
     from cosmolayer.store import SegmentStore
+
+    store = SegmentStore.from_cosmo_files(
+        cosmo_files_dir, smiles_to_filename, storage_dir
+    )
+    profiles = store.compute_molecule_sigma_profiles()
 
 Build a store from ``.cosmo`` files with ``SegmentStore.from_cosmo_files``,
 then derive per-atom or per-molecule sigma profiles with
