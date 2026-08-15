@@ -26,7 +26,7 @@ import pathlib
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -69,8 +69,15 @@ _RESERVED_SCHEME_NAMES = frozenset(
 # valence on read (even when atom-mapped), which would desync the two atom
 # orderings; removeHs=False disables that folding. SMILES with only
 # implicit hydrogens (e.g. "CCO") are unaffected either way.
+#
+# Assigned through cast(Any, ...) rather than a plain attribute set:
+# rdkit's generated stubs for this Boost.Python class have typed removeHs
+# inconsistently across releases, and lint_env.yaml pins no rdkit
+# version, so whatever mypy infers here can vary by CI run. cast(Any, ...)
+# opts this one assignment out of that check unconditionally, instead of
+# a `# type: ignore` that would itself be version-sensitive.
 _SMILES_PARSER_PARAMS = Chem.SmilesParserParams()
-_SMILES_PARSER_PARAMS.removeHs = False
+cast(Any, _SMILES_PARSER_PARAMS).removeHs = False
 
 
 @dataclass

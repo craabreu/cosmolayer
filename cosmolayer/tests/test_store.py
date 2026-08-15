@@ -45,7 +45,11 @@ SMILES_TO_FILENAME = {
 def built_store_dir(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
     """Build a real segment-data store from the bundled .cosmo fixtures,
     once per test session."""
-    storage_dir = tmp_path_factory.mktemp("segment_store")
+    # Explicitly typed: TempPathFactory.mktemp's declared return type has
+    # varied across pytest releases (Path vs an untyped Any), and this
+    # repo pins no pytest version, so relying on the inferred type is not
+    # stable across CI runs.
+    storage_dir: pathlib.Path = tmp_path_factory.mktemp("segment_store")
     SegmentStore.from_cosmo_files(
         COSMO_DATA_DIR, SMILES_TO_FILENAME, storage_dir, num_threads=1
     )
