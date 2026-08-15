@@ -1,0 +1,25 @@
+SegmentStore
+============
+
+.. currentmodule:: cosmolayer.store
+.. autoclass:: SegmentStore
+    :member-order: alphabetical
+
+    .. rubric:: Methods
+
+    .. automethod:: compute_atom_sigma_profiles
+        :no-index-entry:
+    .. automethod:: compute_averaged_sigmas
+        :no-index-entry:
+    .. automethod:: compute_molecule_sigma_profiles
+        :no-index-entry:
+    .. automethod:: exists
+        :no-index-entry:
+    .. automethod:: from_cosmo_files
+        :no-index-entry:
+    .. automethod:: load
+        :no-index-entry:
+    .. automethod:: save
+        :no-index-entry:
+    .. automethod:: sigmas
+        :no-index-entry:

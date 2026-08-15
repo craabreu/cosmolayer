@@ -1,0 +1,9 @@
+COSMO_SAC_2002
+==============
+
+.. currentmodule:: cosmolayer.store
+.. py:data:: COSMO_SAC_2002
+
+**Type:** AveragingScheme
+
+**Value:** ``AveragingScheme(name='cosmo-sac-2002', averaging_radius=0.8176300195, f_decay=1.0)``

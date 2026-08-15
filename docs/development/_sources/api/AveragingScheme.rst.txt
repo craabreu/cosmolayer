@@ -1,0 +1,7 @@
+AveragingScheme
+===============
+
+.. currentmodule:: cosmolayer.store
+.. autoclass:: AveragingScheme
+    :member-order: alphabetical
+

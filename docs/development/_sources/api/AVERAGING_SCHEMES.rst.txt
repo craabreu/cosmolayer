@@ -1,0 +1,9 @@
+AVERAGING_SCHEMES
+=================
+
+.. currentmodule:: cosmolayer.store
+.. py:data:: AVERAGING_SCHEMES
+
+**Type:** tuple
+
+**Value:** ``(AveragingScheme(name='cosmo-rs', averaging_radius=0.5, f_decay=1.0), AveragingScheme(name='cosmo-sac-2002', averaging_radius=0.8176300195, f_decay=1.0), AveragingScheme(name='cosmo-sac-2010', averaging_radius=np.float64(1.5191269449366247), f_decay=3.57))``

@@ -1,0 +1,9 @@
+COSMO_SAC_2010
+==============
+
+.. currentmodule:: cosmolayer.store
+.. py:data:: COSMO_SAC_2010
+
+**Type:** AveragingScheme
+
+**Value:** ``AveragingScheme(name='cosmo-sac-2010', averaging_radius=np.float64(1.5191269449366247), f_decay=3.57)``

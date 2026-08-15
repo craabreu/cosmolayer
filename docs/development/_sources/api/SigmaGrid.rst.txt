@@ -1,0 +1,21 @@
+SigmaGrid
+=========
+
+.. currentmodule:: cosmolayer.store
+.. autoclass:: SigmaGrid
+    :member-order: alphabetical
+
+    .. rubric:: Attributes
+
+    .. autoattribute:: bin_width
+        :no-index-entry:
+    .. autoattribute:: max_abs_sigma
+        :no-index-entry:
+    .. autoattribute:: num_points
+        :no-index-entry:
+    .. autoattribute:: values
+        :no-index-entry:
+    .. rubric:: Methods
+
+    .. automethod:: from_values
+        :no-index-entry:

@@ -1,0 +1,21 @@
+SigmaProfileTable
+=================
+
+.. currentmodule:: cosmolayer.store
+.. autoclass:: SigmaProfileTable
+    :member-order: alphabetical
+
+    .. rubric:: Attributes
+
+    .. autoattribute:: atom_offsets
+        :no-index-entry:
+    .. autoattribute:: level
+        :no-index-entry:
+    .. autoattribute:: sigma_values
+        :no-index-entry:
+    .. rubric:: Methods
+
+    .. automethod:: aggregate
+        :no-index-entry:
+    .. automethod:: from_segments
+        :no-index-entry:

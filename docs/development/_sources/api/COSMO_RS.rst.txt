@@ -1,0 +1,9 @@
+COSMO_RS
+========
+
+.. currentmodule:: cosmolayer.store
+.. py:data:: COSMO_RS
+
+**Type:** AveragingScheme
+
+**Value:** ``AveragingScheme(name='cosmo-rs', averaging_radius=0.5, f_decay=1.0)``

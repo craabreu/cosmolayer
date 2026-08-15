@@ -7,3 +7,4 @@ API Reference
 
     core.rst
     cosmosac.rst
+    store.rst

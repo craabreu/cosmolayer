@@ -1,0 +1,13 @@
+StoreMetadata
+=============
+
+.. currentmodule:: cosmolayer.store
+.. autoclass:: StoreMetadata
+    :member-order: alphabetical
+
+    .. rubric:: Methods
+
+    .. automethod:: from_dict
+        :no-index-entry:
+    .. automethod:: to_dict
+        :no-index-entry:
