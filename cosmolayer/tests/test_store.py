@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 from rdkit import Chem
 
+from cosmolayer.cosmosac import Component
 from cosmolayer.store import (
     AVERAGING_SCHEMES,
     COSMO_SAC_2010,
@@ -445,6 +446,58 @@ class TestSigmaProfileTable:
         molecule_table = store.compute_molecule_sigma_profiles(num_threads=1)
         assert atom_table.level == "atom"
         assert molecule_table.level == "molecule"
+
+
+# --------------------------------------------------------------------- #
+# Cross-validation against cosmosac.Component
+# --------------------------------------------------------------------- #
+
+
+class TestCrossValidationAgainstComponent:
+    """``cosmolayer.store`` and ``cosmolayer.cosmosac.Component`` implement
+    the same COSMO-SAC segment-averaging and sigma-profile-binning physics
+    independently -- different distance formulas (exact pairwise vs. a
+    clipped Gram-matrix expansion), different code paths (vectorized vs. a
+    scalar per-segment loop), no shared code. These tests compare their
+    outputs directly, so a bug that both implementations happen to share
+    is still invisible, but a bug specific to either one is not.
+
+    ``Component.sigma_profile`` (with ``merge_profiles=True``) is an
+    area-weighted profile in Å² that sums to ``Component.area``, split by
+    hydrogen-bonding class (NHB/OH/OT) and recombined as
+    ``profile_nhb + (1 - p) * (profile_oh + profile_ot) + p * (profile_oh
+    + profile_ot)`` -- the ``p`` (hb_probability) terms cancel exactly
+    regardless of its value, so the merged profile equals the plain
+    averaged-sigma histogram with no HB splitting involved. That makes it
+    directly comparable to ``store``'s molecule-level profile once the
+    latter is scaled from an area *fraction* back to Å² by its own area.
+    """
+
+    @pytest.mark.parametrize("smi", ["O", "CF", "NCCO", "C=C(N)O"])
+    def test_molecule_profile_matches_component(
+        self, smi: str, tmp_path: pathlib.Path
+    ) -> None:
+        cosmo_text = (COSMO_DATA_DIR / f"{smi}.cosmo").read_text()
+        grid = SigmaGrid(0.025, 51)
+
+        # Component's defaults are COSMO-SAC-2010's averaging_radius/f_decay,
+        # the same constants store.COSMO_SAC_2010 is built from.
+        component = Component(cosmo_text, merge_profiles=True)
+        assert np.allclose(component.sigma_grid, grid.values)
+
+        mapped_smi = Chem.MolToSmiles(Chem.AddHs(Chem.MolFromSmiles(smi)))
+        store = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, {mapped_smi: f"{smi}.cosmo"}, tmp_path, num_threads=1
+        )
+        table = store.compute_molecule_sigma_profiles(
+            scheme="cosmo-sac-2010", grid=grid, centered=False, num_threads=1
+        )
+
+        np.testing.assert_allclose(table.areas[0], component.area, rtol=1e-4)
+        store_area_profile = table.areas[0] * table.profiles[0]
+        np.testing.assert_allclose(
+            store_area_profile, component.sigma_profile, atol=2e-4
+        )
 
 
 # --------------------------------------------------------------------- #
