@@ -1,0 +1,246 @@
+"""CLI: build a segment-data store (if missing) and report summary
+statistics for atom- and molecule-level charges, areas, and sigma
+profiles.
+
+Run as::
+
+    python -m cosmolayer.store --storage-dir DIR \\
+        --cosmo-files-dir DIR --smiles-to-filename FILE.json
+
+The correctness checks this script used to perform inline (mass
+conservation, profile normalization, centered first moments, aggregated
+vs. directly binned agreement) now live in
+``cosmolayer/tests/test_store.py`` instead -- this module is reporting
+only.
+"""
+
+import argparse
+import json
+import pathlib
+import time
+from collections.abc import Callable, Sequence
+from typing import TypeVar
+
+import numpy as np
+from numpy.typing import NDArray
+
+from .binning import compute_per_atom_properties, compute_per_molecule_properties
+from .grid import SigmaGrid
+from .profiles import SigmaProfileTable
+from .reporting import print_stats
+from .segments import SegmentStore
+
+_T = TypeVar("_T")
+
+
+def _timed(label: str, fn: Callable[[], _T]) -> _T:
+    """Run ``fn``, print how long it took under ``label``, and return its
+    result."""
+    start_time = time.time()
+    result = fn()
+    print(f"Time to {label}: {time.time() - start_time:.2f} seconds")
+    return result
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    arg_parser = argparse.ArgumentParser(
+        prog="python -m cosmolayer.store",
+        description=(
+            "Build the segment data store (if missing) and print summary "
+            "statistics for atom- and molecule-level charges, areas, and "
+            "sigma profiles."
+        ),
+    )
+    arg_parser.add_argument(
+        "--storage-dir",
+        type=str,
+        required=True,
+        help="The directory to store (or load) the segment data.",
+    )
+    arg_parser.add_argument(
+        "--cosmo-files-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory containing the .cosmo files referenced by "
+            "--smiles-to-filename. Required only if --storage-dir doesn't "
+            "already hold a built store."
+        ),
+    )
+    arg_parser.add_argument(
+        "--smiles-to-filename",
+        type=str,
+        default=None,
+        help=(
+            "Path to a JSON file mapping each SMILES string to its .cosmo "
+            "filename (relative to --cosmo-files-dir); passed straight to "
+            "SegmentStore.from_cosmo_files. Required only if --storage-dir "
+            "doesn't already hold a built store."
+        ),
+    )
+    arg_parser.add_argument(
+        "--num-threads",
+        type=int,
+        default=None,
+        help=(
+            "Number of threads to use for every threaded step (segment "
+            "averaging, sigma-profile binning). Defaults to every "
+            "available CPU core -- lower this on a shared machine to "
+            "leave headroom for other users."
+        ),
+    )
+    arg_parser.add_argument(
+        "--sigma-scheme",
+        type=str,
+        default=None,
+        help=(
+            "Name of a COSMO-SAC averaging scheme (see AVERAGING_SCHEMES, "
+            "e.g. 'cosmo-rs', 'cosmo-sac-2002', 'cosmo-sac-2010') to use for "
+            "every statistic below, in place of raw charges / areas. "
+            "Requires storage_dir's SegmentStore to already have that "
+            "scheme in its averaged_sigmas (computed automatically by "
+            "SegmentStore.from_cosmo_files, unless skipped). Default None: "
+            "use raw sigma, unchanged."
+        ),
+    )
+    return arg_parser
+
+
+def _ensure_store_built(
+    args: argparse.Namespace,
+    arg_parser: argparse.ArgumentParser,
+    storage_dir: pathlib.Path,
+) -> None:
+    """Build the store at ``storage_dir`` if it doesn't already exist."""
+    if SegmentStore.exists(storage_dir):
+        print("Segment data already exists.")
+        return
+    if args.cosmo_files_dir is None or args.smiles_to_filename is None:
+        arg_parser.error(
+            "--cosmo-files-dir and --smiles-to-filename are required "
+            f"when --storage-dir ({storage_dir}) doesn't already hold "
+            "a built store."
+        )
+    print("Storing segment data and averaged sigmas...")
+    cosmo_files_dir = pathlib.Path(args.cosmo_files_dir)
+    with open(args.smiles_to_filename) as f:
+        smiles_to_filename = json.load(f)
+    _timed(
+        "store segment data and averaged sigmas",
+        lambda: SegmentStore.from_cosmo_files(
+            cosmo_files_dir,
+            smiles_to_filename,
+            storage_dir,
+            num_threads=args.num_threads,
+        ),
+    )
+
+
+def _report_atom_stats(
+    store: SegmentStore, sigma_scheme: str | None, num_threads: int | None
+) -> tuple[SigmaProfileTable, NDArray[np.float32], NDArray[np.float32]]:
+    """Print per-atom statistics and return the atom sigma-profile table
+    plus the per-atom areas and charges it was cross-checked against."""
+    total_num_atoms = int(store.molecules_df["num_atoms"].sum())
+    atom_charges, atom_areas = _timed(
+        "compute per-atom properties",
+        lambda: (
+            compute_per_atom_properties(
+                np.asarray(store.charges), store.atom_indices, total_num_atoms
+            ),
+            compute_per_atom_properties(
+                np.asarray(store.areas), store.atom_indices, total_num_atoms
+            ),
+        ),
+    )
+    atom_segment_counts = np.bincount(store.atom_indices, minlength=total_num_atoms)
+    print_stats("Atom charges", atom_charges)
+    print_stats("Atom areas", atom_areas)
+    print_stats("Atom segment counts", atom_segment_counts)
+
+    atom_sigma_profiles = _timed(
+        "compute atom sigma profiles",
+        lambda: store.compute_atom_sigma_profiles(
+            scheme=sigma_scheme,
+            grid=SigmaGrid(),
+            num_threads=num_threads,
+            centered=True,
+        ),
+    )
+    has_area = atom_sigma_profiles.areas > 0
+    print(f"Atoms with no surface segments: {(~has_area).sum()} of {total_num_atoms}")
+    first_moments = (
+        atom_sigma_profiles.profiles[has_area].astype(np.float64)
+        @ atom_sigma_profiles.sigma_values
+    )
+    print_stats("Atom profile first moments", first_moments, value_format=".3e")
+
+    return atom_sigma_profiles, atom_areas, atom_charges
+
+
+def _report_molecule_stats(
+    store: SegmentStore,
+    atom_sigma_profiles: SigmaProfileTable,
+    atom_areas: NDArray[np.float32],
+    atom_charges: NDArray[np.float32],
+    num_threads: int | None,
+) -> None:
+    """Print per-molecule statistics derived from the atom-level results."""
+    atom_offsets = store.molecules_df["atom_offsets"].values.astype("int64")
+    molecule_areas, molecule_charges = _timed(
+        "compute per-molecule properties",
+        lambda: (
+            compute_per_molecule_properties(atom_areas, atom_offsets),
+            compute_per_molecule_properties(atom_charges, atom_offsets),
+        ),
+    )
+    print_stats("Molecule areas", molecule_areas)
+    print_stats("Molecule charges", molecule_charges)
+
+    molecule_sigma_profiles = _timed(
+        "compute molecule sigma profiles",
+        lambda: atom_sigma_profiles.aggregate(num_threads=num_threads),
+    )
+    mass_err = np.abs(molecule_sigma_profiles.profiles.sum(axis=1) / molecule_areas - 1)
+    print(
+        f"Molecule profile mass conservation, max relative error: {mass_err.max():.2e}"
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for ``python -m cosmolayer.store``.
+
+    Parameters
+    ----------
+    argv : Sequence[str] | None, optional
+        Arguments to parse, by default None, meaning ``sys.argv[1:]``.
+
+    Returns
+    -------
+    int
+        Process exit code (0 on success).
+    """
+    arg_parser = _build_arg_parser()
+    args = arg_parser.parse_args(argv)
+    storage_dir = pathlib.Path(args.storage_dir)
+
+    _ensure_store_built(args, arg_parser, storage_dir)
+    store = _timed("load segment data", lambda: SegmentStore.load(storage_dir))
+
+    if args.sigma_scheme is not None and args.sigma_scheme not in store.averaged_sigmas:
+        arg_parser.error(
+            f"No averaged sigmas for scheme {args.sigma_scheme!r} in "
+            f"{storage_dir}. Known schemes: {sorted(store.averaged_sigmas)}."
+        )
+
+    atom_sigma_profiles, atom_areas, atom_charges = _report_atom_stats(
+        store, args.sigma_scheme, args.num_threads
+    )
+    _report_molecule_stats(
+        store, atom_sigma_profiles, atom_areas, atom_charges, args.num_threads
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

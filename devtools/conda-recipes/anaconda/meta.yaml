@@ -28,8 +28,12 @@ requirements:
     - opt-einsum
     - pandas
     - periodictable
+    - pyarrow
     - pytorch
     - pyyaml
+    - rdkit
+    - threadpoolctl
+    - tqdm
 
 test:
   imports:

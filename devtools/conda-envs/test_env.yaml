@@ -9,7 +9,11 @@ dependencies:
   - numpy
   - pandas
   - periodictable
+  - pyarrow
   - pyyaml
+  - rdkit
+  - threadpoolctl
+  - tqdm
   - typing-extensions
   - cmake
   - ninja
