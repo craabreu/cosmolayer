@@ -35,7 +35,7 @@ def test_add_component_adds_and_accessible(
 
     mixture.add_component("fluoromethane", cosmo_strings["fluoromethane"])
     assert len(mixture) == 2
-    assert mixture.component_names == ("water", "fluoromethane")  # type: ignore[comparison-overlap]
+    assert mixture.component_names == ("water", "fluoromethane")
 
     areas = mixture.areas
     assert areas.shape == (2,)
