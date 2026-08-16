@@ -103,9 +103,7 @@ def _tanimoto_distances(fingerprints: NDArray[np.int8]) -> list[float]:
     return cast(list[float], distance[rows, cols].tolist())
 
 
-def butina_cluster(
-    fingerprints: NDArray[np.int8], cutoff: float
-) -> NDArray[np.int64]:
+def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.int64]:
     """Butina-cluster molecules by fingerprint Tanimoto distance.
 
     Pairwise distances are computed densely (``O(n**2)`` memory), as
