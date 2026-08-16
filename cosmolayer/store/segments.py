@@ -2,9 +2,8 @@
 charges, and areas, plus the per-molecule table describing them.
 
 Build one from ``.cosmo`` files with ``SegmentStore.from_cosmo_files``, or
-load an existing one with ``SegmentStore.load``. Both work with a flat
-``storage_dir`` holding these files, none of which change name or shape
-under this package's revisions of the surrounding code::
+load an existing one with ``SegmentStore.load``. Both use a flat
+``storage_dir``::
 
     <storage_dir>/data.npy          float32 (n_segs_total, 5): [x, y, z, charge, area]
     <storage_dir>/atom_indices.npy  int64   (n_segs_total,):   global atom index per
@@ -14,10 +13,9 @@ under this package's revisions of the surrounding code::
     <storage_dir>/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}
     <storage_dir>/<scheme>.npy      float32 (n_segs_total,): one per averaging scheme
 
-Every function taking ``segment_offsets`` (the ``molecules_df`` column of
-that name) requires it to describe *exactly* the molecules present in the
-accompanying segment-level arrays: the last molecule's segments are
-assumed to run to the end of those arrays.
+``segment_offsets`` (the ``molecules_df`` column of that name) must describe
+*exactly* the molecules present in the accompanying segment-level arrays:
+the last molecule's segments run to the end of those arrays.
 """
 
 import json
@@ -51,31 +49,14 @@ METADATA_FILE = pathlib.Path("metadata.json")
 
 _STORE_FILES = (DATA_FILE, ATOM_INDICES_FILE, MOLECULES_FILE, METADATA_FILE)
 
-# A scheme's averaged sigmas are written to "<name>.npy" (see save()), so
-# only the store's own *.npy files can actually collide with one -- not
-# MOLECULES_FILE or METADATA_FILE, which have different suffixes and so
-# can never share a name with a "<name>.npy" scheme output. Derived from
-# _STORE_FILES itself rather than a second, hand-maintained set, so the
-# two can't drift apart.
+# Averaged sigmas are written to "<name>.npy", so scheme names must not
+# collide with the store's own .npy stems (data, atom_indices).
 _RESERVED_SCHEME_NAMES = frozenset(
     f.stem for f in _STORE_FILES if f.suffix == DATA_FILE.suffix
 )
 
-# A .cosmo file's atom table always lists every atom explicitly, hydrogens
-# included, and _reorder_molecule's atom-mapping contract requires each
-# SMILES atom to correspond 1:1 with a COSMO atom -- so explicit hydrogens
-# in a SMILES string must survive parsing as real atoms. RDKit's default
-# parser silently folds ordinary terminal "[H]" atoms back into implicit
-# valence on read (even when atom-mapped), which would desync the two atom
-# orderings; removeHs=False disables that folding. SMILES with only
-# implicit hydrogens (e.g. "CCO") are unaffected either way.
-#
-# Assigned through cast(Any, ...) rather than a plain attribute set:
-# rdkit's generated stubs for this Boost.Python class have typed removeHs
-# inconsistently across releases, and lint_env.yaml pins no rdkit
-# version, so whatever mypy infers here can vary by CI run. cast(Any, ...)
-# opts this one assignment out of that check unconditionally, instead of
-# a `# type: ignore` that would itself be version-sensitive.
+# COSMO atom tables include explicit hydrogens; disable RDKit's default
+# folding of terminal [H] so SMILES atoms match the COSMO file.
 _SMILES_PARSER_PARAMS = Chem.SmilesParserParams()
 cast(Any, _SMILES_PARSER_PARAMS).removeHs = False
 
@@ -102,16 +83,7 @@ class StoreMetadata:
     schemes: dict[str, AveragingScheme] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize to the JSON-compatible shape written to
-        ``metadata.json``.
-
-        Returns
-        -------
-        dict
-            ``{"num_molecules": ..., "num_cosmo_parse_failures": ...,
-            "schemes": {name: {"averaging_radius": ..., "f_decay":
-            ...}}}``.
-        """
+        """Serialize to the JSON-compatible shape written to ``metadata.json``."""
         return {
             "num_molecules": self.num_molecules,
             "num_cosmo_parse_failures": self.num_cosmo_parse_failures,
@@ -126,16 +98,12 @@ class StoreMetadata:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "StoreMetadata":
-        """Reconstruct from the shape read back from ``metadata.json``.
+        """Reconstruct from the dict produced by ``to_dict``.
 
         Parameters
         ----------
         data : dict
             As produced by ``to_dict``.
-
-        Returns
-        -------
-        StoreMetadata
         """
         schemes = {
             name: AveragingScheme(name, params["averaging_radius"], params["f_decay"])
@@ -149,14 +117,12 @@ class StoreMetadata:
 
 
 class SegmentStore:
-    """A segment-data store: segment arrays plus the per-molecule
-    ``molecules_df`` table describing them, and any averaged sigmas
-    computed for it.
+    """On-disk COSMO segment arrays, the per-molecule table describing
+    them, and any averaged sigmas computed for the store.
 
-    Construct directly only if you already have every component in hand
-    (e.g. re-wrapping arrays); normal callers use ``load`` (read an
-    existing store from disk, memory-mapped) or ``from_cosmo_files``
-    (build a new one).
+    Prefer ``load`` (read an existing store, memory-mapped) or
+    ``from_cosmo_files`` (build a new one). Direct construction is for
+    wrapping arrays already in hand.
 
     Parameters
     ----------
@@ -170,13 +136,11 @@ class SegmentStore:
         One row per molecule, with columns ``smiles``, ``segment_offsets``,
         ``atom_offsets``, ``num_atoms``, and ``volume``.
     metadata : StoreMetadata
-        Molecule/failure counts for this store, plus whichever averaging
-        schemes have been computed for it so far.
+        Molecule and parse-failure counts, plus averaging schemes already
+        computed for this store.
     averaged_sigmas : dict[str, np.ndarray]
-        Scheme name -> ``(n_segs_total,)`` averaged charge density,
-        computed automatically by ``from_cosmo_files`` for whatever
-        schemes have been computed for this store so far. Empty if none
-        have.
+        Scheme name to ``(n_segs_total,)`` averaged charge density. Empty
+        if none have been computed.
 
     Attributes
     ----------
@@ -205,14 +169,11 @@ class SegmentStore:
 
     @staticmethod
     def _reorder_molecule(mol: Chem.Mol) -> Chem.Mol:
-        """Reorder a molecule's atoms by their AtomMapNum property.
+        """Reorder atoms into ascending AtomMapNum order.
 
-        Sorts atoms into ascending AtomMapNum order, so atom ``i`` ends up
-        carrying ``AtomMapNum == i`` (0-based mapping) or ``AtomMapNum ==
-        i + 1`` (1-based). ``from_cosmo_files`` relies on this: it uses
-        each segment's COSMO-file atom index directly as its global atom
-        index, which only matches a molecule's atom-mapped SMILES once the
-        atoms are in this order.
+        After reordering, atom ``i`` has ``AtomMapNum == i`` (0-based) or
+        ``AtomMapNum == i + 1`` (1-based), matching the COSMO file's
+        0-based atom indices used as global atom indices.
 
         Parameters
         ----------
@@ -227,7 +188,8 @@ class SegmentStore:
         Raises
         ------
         ValueError
-            If the molecule has bad atom map numbers.
+            If the atom map numbers are not all 0, or a 0-based or
+            1-based permutation of the atom indices.
         """
         num_atoms = mol.GetNumAtoms()
         map_nums = {atom.GetAtomMapNum() for atom in mol.GetAtoms()}
@@ -250,39 +212,27 @@ class SegmentStore:
         schemes: Sequence[AveragingScheme] | None = None,
         num_threads: int | None = None,
     ) -> dict[str, NDArray[np.float32]]:
-        """Compute averaged sigmas for this store under every scheme in
-        ``schemes``.
-
-        Pure: returns the computed arrays without writing anything or
-        mutating ``self``. Called by ``from_cosmo_files``, which passes
-        the result to ``save``. A store's averaged sigmas are meant to be
-        computed once, at build time -- this is exposed mainly so
-        ``from_cosmo_files`` (and tests) don't have to go through disk.
-
-        Calls ``average_sigmas_by_molecule`` once, sharing the
-        pairwise-distance computation across every scheme.
+        """Compute averaged charge densities under each scheme, without
+        writing to disk or mutating this store.
 
         Parameters
         ----------
         schemes : Sequence[AveragingScheme] | None, optional
-            Schemes to average under, by default None, meaning
-            ``AVERAGING_SCHEMES`` (Klamt, COSMO-SAC 2002, COSMO-SAC 2010).
+            Schemes to apply. ``None`` (default) uses ``AVERAGING_SCHEMES``.
         num_threads : int | None, optional
-            Number of threads to use, by default None, meaning every
-            available CPU core.
+            Thread count. ``None`` (default) uses every CPU core.
 
         Returns
         -------
         dict[str, np.ndarray]
-            Scheme name -> ``(n_segs_total,)`` float32 averaged charge
-            density, one entry per scheme in ``schemes``.
+            Scheme name to ``(n_segs_total,)`` float32 averaged charge
+            density.
 
         Raises
         ------
         ValueError
-            If a scheme's name collides with a reserved store filename
-            stem (i.e. would overwrite ``DATA_FILE`` or
-            ``ATOM_INDICES_FILE`` on ``save``).
+            If a scheme's name would overwrite ``data.npy`` or
+            ``atom_indices.npy`` on ``save``.
         """
         if schemes is None:
             schemes = AVERAGING_SCHEMES
@@ -311,20 +261,14 @@ class SegmentStore:
         """Write this store's arrays, table, metadata, and averaged
         sigmas to disk.
 
-        ``metadata.json`` is written atomically (temp file + rename), so a
-        process interrupted mid-``save`` never leaves a store that
-        ``exists()`` reports as complete but that ``load`` cannot actually
-        read.
+        ``metadata.json`` is written atomically (temp file + rename), so an
+        interrupted save is never reported as complete by ``exists``.
 
         Parameters
         ----------
         storage_dir : pathlib.Path | str | None, optional
-            Destination directory, by default None, meaning
+            Destination directory. ``None`` (default) uses
             ``self.storage_dir``. Created if missing.
-
-        Returns
-        -------
-        None
         """
         storage_dir = (
             self.storage_dir if storage_dir is None else pathlib.Path(storage_dir)
@@ -350,12 +294,10 @@ class SegmentStore:
 
     @classmethod
     def exists(cls, storage_dir: pathlib.Path | str) -> bool:
-        """Check whether a directory holds a complete segment-data store.
+        """Return whether ``storage_dir`` holds a complete store.
 
-        Checks not just the four fixed files but every scheme ``.npy``
-        listed in ``metadata.json``, so an interrupted build (metadata
-        written before its scheme arrays) is correctly reported as
-        incomplete.
+        Requires the four fixed files and every scheme ``.npy`` listed in
+        ``metadata.json``.
 
         Parameters
         ----------
@@ -365,7 +307,7 @@ class SegmentStore:
         Returns
         -------
         bool
-            True if the store is complete, False otherwise.
+            True if the store is complete.
         """
         storage_dir = pathlib.Path(storage_dir)
         if not all((storage_dir / f).exists() for f in _STORE_FILES):
@@ -431,17 +373,12 @@ class SegmentStore:
         schemes: Sequence[AveragingScheme] | None = None,
         num_threads: int | None = None,
     ) -> "SegmentStore":
-        """Parse COSMO files, build a store in memory, and persist it to
-        ``storage_dir``.
+        """Parse COSMO files, build a store, and write it to ``storage_dir``.
 
-        A molecule's atoms are numbered by the COSMO file's own 0-based
-        order directly, which is why each SMILES's atom count is checked
-        against its COSMO file and, if atom-mapped, reordered via
-        ``_reorder_molecule`` onto that same indexing.
-
-        Also computes and writes averaged sigmas for the new store (see
-        ``compute_averaged_sigmas``), unless ``schemes`` is an empty
-        sequence.
+        Atoms are numbered in the COSMO file's 0-based order. Each SMILES
+        must have the same atom count as its COSMO file; atom-mapped SMILES
+        are reordered onto that indexing. Averaged sigmas are computed and
+        written unless ``schemes`` is an empty sequence.
 
         Parameters
         ----------
@@ -449,22 +386,21 @@ class SegmentStore:
             Directory containing the ``.cosmo`` files named by
             ``smiles_to_filename``'s values.
         smiles_to_filename : dict[str, str]
-            SMILES string -> ``.cosmo`` filename (relative to
+            SMILES string to ``.cosmo`` filename (relative to
             ``cosmo_files_dir``), one entry per molecule to store.
         storage_dir : pathlib.Path
             Destination directory for the output files. Created if
             missing.
         ignore_errors : bool, optional
-            If True, a molecule that fails to parse or validate is skipped
-            (and counted in ``metadata.num_cosmo_parse_failures``) instead
-            of raising. By default False.
+            If True, skip molecules that fail to parse or validate and
+            count them in ``metadata.num_cosmo_parse_failures``. Default
+            False.
         schemes : Sequence[AveragingScheme] | None, optional
-            Passed to ``compute_averaged_sigmas``, by default None,
-            meaning ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging
-            entirely.
+            Averaging schemes to compute. ``None`` (default) uses
+            ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging.
         num_threads : int | None, optional
-            Passed to ``compute_averaged_sigmas``, by default None,
-            meaning every available CPU core.
+            Thread count for averaging. ``None`` (default) uses every CPU
+            core.
 
         Returns
         -------
@@ -474,10 +410,9 @@ class SegmentStore:
         Raises
         ------
         ValueError
-            If a molecule's SMILES or COSMO file cannot be parsed and
-            ``ignore_errors`` is False, if no molecule could be stored, or
-            if a scheme's name collides with a reserved store filename
-            stem (see ``compute_averaged_sigmas``).
+            If a molecule cannot be parsed and ``ignore_errors`` is False,
+            if no molecule could be stored, or if a scheme name collides
+            with a reserved store filename.
         """
         data_chunks, atoms_chunks = [], []
         segment_offsets, segment_offset = [], 0
@@ -597,35 +532,29 @@ class SegmentStore:
         num_threads: int | None = None,
         centered: bool = False,
     ) -> SigmaProfileTable:
-        """Compute this store's per-atom sigma profiles.
-
-        A thin wrapper around ``SigmaProfileTable.from_segments`` that
-        supplies this store's own ``areas``/``atom_indices``/
-        ``segment_offsets``, and resolves ``sigmas`` from ``scheme`` (see
-        ``sigmas``).
+        """Compute per-atom sigma profiles for this store.
 
         Parameters
         ----------
         scheme : str | None, optional
-            Passed to ``sigmas``, by default None (raw charge density).
+            Charge-density source. ``None`` (default) uses raw
+            ``charges / areas``; a name selects ``averaged_sigmas[scheme]``.
         grid : SigmaGrid, optional
-            Base grid to bin profiles onto, by default ``DEFAULT_SIGMA_GRID``.
+            Grid to bin onto, by default ``DEFAULT_SIGMA_GRID``.
         num_threads : int | None, optional
-            Number of threads to use, by default None, meaning every
-            available CPU core.
+            Thread count. ``None`` (default) uses every CPU core.
         centered : bool, optional
-            Whether to center each atom's profile on its own mean charge
-            density, by default False.
+            If True, center each atom's profile on its mean charge density.
 
         Returns
         -------
         SigmaProfileTable
-            Atom-level.
+            One row per atom.
 
         Raises
         ------
         KeyError
-            If ``scheme`` is given but not in ``self.averaged_sigmas``.
+            If ``scheme`` is given but not in ``averaged_sigmas``.
         """
         sigmas = self.sigmas(scheme)
         segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
@@ -648,30 +577,28 @@ class SegmentStore:
         num_threads: int | None = None,
         centered: bool = False,
     ) -> SigmaProfileTable:
-        """Compute this store's per-molecule sigma profiles directly from
-        segment-level data.
+        """Compute per-molecule sigma profiles from segment-level data.
 
-        Equivalent to ``self.compute_atom_sigma_profiles(...).aggregate()``
-        but skips the atom-level intermediate; mainly useful as a
-        cross-check for that two-step path.
+        Bins segments directly to molecules, without an atom-level
+        intermediate.
 
         Parameters
         ----------
         scheme : str | None, optional
-            Passed to ``sigmas``, by default None (raw charge density).
+            Charge-density source. ``None`` (default) uses raw
+            ``charges / areas``; a name selects ``averaged_sigmas[scheme]``.
         grid : SigmaGrid, optional
-            Base grid to bin profiles onto, by default ``DEFAULT_SIGMA_GRID``.
+            Grid to bin onto, by default ``DEFAULT_SIGMA_GRID``.
         num_threads : int | None, optional
-            Number of threads to use, by default None, meaning every
-            available CPU core.
+            Thread count. ``None`` (default) uses every CPU core.
         centered : bool, optional
-            Whether to center each molecule's profile on its own mean
-            charge density, by default False.
+            If True, center each molecule's profile on its mean charge
+            density.
 
         Returns
         -------
         SigmaProfileTable
-            Molecule-level.
+            One row per molecule.
         """
         sigmas = self.sigmas(scheme)
         segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")

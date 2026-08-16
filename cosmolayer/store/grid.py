@@ -1,24 +1,17 @@
 """The symmetric, evenly spaced grid a sigma profile is binned onto.
 
-Every sigma profile in this package -- per-segment, per-atom, or
-per-molecule -- is a histogram of surface area over charge density
-(sigma, in e/Å²), binned linearly onto a :class:`SigmaGrid`.
+A sigma profile is a histogram of surface area over charge density
+(sigma, in e/Å²). Profiles are always binned onto the ``SigmaGrid``
+passed in.
 
-A grid is whatever the caller asks for: profiles are always binned onto
-the exact ``SigmaGrid`` passed in, so a table's ``profiles`` always has
-``len(grid)`` columns. Nothing here substitutes a different grid behind
-the caller's back.
+Two operations are named separately because both are sometimes called
+"shifting":
 
-Two distinct operations both get called "shifting" elsewhere in this
-domain, so this package keeps them apart by name:
-
-- *centering* a profile subtracts a row's own mean charge density from its
-  segments **before** binning, so the resulting profile has zero first
-  moment. It transforms the *data*, never the grid, and is recorded as
-  ``SigmaProfileTable.centered``.
-- *translating* a profile moves an already-binned row along a grid, which
-  is how ``binning.accumulate_translated_profiles`` un-centers atom
-  profiles while summing them to molecule level.
+- *centering* subtracts a row's mean charge density from its segments
+  **before** binning, so the profile has zero first moment. It changes
+  the data, not the grid (``SigmaProfileTable.centered``).
+- *translating* moves an already-binned row along a grid, used when
+  un-centering atom profiles while summing them to molecule level.
 """
 
 from dataclasses import dataclass
@@ -42,11 +35,7 @@ class SigmaGrid:
         default ``DEFAULT_MAX_ABS_SIGMA``.
     num_points : int, optional
         Number of grid points, by default ``DEFAULT_NUM_POINTS``. An odd
-        count puts a point exactly at sigma = 0; an even count straddles
-        it. Both are supported for centered and uncentered profiles alike
-        -- pick whichever suits the model consuming the profiles. To bin
-        centered profiles with no point at exactly zero, ask for an even
-        count directly, e.g. ``SigmaGrid(0.0255, 52)``.
+        count puts a point at sigma = 0; an even count straddles it.
 
     Examples
     --------
@@ -114,4 +103,4 @@ class SigmaGrid:
 
 
 DEFAULT_SIGMA_GRID = SigmaGrid()
-"""The default grid, usable as a shared immutable default argument value."""
+"""Default 51-point grid from -0.025 to 0.025 e/Å²."""

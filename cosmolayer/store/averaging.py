@@ -1,15 +1,12 @@
 """COSMO-SAC-style distance-weighted averaging of segment charge density.
 
-In COSMO-RS and COSMO-SAC, "sigma" refers to this averaged charge
-density, not to the raw per-segment ``charge / area`` -- averaging is not
-an optional smoothing step on top of "the real sigma", it *is* sigma.
+In COSMO-RS and COSMO-SAC, "sigma" is this averaged charge density, not
+the raw per-segment ``charge / area``.
 
-Every function here that takes ``segment_offsets`` requires it to
-describe *exactly* the molecules present in the accompanying segment-level
-arrays: the last molecule's segments are assumed to run to the end of
-those arrays. Slicing ``segment_offsets`` and the segment-level arrays for
-a subset must always be done together, or leftover segments are silently
-attributed to the wrong molecule.
+``segment_offsets`` must describe *exactly* the molecules present in the
+accompanying segment-level arrays: the last molecule's segments run to
+the end of those arrays. Slice ``segment_offsets`` and the arrays
+together, or leftover segments are attributed to the wrong molecule.
 """
 
 from collections.abc import Sequence
@@ -30,19 +27,15 @@ from .parallel import run_in_threads
 
 @dataclass(frozen=True)
 class AveragingScheme:
-    """One COSMO-SAC-style segment-averaging scheme.
-
-    A pure value object describing the physics of a scheme -- it has no
-    notion of storage, so it does not (and cannot, without an import
-    cycle) validate its name against a ``SegmentStore``'s on-disk layout.
-    ``SegmentStore`` becomes the stem of the ``<name>.npy`` file it writes
-    this scheme's averaged sigmas to, and rejects a colliding name itself
-    (see ``SegmentStore.compute_averaged_sigmas``).
+    """Named averaging scheme (radius and decay) for segment charge
+    densities.
 
     Parameters
     ----------
     name : str
-        Scheme identifier.
+        Identifier used as the ``<name>.npy`` stem when a store saves
+        averaged sigmas. Must not collide with reserved store filenames
+        (``data``, ``atom_indices``).
     averaging_radius : float
         Effective averaging radius ``r_av``, in Å.
     f_decay : float
@@ -71,10 +64,7 @@ AVERAGING_SCHEMES: tuple[AveragingScheme, ...] = (
     COSMO_SAC_2002,
     COSMO_SAC_2010,
 )
-"""Every scheme this package knows about. Each carries its own ``name``,
-so this is a plain sequence rather than a name-keyed mapping -- keying it
-by name too would just be a second copy of information ``AveragingScheme``
-already has."""
+"""Built-in schemes: COSMO-RS, COSMO-SAC 2002, and COSMO-SAC 2010."""
 
 
 def average_sigmas(
@@ -84,7 +74,7 @@ def average_sigmas(
     schemes: Sequence[AveragingScheme],
 ) -> NDArray[np.float64]:
     """Distance-weighted average of one molecule's segment charge
-    densities, under one or more averaging schemes at once.
+    densities, under one or more averaging schemes.
 
     For every segment ``m``, replaces its raw charge density
     ``sigma_m = q_m / A_m`` with a weighted average over every segment
@@ -94,23 +84,10 @@ def average_sigmas(
         w[m, n] = (r_n^2 * r_av^2 / (r_n^2 + r_av^2))
                   * exp(-f_decay * d_mn^2 / (r_n^2 + r_av^2))
 
-    where ``r_n = sqrt(A_n / pi)`` is segment ``n``'s own effective radius
-    and ``d_mn`` is the distance between segment centroids ``m`` and
-    ``n``. The weight uses the *neighbor* segment's radius ``r_n``, not
-    the segment being averaged -- easy to get backwards, since it makes
-    ``w`` asymmetric even though ``d_mn`` itself is symmetric.
-
-    Accepts multiple schemes so they can share one pairwise-distance
-    computation; each scheme's result is returned as its own row. O(n^2)
-    in the molecule's own segment count, computed densely (no distance
-    cutoff), matching the reference implementation exactly. Always upcast
-    to float64 internally regardless of input dtype, since a store's own
-    arrays are float32 and the Gram-matrix distance expansion loses
-    significant precision at that width.
-
-    The caller must never pass segments from more than one molecule at
-    once (see ``average_sigmas_by_molecule`` for the whole-dataset
-    wrapper).
+    where ``r_n = sqrt(A_n / pi)`` is the *neighbor* segment's effective
+    radius and ``d_mn`` is the distance between centroids, so ``w`` is
+    asymmetric even though ``d_mn`` is not. Pass segments of a single
+    molecule only; use ``average_sigmas_by_molecule`` for a dataset.
 
     Parameters
     ----------
@@ -122,11 +99,7 @@ def average_sigmas(
     areas : np.ndarray
         Segment areas for the same molecule, shape ``(n_segs,)``.
     schemes : Sequence[AveragingScheme]
-        Schemes to average under, in the order the result rows are
-        returned. COSMO-SAC 2010 uses ``r_av = sqrt(7.25 / pi)``,
-        ``f_decay = 3.57``; COSMO-SAC 2002 uses ``r_av = 0.8176300195``,
-        ``f_decay = 1.0``; Klamt's original COSMO-RS scheme uses
-        ``r_av = 0.5``, ``f_decay = 1.0``.
+        Schemes to apply, in the order of the result rows.
 
     Returns
     -------
@@ -134,6 +107,7 @@ def average_sigmas(
         Averaged charge density for each segment under each scheme, in
         e/Å², row ``i`` matching ``schemes[i]``.
     """
+    # float64: the Gram-matrix distance expansion loses precision in float32.
     coords = coords.astype(np.float64, copy=False)
     charges = charges.astype(np.float64, copy=False)
     areas = areas.astype(np.float64, copy=False)
@@ -165,15 +139,11 @@ def average_sigmas_by_molecule(
     schemes: Sequence[AveragingScheme],
     num_threads: int | None = None,
 ) -> NDArray[np.float64]:
-    """Apply one or more averaging schemes to every segment of a dataset,
-    in one threaded pass.
+    """Apply one or more averaging schemes to every molecule in a dataset.
 
-    Calls ``average_sigmas`` once per molecule -- each thread handles a
-    disjoint range of whole molecules (see ``run_in_threads``), so this is
-    safe with no locking. Output row ``i``
-    (``average_sigmas_by_molecule(...)[i]``) matches ``schemes[i]``, and
-    can be passed as ``sigmas`` straight into
-    ``SigmaProfileTable.from_segments``, alongside the same ``areas``.
+    Each thread handles a disjoint range of whole molecules. Row ``i`` of
+    the result matches ``schemes[i]`` and can be passed as ``sigmas`` to
+    ``SigmaProfileTable.from_segments``.
 
     Parameters
     ----------
@@ -184,14 +154,12 @@ def average_sigmas_by_molecule(
     areas : np.ndarray
         Segment areas, shape ``(n_segs_total,)``.
     segment_offsets : np.ndarray
-        Start index of each molecule's segments within the segment-level
-        arrays (see module docstring for the exactness requirement).
+        Start index of each molecule's segments. Must describe exactly
+        the molecules present in the segment-level arrays.
     schemes : Sequence[AveragingScheme]
-        Schemes to average under, in the order the result rows are
-        returned.
+        Schemes to apply, in the order of the result rows.
     num_threads : int | None, optional
-        Number of threads to use, by default None, meaning every
-        available CPU core.
+        Thread count. ``None`` (default) uses every CPU core.
 
     Returns
     -------
