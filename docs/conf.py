@@ -147,7 +147,7 @@ def create_module_docs(module, module_name, title, output_dir="api"):
 main_toctree = create_module_docs(cosmolayer, "cosmolayer", "Core API")
 sac_toctree = create_module_docs(cosmosac, "cosmolayer.cosmosac", "COSMO-SAC")
 store_toctree = create_module_docs(
-    cosmolayer_store, "cosmolayer.store", "cosmolayer.store"
+    cosmolayer_store, "cosmolayer.store", "Segment Data Store"
 )
 
 with open("api/index.rst", "w") as f:
@@ -258,7 +258,9 @@ html_theme_options = {
 html_sidebars = {
     "api/**": ["sidebar-nav-bs"],
     "getting_started": [],
+    "cli": [],
     "visualization": [],
+    "cosmostore": [],
     "references": [],
 }
 
@@ -268,6 +270,7 @@ html_context = {
     "github_repo": "cosmolayer",
     "github_version": "main",
     "doc_path": "docs",
+    "default_mode": "auto",
 }
 
 # OpenGraph (nice link previews)

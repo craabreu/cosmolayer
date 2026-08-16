@@ -17,22 +17,16 @@ def print_stats(
     Parameters
     ----------
     title : str
-        Label identifying the property, used as the table's column header.
+        Column header identifying the property.
     properties : np.ndarray
-        Values to summarize, of any numeric dtype (integer or floating).
+        Numeric values to summarize.
     quantiles : tuple[float, ...], optional
-        Quantiles (in ``[0, 1]``) to report, by default
+        Quantiles in ``[0, 1]`` to report, by default
         ``(0.01, 0.1, 0.5, 0.9, 0.99)``.
     value_format : str, optional
-        Format spec for the reported values, by default ``".6f"``. Use an
-        exponential format such as ``".3e"`` for quantities whose whole
-        range sits far below the fixed-point resolution, which would
-        otherwise print as a column of zeros.
-
-    Returns
-    -------
-    None
-        The statistics are printed directly; nothing is returned.
+        Format spec for the reported values, by default ``".6f"``. Use
+        an exponential format such as ``".3e"`` when values would
+        otherwise print as zeros.
     """
     print(f"\n{'Statistic':<10} | {title:>20}")
     print("-" * 33)

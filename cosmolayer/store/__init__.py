@@ -1,8 +1,7 @@
 """Build and query on-disk segment-level COSMO datasets.
 
-An offline dataset-building tool: parse ``.cosmo`` files into an on-disk
-segment-data store, then derive per-atom or per-molecule sigma profiles
-from it::
+Parse ``.cosmo`` files into an on-disk segment-data store, then derive
+per-atom or per-molecule sigma profiles::
 
     from cosmolayer.store import SegmentStore
 
@@ -10,11 +9,6 @@ from it::
         cosmo_files_dir, smiles_to_filename, storage_dir
     )
     profiles = store.compute_molecule_sigma_profiles()
-
-Build a store from ``.cosmo`` files with ``SegmentStore.from_cosmo_files``,
-then derive per-atom or per-molecule sigma profiles with
-``SegmentStore.compute_atom_sigma_profiles`` /
-``compute_molecule_sigma_profiles``, both returning a ``SigmaProfileTable``.
 """
 
 from .averaging import (

@@ -1,10 +1,8 @@
-"""Threaded, molecule-chunked execution shared by every store operation
-that walks the segment- or atom-level arrays one molecule at a time.
+"""Threaded execution over molecule-sized chunks of segment- or atom-level
+arrays.
 
-Every threaded pass in this package splits the *molecules* (never
-segments or atoms) into ``num_threads`` contiguous ranges, so each thread
-owns disjoint molecules and needs no locking around the accumulation
-arrays it writes into.
+Each pass splits *molecules* (not segments or atoms) into contiguous
+ranges so threads own disjoint molecules and need no locking.
 """
 
 import os
@@ -68,31 +66,21 @@ def run_in_threads(
 ) -> None:
     """Run ``fn(start, stop)`` once per molecule chunk, across threads.
 
-    Every chunk covers disjoint molecules, so ``fn`` is safe to call
-    concurrently as long as it only ever writes to the rows/segments
-    belonging to its own ``[start, stop)`` range.
+    Chunks cover disjoint molecules, so ``fn`` may write only to its own
+    ``[start, stop)`` range.
 
     Parameters
     ----------
     fn : Callable[[int, int], None]
-        Called once per chunk with that chunk's ``(start, stop)`` molecule
-        bounds (see ``molecule_chunks``). Any exception raised in a thread
-        is re-raised in the calling thread.
+        Called once per chunk with that chunk's molecule bounds.
+        Exceptions in a thread are re-raised in the caller.
     num_items : int
-        Total number of molecules to split across threads.
+        Number of molecules to split across threads.
     num_threads : int | None, optional
-        Number of threads to use, by default None, meaning every available
-        CPU core (see ``resolve_num_threads``).
+        Thread count. ``None`` (default) uses every CPU core.
     limit_blas : bool, optional
-        Whether to cap BLAS's own internal thread pool to 1 thread for the
-        duration of the call, by default False. Set this when ``fn`` calls
-        into BLAS-backed numpy operations (e.g. matrix products) that would
-        otherwise each spawn their own thread pool, oversubscribing the
-        CPU on top of this function's own threading.
-
-    Returns
-    -------
-    None
+        If True, cap BLAS to 1 thread for the duration of the call, so
+        numpy matrix products do not oversubscribe the CPU.
     """
     num_threads = resolve_num_threads(num_threads)
     limiter = threadpoolctl.threadpool_limits(limits=1) if limit_blas else nullcontext()

@@ -99,24 +99,17 @@ def compute_per_molecule_properties(
 
 @dataclass
 class AtomProfileAccumulator:
-    """The three per-atom arrays ``accumulate_atom_profiles`` accumulates
-    into.
-
-    Grouped into one object because every call site needs all three
-    together, and because keeping them as one parameter (instead of three)
-    keeps ``accumulate_atom_profiles``'s signature within this package's
-    argument-count limit.
+    """Per-atom areas, charges, and profiles updated in place by
+    ``accumulate_atom_profiles``.
 
     Parameters
     ----------
     areas : np.ndarray
-        Per-atom areas, shape ``(num_atoms,)``. Modified in place by
-        ``accumulate_atom_profiles``.
+        Per-atom areas, shape ``(num_atoms,)``.
     charges : np.ndarray
-        Per-atom charges, shape ``(num_atoms,)``. Modified in place.
+        Per-atom charges, shape ``(num_atoms,)``.
     profiles : np.ndarray
         Per-atom sigma profiles, shape ``(num_atoms, num_points)``.
-        Modified in place.
     """
 
     areas: NDArray[np.float32]
@@ -132,48 +125,34 @@ def accumulate_atom_profiles(
     grid: SigmaGrid,
     centered: bool,
 ) -> None:
-    """Accumulate a batch of segments' area into per-atom sigma profiles.
+    """Accumulate a batch of segments into per-atom sigma profiles.
 
     Each segment's charge density is linearly interpolated between the
-    two nearest grid points, and its area split between those points
-    accordingly. Charge densities outside ``grid``'s range are folded
-    into the nearest boundary point. Each atom's profile ends up summing
-    to 1 (all-zero for atoms with no surface segments).
+    two nearest grid points, and its area split between those points.
+    Values outside ``grid`` fold into the nearest boundary. Each atom's
+    profile sums to 1 (all-zero if it has no surface segments).
 
-    Takes each segment's charge density directly, as ``sigmas``, rather
-    than deriving it from ``charge / area`` -- pass raw (``charges /
-    areas``) or an averaged density from ``average_sigmas_by_molecule``.
-    ``accumulator.charges`` accumulates ``sigmas * areas``, the true net
-    charge when ``sigmas`` is raw.
+    ``sigmas`` is charge density (raw ``charges / areas``, or averaged).
+    ``accumulator.charges`` accumulates ``sigmas * areas``.
 
-    Safe to call concurrently on disjoint segment ranges split on
-    *molecule* boundaries: every segment of an atom must land in the same
-    batch, since ``accumulator.areas``/``.charges`` are read back mid-call
-    to normalize.
+    Safe concurrently on disjoint ranges split on *molecule* boundaries:
+    every segment of an atom must land in the same batch.
 
     Parameters
     ----------
     accumulator : AtomProfileAccumulator
-        Per-atom areas, charges, and profiles to accumulate into. Modified
-        in place.
+        Per-atom arrays to update in place.
     sigmas : np.ndarray
-        Charge density of the surface segments in this batch, in e/Å² --
-        raw or averaged, at the caller's choice. Not modified in place.
+        Segment charge density in this batch, in e/Å².
     areas : np.ndarray
-        Areas of the surface segments in this batch.
+        Segment areas in this batch.
     atom_indices : np.ndarray
-        Global atom index associated with each segment in this batch.
+        Global atom index of each segment in this batch.
     grid : SigmaGrid
-        Grid to bin onto, used exactly as given.
+        Grid to bin onto.
     centered : bool
-        Whether to center each atom's profile on its own mean charge
-        density ``q_a / A_a`` before binning, so its first moment is
-        zero.
-
-    Returns
-    -------
-    None
-        ``accumulator``'s arrays are updated in place.
+        If True, center each atom's profile on its mean charge density
+        before binning.
     """
     atom_areas, atom_charges, sigma_profiles = (
         accumulator.areas,
@@ -212,25 +191,17 @@ def accumulate_atom_profiles(
 
 @dataclass
 class AtomTranslationBatch:
-    """One batch of atoms' profiles, ready to be translated and summed
-    onto a molecule grid by ``accumulate_translated_profiles``.
-
-    Grouped into one object because these four values always travel
-    together (they describe the same atoms), and because keeping them as
-    one parameter keeps ``accumulate_translated_profiles``'s signature
-    within this package's argument-count limit.
+    """Atom profiles to translate and sum onto a molecule grid.
 
     Parameters
     ----------
     areas : np.ndarray
         Areas of the atoms in this batch, shape ``(n,)``.
     translations : np.ndarray
-        Amount to translate each atom's profile by, in sigma units
-        (positive values move mass toward the positive end of the grid).
-        Pass zeros to accumulate profiles untranslated.
+        Shift of each atom's profile, in sigma units (positive toward
+        the positive end of the grid). Pass zeros to leave untranslated.
     profiles : np.ndarray
-        Per-atom sigma profiles for the atoms in this batch, shape
-        ``(n, len(grid))``.
+        Per-atom sigma profiles, shape ``(n, len(grid))``.
     grid : SigmaGrid
         Grid ``profiles`` are binned on.
     """
@@ -247,39 +218,26 @@ def accumulate_translated_profiles(
     batch: AtomTranslationBatch,
     molecule_grid: SigmaGrid,
 ) -> None:
-    """Accumulate a batch of atoms' translated, area-weighted profiles
-    into per-molecule sigma profiles.
+    """Accumulate translated, area-weighted atom profiles into molecules.
 
-    Both grids are symmetric about zero and must share a ``bin_width``
-    (the caller enforces this -- see ``SigmaProfileTable.aggregate``), so a
-    zero translation places atom column ``k`` at molecule column
-    ``k + grid_offset``, where
-    ``grid_offset = (len(molecule_grid) - len(batch.grid)) / 2`` -- zero
-    when the two grids are identical, an integer when their point counts
-    share parity, a half-integer otherwise.
-    Each row is redistributed with the same two-tap linear interpolation
-    ``accumulate_atom_profiles`` uses for a single value, with
-    out-of-range destinations folded into the nearest boundary column.
+    Both grids must be symmetric about zero and share a ``bin_width``.
+    Zero translation places atom column ``k`` at molecule column
+    ``k + (len(molecule_grid) - len(batch.grid)) / 2``. Out-of-range
+    destinations fold into the nearest boundary column.
 
-    Safe to call concurrently on disjoint atom ranges as long as no two
-    calls share a molecule.
+    Safe concurrently on disjoint atom ranges that share no molecule.
 
     Parameters
     ----------
     molecule_profiles : np.ndarray
-        Per-molecule sigma profiles to accumulate into, of shape
-        ``(num_molecules, len(molecule_grid))``. Modified in place.
+        Per-molecule profiles to update in place, shape
+        ``(num_molecules, len(molecule_grid))``.
     molecule_indices : np.ndarray
-        Global molecule index associated with each atom in this batch.
+        Global molecule index of each atom in this batch.
     batch : AtomTranslationBatch
-        The atoms' areas, translations, and profiles to accumulate.
+        Atom areas, translations, and profiles to accumulate.
     molecule_grid : SigmaGrid
-        Grid to bin the output ``molecule_profiles`` onto.
-
-    Returns
-    -------
-    None
-        ``molecule_profiles`` is updated in place.
+        Grid for the output ``molecule_profiles``.
     """
     atom_areas, translations, atom_profiles, atom_grid = (
         batch.areas,

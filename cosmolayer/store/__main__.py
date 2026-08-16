@@ -4,14 +4,8 @@ profiles.
 
 Run as::
 
-    python -m cosmolayer.store --storage-dir DIR \\
+    cosmostore --storage-dir DIR \\
         --cosmo-files-dir DIR --smiles-to-filename FILE.json
-
-The correctness checks this script used to perform inline (mass
-conservation, profile normalization, centered first moments, aggregated
-vs. directly binned agreement) now live in
-``cosmolayer/tests/test_store.py`` instead -- this module is reporting
-only.
 """
 
 import argparse
@@ -42,9 +36,10 @@ def _timed(label: str, fn: Callable[[], _T]) -> _T:
     return result
 
 
-def _build_arg_parser() -> argparse.ArgumentParser:
+def get_parser() -> argparse.ArgumentParser:
+    """Return the argument parser for cosmostore (used by sphinx-argparse)."""
     arg_parser = argparse.ArgumentParser(
-        prog="python -m cosmolayer.store",
+        prog="cosmostore",
         description=(
             "Build the segment data store (if missing) and print summary "
             "statistics for atom- and molecule-level charges, areas, and "
@@ -73,9 +68,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Path to a JSON file mapping each SMILES string to its .cosmo "
-            "filename (relative to --cosmo-files-dir); passed straight to "
-            "SegmentStore.from_cosmo_files. Required only if --storage-dir "
-            "doesn't already hold a built store."
+            "filename (relative to --cosmo-files-dir). Required only if "
+            "--storage-dir doesn't already hold a built store."
         ),
     )
     arg_parser.add_argument(
@@ -94,13 +88,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=(
-            "Name of a COSMO-SAC averaging scheme (see AVERAGING_SCHEMES, "
-            "e.g. 'cosmo-rs', 'cosmo-sac-2002', 'cosmo-sac-2010') to use for "
-            "every statistic below, in place of raw charges / areas. "
-            "Requires storage_dir's SegmentStore to already have that "
-            "scheme in its averaged_sigmas (computed automatically by "
-            "SegmentStore.from_cosmo_files, unless skipped). Default None: "
-            "use raw sigma, unchanged."
+            "Averaging scheme for every statistic (e.g. 'cosmo-rs', "
+            "'cosmo-sac-2002', 'cosmo-sac-2010'). The store must already "
+            "contain that scheme. Default: raw sigma."
         ),
     )
     return arg_parser
@@ -139,8 +129,8 @@ def _ensure_store_built(
 def _report_atom_stats(
     store: SegmentStore, sigma_scheme: str | None, num_threads: int | None
 ) -> tuple[SigmaProfileTable, NDArray[np.float32], NDArray[np.float32]]:
-    """Print per-atom statistics and return the atom sigma-profile table
-    plus the per-atom areas and charges it was cross-checked against."""
+    """Print per-atom statistics and return the atom profile table, areas,
+    and charges."""
     total_num_atoms = int(store.molecules_df["num_atoms"].sum())
     atom_charges, atom_areas = _timed(
         "compute per-atom properties",
@@ -208,7 +198,7 @@ def _report_molecule_stats(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Entry point for ``python -m cosmolayer.store``.
+    """Entry point for ``cosmostore``.
 
     Parameters
     ----------
@@ -220,7 +210,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     int
         Process exit code (0 on success).
     """
-    arg_parser = _build_arg_parser()
+    arg_parser = get_parser()
     args = arg_parser.parse_args(argv)
     storage_dir = pathlib.Path(args.storage_dir)
 

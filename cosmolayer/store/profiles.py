@@ -21,33 +21,29 @@ from .parallel import run_in_threads
 
 @dataclass(frozen=True)
 class SigmaProfileTable:
-    """A set of area-weighted sigma profiles, at atom or molecule level.
+    """Area-weighted sigma profiles, at atom or molecule level.
 
-    Construct via ``from_segments`` (bins fresh segment-level data) or
-    ``aggregate`` (reassembles an atom-level table into a molecule-level
-    one). Ordinary ``__init__`` is for wrapping already-computed arrays,
-    e.g. ones read back from disk.
+    Build with ``from_segments`` (bin segment-level data) or ``aggregate``
+    (atom-level table to molecule-level). Direct construction wraps
+    already-computed arrays.
 
     Parameters
     ----------
     areas : np.ndarray
         Per-row area, shape ``(n,)``.
     charges : np.ndarray
-        Per-row net (or smoothed "equivalent") charge, shape ``(n,)``.
+        Per-row net (or smoothed equivalent) charge, shape ``(n,)``.
     profiles : np.ndarray
         Per-row area-fraction sigma profile, shape ``(n, len(grid))``.
     grid : SigmaGrid
-        The grid these profiles are binned on -- exactly the one the
-        caller asked for, whether or not they are centered.
+        Grid these profiles are binned on.
     centered : bool
-        Whether each row's profile was centered on its own mean charge
-        density before binning, giving it zero first moment. A property of
-        the *data*; it does not affect which grid is used.
+        Whether each row was centered on its mean charge density before
+        binning (zero first moment). A property of the data, not the grid.
     atom_offsets : np.ndarray | None, optional
-        Global index of each molecule's first atom, by default None,
-        meaning this table is already at molecule level. When given, this
-        table is at atom level, and ``aggregate`` can reassemble it into a
-        molecule-level table.
+        Global index of each molecule's first atom. ``None`` (default)
+        means molecule-level; when set, the table is atom-level and
+        ``aggregate`` can reassemble it.
     """
 
     areas: NDArray[np.float32]
@@ -96,66 +92,42 @@ class SigmaProfileTable:
         """Bin segment-level data into per-atom or per-molecule sigma
         profiles.
 
-        Takes each segment's charge density directly, as ``sigmas`` --
-        pass raw ``charges / areas``, or an averaged density from
+        ``sigmas`` is each segment's charge density: pass raw
+        ``charges / areas``, or an averaged density from
         ``average_sigmas_by_molecule``.
 
         Parameters
         ----------
         sigmas : np.ndarray
-            Charge density of the surface segments, in e/Å² -- raw or
-            averaged, at the caller's choice (see above).
+            Segment charge density, in e/Å² (raw or averaged).
         areas : np.ndarray
-            Areas of the surface segments.
+            Segment areas.
         segment_offsets : np.ndarray
-            Start index of each molecule's segments within the
-            segment-level arrays. Must describe *exactly* the molecules
-            present in ``areas`` / ``sigmas`` / ``atom_indices``: the last
-            molecule's segments run to the end of those arrays. Slicing
-            ``segment_offsets`` and the segment-level arrays for a subset
-            must be done together, or leftover segments are silently
-            attributed to the wrong molecule -- pass a matching,
-            under-sized ``num_rows`` to turn that mistake into an
-            ``AssertionError`` instead.
+            Start index of each molecule's segments. Must describe
+            *exactly* the molecules present in the segment-level arrays;
+            slice offsets and arrays together.
         atom_indices : np.ndarray | None, optional
-            Global atom index associated with each segment. By default
-            None, meaning build one profile *per molecule* instead of per
-            atom -- segments are grouped straight by ``segment_offsets``
-            (faking one monoatomic "atom" per molecule), and the result's
-            ``atom_offsets`` stays None. When given, one profile is built
-            *per atom* instead, grouped via ``atom_indices``, and the
-            result's ``atom_offsets`` (each molecule's first atom index,
-            so ``aggregate`` can later reassemble these into
-            molecule-level profiles) is derived as
-            ``atom_indices[segment_offsets]`` -- correct because segments
-            are grouped by ascending atom index within a molecule (true of
-            the COSMO file formats this package parses; verified against a
-            real TURBOMOLE file).
+            Global atom index of each segment. ``None`` (default) builds
+            one profile per molecule. When given, builds one profile per
+            atom; the result's ``atom_offsets`` is
+            ``atom_indices[segment_offsets]``.
         num_rows : int | None, optional
-            Total number of profile rows to build. By default None,
-            meaning ``len(segment_offsets)`` (molecule level) or
-            ``int(atom_indices.max()) + 1`` (atom level) -- correct for a
-            full store, but potentially wrong for an already-subsetted one
-            (see the ``segment_offsets`` caveat above); pass it explicitly
+            Number of profile rows. ``None`` (default) uses
+            ``len(segment_offsets)`` (molecule level) or
+            ``int(atom_indices.max()) + 1`` (atom level). Pass explicitly
             when subsetting.
         grid : SigmaGrid, optional
-            Grid to bin profiles onto, by default ``DEFAULT_SIGMA_GRID``.
-            Used exactly as given, so the result's ``profiles`` always has
-            ``len(grid)`` columns regardless of ``centered``.
+            Grid to bin onto, by default ``DEFAULT_SIGMA_GRID``.
         centered : bool, optional
-            Whether to center each profile on its own mean charge density
-            before binning, by default False. Affects the binned values,
-            not the grid they land on.
+            If True, center each profile on its mean charge density
+            before binning.
         num_threads : int | None, optional
-            Number of threads to use, by default None, meaning every
-            available CPU core.
+            Thread count. ``None`` (default) uses every CPU core.
 
         Returns
         -------
         SigmaProfileTable
             Atom-level if ``atom_indices`` is given, else molecule-level.
-            ``charges`` is the true net charge when ``sigmas`` is raw, or
-            a smoothed "equivalent charge" when it isn't.
         """
         sigmas = np.asarray(sigmas)
         areas = np.asarray(areas)
@@ -176,7 +148,7 @@ class SigmaProfileTable:
         assert int(row_indices.max(initial=-1)) < num_rows, (
             "atom_indices/segment_offsets reference a row index >= num_rows; "
             "segment_offsets must describe exactly the molecules present in "
-            "the segment-level arrays (see this method's docstring)"
+            "the segment-level arrays"
         )
 
         num_segs = len(sigmas)
@@ -215,41 +187,32 @@ class SigmaProfileTable:
     ) -> "SigmaProfileTable":
         """Reassemble per-molecule profiles from these per-atom ones.
 
-        Area-weighted sum of atom profiles onto a shared molecule axis,
-        with each atom's own mean charge density un-translated first when
-        ``self.centered`` is True.
-
-        The result is always uncentered (``centered=False``): un-translating
-        returns each atom's mass to absolute sigma, so a centered atom table
-        aggregates into an uncentered molecule one.
+        Area-weighted sum of atom profiles onto a shared molecule axis.
+        If this table is centered, each atom is translated back by its
+        mean charge density first. The result is always uncentered.
 
         Parameters
         ----------
         grid : SigmaGrid | None, optional
-            Grid for the output molecule profiles, by default None,
-            meaning ``self.grid`` (same axis as the atom profiles). A
-            different grid must share this table's ``bin_width``: the
-            column alignment is ``k -> k + (len(grid) - len(self.grid)) / 2``,
-            which is only valid for two symmetric grids of equal bin width.
+            Grid for the molecule profiles. ``None`` (default) uses
+            ``self.grid``. A different grid must share this table's
+            ``bin_width``.
         normalize : bool, optional
-            Whether to divide each molecule's profile by its total area
-            so it sums to 1, by default False.
+            If True, divide each molecule's profile by its total area so
+            it sums to 1.
         num_threads : int | None, optional
-            Number of threads to use, by default None, meaning every
-            available CPU core.
+            Thread count. ``None`` (default) uses every CPU core.
 
         Returns
         -------
         SigmaProfileTable
-            Molecule-level (``atom_offsets is None``, ``centered`` False),
-            with ``profiles`` having ``len(grid)`` columns.
+            Molecule-level (``atom_offsets`` is None, ``centered`` False).
 
         Raises
         ------
         ValueError
-            If ``self.atom_offsets`` is None (already at molecule level,
-            nothing to aggregate), or if ``grid`` does not share this
-            table's ``bin_width``.
+            If this table is already molecule-level, or if ``grid`` does
+            not share this table's ``bin_width``.
         """
         if self.atom_offsets is None:
             raise ValueError(
