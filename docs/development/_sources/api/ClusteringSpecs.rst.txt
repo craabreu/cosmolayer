@@ -1,0 +1,17 @@
+ClusteringSpecs
+===============
+
+.. currentmodule:: cosmolayer.store
+.. autoclass:: ClusteringSpecs
+    :member-order: alphabetical
+
+    .. rubric:: Attributes
+
+    .. autoattribute:: cutoff
+        :no-index-entry:
+    .. autoattribute:: fp_size
+        :no-index-entry:
+    .. autoattribute:: include_chirality
+        :no-index-entry:
+    .. autoattribute:: radius
+        :no-index-entry:

@@ -408,7 +408,7 @@
 <span class="sd">    &lt;storage_dir&gt;/atom_indices.npy  int64   (n_segs_total,):   global atom index per</span>
 <span class="sd">                                     segment</span>
 <span class="sd">    &lt;storage_dir&gt;/molecules.parquet columns: smiles, segment_offsets, atom_offsets,</span>
-<span class="sd">                                     num_atoms, volume</span>
+<span class="sd">                                     num_atoms, volume, cluster_id</span>
 <span class="sd">    &lt;storage_dir&gt;/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}</span>
 <span class="sd">    &lt;storage_dir&gt;/&lt;scheme&gt;.npy      float32 (n_segs_total,): one per averaging scheme</span>
 
@@ -438,6 +438,7 @@
     <span class="n">AveragingScheme</span><span class="p">,</span>
     <span class="n">average_sigmas_by_molecule</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.clustering</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClusteringSpecs</span><span class="p">,</span> <span class="n">FingerprintGenerator</span><span class="p">,</span> <span class="n">butina_cluster</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.grid</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_SIGMA_GRID</span><span class="p">,</span> <span class="n">SigmaGrid</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.profiles</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaProfileTable</span>
 
@@ -617,6 +618,76 @@
             <span class="s2">&quot;permutation of the atom indices&quot;</span>
         <span class="p">)</span>
 
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_parse_molecule</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span>
+        <span class="n">cosmo_files_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">,</span>
+        <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">smi</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">fingerprint_generator</span><span class="p">:</span> <span class="n">FingerprintGenerator</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Chem</span><span class="o">.</span><span class="n">Mol</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse one ``.cosmo`` file/SMILES pair and fingerprint the</span>
+<span class="sd">        molecule.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        cosmo_files_dir : pathlib.Path</span>
+<span class="sd">            Directory holding ``filename``.</span>
+<span class="sd">        filename : str</span>
+<span class="sd">            ``.cosmo`` filename, relative to ``cosmo_files_dir``.</span>
+<span class="sd">        smi : str</span>
+<span class="sd">            SMILES string for this molecule.</span>
+<span class="sd">        fingerprint_generator : FingerprintGenerator</span>
+<span class="sd">            Generator used to fingerprint the parsed molecule.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        mol, atom_df, segment_df, volume, fingerprint</span>
+<span class="sd">            The reordered molecule, its atom and segment tables, its</span>
+<span class="sd">            volume, and its fingerprint.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If the SMILES can&#39;t be parsed, or its atom count doesn&#39;t</span>
+<span class="sd">            match the ``.cosmo`` file&#39;s.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span> <span class="o">=</span> <span class="n">parse_cosmo_file</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">cosmo_files_dir</span> <span class="o">/</span> <span class="n">filename</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">mol</span> <span class="o">=</span> <span class="n">Chem</span><span class="o">.</span><span class="n">MolFromSmiles</span><span class="p">(</span><span class="n">smi</span><span class="p">,</span> <span class="n">_SMILES_PARSER_PARAMS</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;RDKit could not parse SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2"> has </span><span class="si">{</span><span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span><span class="si">}</span><span class="s2"> atoms, but &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2"> has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="n">mol</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_reorder_molecule</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span>
+        <span class="n">fingerprint</span> <span class="o">=</span> <span class="n">fingerprint_generator</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mol</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">fingerprint</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_build_molecules_df</span><span class="p">(</span>
+        <span class="n">successful_molecules</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="n">segment_offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+        <span class="n">atom_offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+        <span class="n">num_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+        <span class="n">volumes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+        <span class="n">cluster_ids</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">],</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Assemble the per-molecule table written to ``molecules.parquet``.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;smiles&quot;</span><span class="p">:</span> <span class="n">successful_molecules</span><span class="p">,</span>
+                <span class="s2">&quot;segment_offsets&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;atom_offsets&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;num_atoms&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;volume&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">volumes</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;cluster_id&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cluster_ids</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
 <div class="viewcode-block" id="SegmentStore.compute_averaged_sigmas">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.compute_averaged_sigmas">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">compute_averaged_sigmas</span><span class="p">(</span>
@@ -788,13 +859,14 @@
 <div class="viewcode-block" id="SegmentStore.from_cosmo_files">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.from_cosmo_files">[docs]</a>
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">from_cosmo_files</span><span class="p">(</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_cosmo_files</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913</span>
         <span class="bp">cls</span><span class="p">,</span>
         <span class="n">cosmo_files_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">,</span>
         <span class="n">smiles_to_filename</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
         <span class="n">storage_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">,</span>
         <span class="n">ignore_errors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
         <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">clustering_specs</span><span class="p">:</span> <span class="n">ClusteringSpecs</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;SegmentStore&quot;</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse COSMO files, build a store, and write it to ``storage_dir``.</span>
@@ -822,6 +894,10 @@
 <span class="sd">        schemes : Sequence[AveragingScheme] | None, optional</span>
 <span class="sd">            Averaging schemes to compute. ``None`` (default) uses</span>
 <span class="sd">            ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging.</span>
+<span class="sd">        clustering_specs : ClusteringSpecs | None, optional</span>
+<span class="sd">            Fingerprinting and Butina-clustering parameters, used to</span>
+<span class="sd">            assign each molecule a ``cluster_id``. ``None`` (default)</span>
+<span class="sd">            uses ``ClusteringSpecs()``.</span>
 <span class="sd">        num_threads : int | None, optional</span>
 <span class="sd">            Thread count for averaging. ``None`` (default) uses every CPU</span>
 <span class="sd">            core.</span>
@@ -838,32 +914,26 @@
 <span class="sd">            if no molecule could be stored, or if a scheme name collides</span>
 <span class="sd">            with a reserved store filename.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">clustering_specs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">clustering_specs</span> <span class="o">=</span> <span class="n">ClusteringSpecs</span><span class="p">()</span>
+
         <span class="n">data_chunks</span><span class="p">,</span> <span class="n">atoms_chunks</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
         <span class="n">segment_offsets</span><span class="p">,</span> <span class="n">segment_offset</span> <span class="o">=</span> <span class="p">[],</span> <span class="mi">0</span>
         <span class="n">atom_offsets</span><span class="p">,</span> <span class="n">atom_offset</span> <span class="o">=</span> <span class="p">[],</span> <span class="mi">0</span>
+        <span class="n">fingerprints</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">num_atoms</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">volumes</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">successful_molecules</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">num_cosmo_parse_failures</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">fingerprint_generator</span> <span class="o">=</span> <span class="n">FingerprintGenerator</span><span class="p">(</span><span class="n">clustering_specs</span><span class="p">)</span>
 
         <span class="k">for</span> <span class="n">smi</span><span class="p">,</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
             <span class="n">smiles_to_filename</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Processing COSMO files&quot;</span>
         <span class="p">):</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="n">_</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span> <span class="o">=</span> <span class="n">parse_cosmo_file</span><span class="p">(</span>
-                    <span class="p">(</span><span class="n">cosmo_files_dir</span> <span class="o">/</span> <span class="n">filename</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span>
-                        <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span>
-                    <span class="p">)</span>
+                <span class="n">mol</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">fingerprint</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_parse_molecule</span><span class="p">(</span>
+                    <span class="n">cosmo_files_dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">smi</span><span class="p">,</span> <span class="n">fingerprint_generator</span>
                 <span class="p">)</span>
-                <span class="n">mol</span> <span class="o">=</span> <span class="n">Chem</span><span class="o">.</span><span class="n">MolFromSmiles</span><span class="p">(</span><span class="n">smi</span><span class="p">,</span> <span class="n">_SMILES_PARSER_PARAMS</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;RDKit could not parse SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">):</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                        <span class="sa">f</span><span class="s2">&quot;SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2"> has </span><span class="si">{</span><span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span><span class="si">}</span><span class="s2"> atoms, but &quot;</span>
-                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2"> has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
-                    <span class="p">)</span>
-                <span class="n">mol</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_reorder_molecule</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span>
             <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">AssertionError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">ignore_errors</span><span class="p">:</span>
                     <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error parsing </span><span class="si">{</span><span class="n">smi</span><span class="si">}</span><span class="s2">-&gt;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
@@ -876,7 +946,7 @@
                 <span class="n">segment_df</span><span class="p">[[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="s2">&quot;charge&quot;</span><span class="p">,</span> <span class="s2">&quot;area&quot;</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;float32&quot;</span><span class="p">)</span>
             <span class="p">)</span>
             <span class="n">atoms_chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_df</span><span class="p">[</span><span class="s2">&quot;atom&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="n">atom_offset</span><span class="p">)</span>
-
+            <span class="n">fingerprints</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
             <span class="n">segment_offsets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_offset</span><span class="p">)</span>
             <span class="n">segment_offset</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">segment_df</span><span class="p">)</span>
             <span class="n">atom_offsets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atom_offset</span><span class="p">)</span>
@@ -888,16 +958,18 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="n">successful_molecules</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No COSMO files could be parsed successfully.&quot;</span><span class="p">)</span>
 
+        <span class="n">fingerprint_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">cluster_ids</span> <span class="o">=</span> <span class="n">butina_cluster</span><span class="p">(</span><span class="n">fingerprint_array</span><span class="p">,</span> <span class="n">clustering_specs</span><span class="o">.</span><span class="n">cutoff</span><span class="p">)</span>
+
         <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">data_chunks</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="n">atom_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">atoms_chunks</span><span class="p">)</span>
-        <span class="n">molecules_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
-            <span class="p">{</span>
-                <span class="s2">&quot;smiles&quot;</span><span class="p">:</span> <span class="n">successful_molecules</span><span class="p">,</span>
-                <span class="s2">&quot;segment_offsets&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;atom_offsets&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;num_atoms&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;volume&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">volumes</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">),</span>
-            <span class="p">}</span>
+        <span class="n">molecules_df</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_build_molecules_df</span><span class="p">(</span>
+            <span class="n">successful_molecules</span><span class="p">,</span>
+            <span class="n">segment_offsets</span><span class="p">,</span>
+            <span class="n">atom_offsets</span><span class="p">,</span>
+            <span class="n">num_atoms</span><span class="p">,</span>
+            <span class="n">volumes</span><span class="p">,</span>
+            <span class="n">cluster_ids</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="n">metadata</span> <span class="o">=</span> <span class="n">StoreMetadata</span><span class="p">(</span>
             <span class="n">num_molecules</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">successful_molecules</span><span class="p">),</span>

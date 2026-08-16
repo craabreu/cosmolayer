@@ -61,7 +61,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="SigmaGrid" href="SigmaGrid.html" />
-    <link rel="prev" title="AveragingScheme" href="AveragingScheme.html" />
+    <link rel="prev" title="ClusteringSpecs" href="ClusteringSpecs.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="dev" />
@@ -381,6 +381,7 @@
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">Segment Data Store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="AveragingScheme.html">AveragingScheme</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ClusteringSpecs.html">ClusteringSpecs</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">SegmentStore</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SigmaGrid.html">SigmaGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SigmaProfileTable.html">SigmaProfileTable</a></li>
@@ -582,7 +583,7 @@ density.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="cosmolayer.store.SegmentStore.from_cosmo_files">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_cosmo_files</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmo_files_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smiles_to_filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_errors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schemes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore.from_cosmo_files"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore.from_cosmo_files" title="Link to this definition">#</a></dt>
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_cosmo_files</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmo_files_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smiles_to_filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_errors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schemes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clustering_specs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore.from_cosmo_files"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore.from_cosmo_files" title="Link to this definition">#</a></dt>
 <dd><p>Parse COSMO files, build a store, and write it to <code class="docutils literal notranslate"><span class="pre">storage_dir</span></code>.</p>
 <p>Atoms are numbered in the COSMO file’s 0-based order. Each SMILES
 must have the same atom count as its COSMO file; atom-mapped SMILES
@@ -602,6 +603,9 @@ count them in <code class="docutils literal notranslate"><span class="pre">metad
 False.</p></li>
 <li><p><strong>schemes</strong> (<em>Sequence</em><em>[</em><a class="reference internal" href="AveragingScheme.html#cosmolayer.store.AveragingScheme" title="cosmolayer.store.AveragingScheme"><em>AveragingScheme</em></a><em>] </em><em>| </em><em>None</em><em>, </em><em>optional</em>) – Averaging schemes to compute. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses
 <code class="docutils literal notranslate"><span class="pre">AVERAGING_SCHEMES</span></code>. Pass <code class="docutils literal notranslate"><span class="pre">()</span></code> to skip averaging.</p></li>
+<li><p><strong>clustering_specs</strong> (<a class="reference internal" href="ClusteringSpecs.html#cosmolayer.store.ClusteringSpecs" title="cosmolayer.store.ClusteringSpecs"><em>ClusteringSpecs</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Fingerprinting and Butina-clustering parameters, used to
+assign each molecule a <code class="docutils literal notranslate"><span class="pre">cluster_id</span></code>. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default)
+uses <code class="docutils literal notranslate"><span class="pre">ClusteringSpecs()</span></code>.</p></li>
 <li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Thread count for averaging. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses every CPU
 core.</p></li>
 </ul>
@@ -696,12 +700,12 @@ scheme.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="AveragingScheme.html"
+       href="ClusteringSpecs.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">AveragingScheme</p>
+        <p class="prev-next-title">ClusteringSpecs</p>
       </div>
     </a>
     <a class="right-next"
