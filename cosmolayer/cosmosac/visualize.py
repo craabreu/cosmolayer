@@ -372,8 +372,9 @@ def generate_geometries(
 
 
 def get_parser() -> argparse.ArgumentParser:
-    """Return the argument parser for cosmoview (used by sphinx-argparse)."""
+    """Return the argument parser for cosmoviz (used by sphinx-argparse)."""
     parser = argparse.ArgumentParser(
+        prog="cosmoviz",
         formatter_class=argparse.RawTextHelpFormatter,
         description="Visualize COSMO files",
     )
