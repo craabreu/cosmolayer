@@ -10,9 +10,13 @@ dependencies:
   - numpy <2.4
   - pandas
   - periodictable
+  - pyarrow
   - pytorch
   - pyyaml
+  - rdkit
+  - threadpoolctl
   - torchmetrics
+  - tqdm
   - typing-extensions
 
     # Linting & visualization
