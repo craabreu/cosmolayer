@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import torch
@@ -14,8 +15,8 @@ from torch.autograd.function import FunctionCtx, NestedIOFunction
 
 from .utils import log_matmul_exp
 
-NEWTON_STEP_TOLERANCE = {torch.float32: 1e-5, torch.float64: 1e-10}
-NEWTON_RESIDUAL_TOLERANCE = {torch.float32: 1e-6, torch.float64: 1e-12}
+NEWTON_STEP_TOLERANCE = {torch.float32: 1e-4, torch.float64: 1e-10}
+NEWTON_RESIDUAL_TOLERANCE = {torch.float32: 1e-5, torch.float64: 1e-12}
 
 
 class CosmoSolver(torch.autograd.Function):
@@ -206,8 +207,22 @@ class CosmoSolver(torch.autograd.Function):
         Id = torch.eye(log_A.shape[-1], dtype=log_A.dtype, device=log_A.device)
         J = torch.exp(log_gamma.mT + log_A - log_A_gamma) + Id
 
+        ctx_any: Any = ctx
+
         # Solve (∂F/∂log_gamma)^T v = dL/dlog_gamma
-        v = torch.linalg.solve(J.mT, grad_log_gamma.unsqueeze(-1))
+        try:
+            v = torch.linalg.solve(J.mT, grad_log_gamma.unsqueeze(-1))
+        except RuntimeError:
+            warnings.warn(
+                "COSMO solver backward linear solve failed; returning zero gradients.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            grad_p = torch.zeros(ctx_any.p_shape, dtype=p.dtype, device=p.device)
+            grad_U_RT = torch.zeros(
+                ctx_any.u_shape, dtype=U_RT.dtype, device=U_RT.device
+            )
+            return grad_p, grad_U_RT, None
 
         # r = v / (A @ gamma)
         r = v / log_A_gamma.exp()
@@ -220,7 +235,6 @@ class CosmoSolver(torch.autograd.Function):
         grad_U_RT = r * B * pg.unsqueeze(-2)
 
         # Reduce to original shapes if broadcasting happened
-        ctx_any: Any = ctx
         grad_p = grad_p.sum_to_size(ctx_any.p_shape)
         grad_U_RT = grad_U_RT.sum_to_size(ctx_any.u_shape)
 

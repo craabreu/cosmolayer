@@ -125,6 +125,7 @@ class CosmoLayer(torch.nn.Module):
         if max_iter is None:
             max_iter = 100 if implicit_diff else 5
         self._max_iter = max_iter
+        self._forward_nonconverged_count = 0
 
         num_matrices = len(interaction_matrices)
         if len(exponents) != num_matrices:
@@ -161,6 +162,7 @@ class CosmoLayer(torch.nn.Module):
 
     def _check_convergence(self, converged: torch.Tensor) -> None:
         if not bool(converged.all()):
+            self._forward_nonconverged_count += int((~converged).sum().item())
             warnings.warn(
                 f"COSMO solver did not converge in {self._max_iter} iterations",
                 RuntimeWarning,
@@ -475,4 +477,5 @@ class CosmoLayer(torch.nn.Module):
             Logarithms of the activity coefficients.
             Shape: (..., num_components).
         """
+        self._forward_nonconverged_count = 0
         return self.log_activity_coefficients(temp, fracs, areas, volumes, probs)

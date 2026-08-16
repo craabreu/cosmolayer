@@ -363,6 +363,9 @@ class LogGammaLightningModule(pl.LightningModule):
         inputs, targets = batch
         predictions = self(inputs)
         batch_size = self._infer_batch_size(predictions, targets)
+        forward_nonconverged_count = getattr(
+            self.cosmo_layer, "_forward_nonconverged_count", 0
+        )
         if self.normalize_targets:
             target_mean = self.target_mean
             target_std = self.target_std
@@ -374,6 +377,20 @@ class LogGammaLightningModule(pl.LightningModule):
             loss,
             on_step=False,
             on_epoch=True,
+            batch_size=batch_size,
+        )
+        self.log(
+            "train_loss_step",
+            loss,
+            on_step=True,
+            on_epoch=False,
+            batch_size=batch_size,
+        )
+        self.log(
+            "train_forward_nonconverged_count",
+            torch.tensor(float(forward_nonconverged_count), device=targets.device),
+            on_step=True,
+            on_epoch=False,
             batch_size=batch_size,
         )
         return loss
