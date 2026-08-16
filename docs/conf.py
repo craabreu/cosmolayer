@@ -270,6 +270,7 @@ html_context = {
     "github_repo": "cosmolayer",
     "github_version": "main",
     "doc_path": "docs",
+    "default_mode": "auto",
 }
 
 # OpenGraph (nice link previews)
