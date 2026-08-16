@@ -18,6 +18,7 @@ from .averaging import (
     COSMO_SAC_2010,
     AveragingScheme,
 )
+from .clustering import ClusteringSpecs
 from .grid import SigmaGrid
 from .profiles import SigmaProfileTable
 from .segments import SegmentStore, StoreMetadata
@@ -28,6 +29,7 @@ __all__ = [
     "COSMO_SAC_2002",
     "COSMO_SAC_2010",
     "AveragingScheme",
+    "ClusteringSpecs",
     "SegmentStore",
     "SigmaGrid",
     "SigmaProfileTable",
