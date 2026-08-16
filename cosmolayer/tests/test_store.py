@@ -19,6 +19,7 @@ from cosmolayer.store import (
     AVERAGING_SCHEMES,
     COSMO_SAC_2010,
     AveragingScheme,
+    ClusteringSpecs,
     SegmentStore,
     SigmaGrid,
     StoreMetadata,
@@ -30,6 +31,7 @@ from cosmolayer.store.binning import (
     compute_per_molecule_properties,
     row_indices_from_offsets,
 )
+from cosmolayer.store.clustering import FingerprintGenerator, butina_cluster
 
 COSMO_DATA_DIR = pathlib.Path(str(files("cosmolayer.data")))
 # Each .cosmo fixture's atom table includes explicit hydrogens, so the
@@ -189,6 +191,7 @@ class TestSegmentStoreRoundTrip:
             "atom_offsets",
             "num_atoms",
             "volume",
+            "cluster_id",
         ]
         scheme_names = sorted(scheme.name for scheme in AVERAGING_SCHEMES)
         assert sorted(reloaded.metadata.schemes) == scheme_names
@@ -263,6 +266,77 @@ class TestReservedSchemeNames:
             schemes=[AveragingScheme(name, 0.5, 1.0)], num_threads=1
         )
         assert name in result
+
+
+# --------------------------------------------------------------------- #
+# clustering
+# --------------------------------------------------------------------- #
+
+
+class TestFingerprintGenerator:
+    def test_generate_returns_dense_bit_array(self) -> None:
+        generator = FingerprintGenerator(ClusteringSpecs(fp_size=512))
+        fp = generator.generate(Chem.MolFromSmiles("CCO"))
+        assert fp.shape == (512,)
+        assert fp.dtype == np.int8
+        assert set(np.unique(fp)) <= {0, 1}
+
+    def test_identical_molecules_get_identical_fingerprints(self) -> None:
+        generator = FingerprintGenerator(ClusteringSpecs())
+        fp1 = generator.generate(Chem.MolFromSmiles("c1ccccc1O"))
+        fp2 = generator.generate(Chem.MolFromSmiles("Oc1ccccc1"))
+        np.testing.assert_array_equal(fp1, fp2)
+
+
+class TestButinaCluster:
+    def test_empty_input(self) -> None:
+        result = butina_cluster(np.empty((0, 16), dtype=np.int8), cutoff=0.5)
+        assert result.shape == (0,)
+
+    def test_single_molecule_is_its_own_cluster(self) -> None:
+        fp = np.array([[1, 0, 1, 0]], dtype=np.int8)
+        np.testing.assert_array_equal(butina_cluster(fp, cutoff=0.5), [0])
+
+    def test_identical_fingerprints_share_a_cluster(self) -> None:
+        fp = np.tile(np.array([1, 0, 1, 0, 1], dtype=np.int8), (3, 1))
+        result = butina_cluster(fp, cutoff=0.1)
+        assert len(set(result.tolist())) == 1
+
+    def test_maximally_different_fingerprints_split(self) -> None:
+        fp = np.array([[1, 1, 1, 1], [0, 0, 0, 0]], dtype=np.int8)
+        result = butina_cluster(fp, cutoff=0.1)
+        assert result[0] != result[1]
+
+    def test_tight_cutoff_separates_similar_but_distinct_molecules(self) -> None:
+        generator = FingerprintGenerator(ClusteringSpecs())
+        smiles = ["CCCCCCCC", "CCCCCCCCCCCCCCCC", "c1ccccc1"]
+        fps = np.stack([generator.generate(Chem.MolFromSmiles(s)) for s in smiles])
+        result = butina_cluster(fps, cutoff=0.05)
+        # The two long-chain alkanes are near-identical; benzene is not.
+        assert result[0] == result[1]
+        assert result[2] != result[0]
+
+
+class TestSegmentStoreClustering:
+    def test_cluster_id_column_present_and_typed(self, store: SegmentStore) -> None:
+        assert "cluster_id" in store.molecules_df.columns
+        cluster_ids = store.molecules_df["cluster_id"]
+        assert cluster_ids.dtype == np.int64
+        assert len(cluster_ids) == len(store.molecules_df)
+        assert cluster_ids.min() >= 0
+
+    def test_custom_clustering_specs_accepted(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            clustering_specs=ClusteringSpecs(cutoff=0.0, fp_size=256),
+            schemes=(),
+            num_threads=1,
+        )
+        # cutoff=0.0 means only exact fingerprint matches share a cluster;
+        # these four molecules are all distinct, so each is its own cluster.
+        assert sorted(s.molecules_df["cluster_id"].tolist()) == [0, 1, 2, 3]
 
 
 class TestSegmentStoreSigmas:

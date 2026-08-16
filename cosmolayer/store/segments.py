@@ -9,7 +9,7 @@ load an existing one with ``SegmentStore.load``. Both use a flat
     <storage_dir>/atom_indices.npy  int64   (n_segs_total,):   global atom index per
                                      segment
     <storage_dir>/molecules.parquet columns: smiles, segment_offsets, atom_offsets,
-                                     num_atoms, volume
+                                     num_atoms, volume, cluster_id
     <storage_dir>/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}
     <storage_dir>/<scheme>.npy      float32 (n_segs_total,): one per averaging scheme
 
@@ -39,6 +39,7 @@ from .averaging import (
     AveragingScheme,
     average_sigmas_by_molecule,
 )
+from .clustering import ClusteringSpecs, FingerprintGenerator, butina_cluster
 from .grid import DEFAULT_SIGMA_GRID, SigmaGrid
 from .profiles import SigmaProfileTable
 
@@ -207,6 +208,76 @@ class SegmentStore:
             "permutation of the atom indices"
         )
 
+    @classmethod
+    def _parse_molecule(
+        cls,
+        cosmo_files_dir: pathlib.Path,
+        filename: str,
+        smi: str,
+        fingerprint_generator: FingerprintGenerator,
+    ) -> tuple[Chem.Mol, pd.DataFrame, pd.DataFrame, float, NDArray[np.int8]]:
+        """Parse one ``.cosmo`` file/SMILES pair and fingerprint the
+        molecule.
+
+        Parameters
+        ----------
+        cosmo_files_dir : pathlib.Path
+            Directory holding ``filename``.
+        filename : str
+            ``.cosmo`` filename, relative to ``cosmo_files_dir``.
+        smi : str
+            SMILES string for this molecule.
+        fingerprint_generator : FingerprintGenerator
+            Generator used to fingerprint the parsed molecule.
+
+        Returns
+        -------
+        mol, atom_df, segment_df, volume, fingerprint
+            The reordered molecule, its atom and segment tables, its
+            volume, and its fingerprint.
+
+        Raises
+        ------
+        ValueError
+            If the SMILES can't be parsed, or its atom count doesn't
+            match the ``.cosmo`` file's.
+        """
+        _, atom_df, segment_df, volume = parse_cosmo_file(
+            (cosmo_files_dir / filename).read_text(encoding="utf-8", errors="replace")
+        )
+        mol = Chem.MolFromSmiles(smi, _SMILES_PARSER_PARAMS)
+        if mol is None:
+            raise ValueError(f"RDKit could not parse SMILES {smi!r}")
+        if mol.GetNumAtoms() != len(atom_df):
+            raise ValueError(
+                f"SMILES {smi!r} has {mol.GetNumAtoms()} atoms, but "
+                f"{filename} has {len(atom_df)}"
+            )
+        mol = cls._reorder_molecule(mol)
+        fingerprint = fingerprint_generator.generate(mol)
+        return mol, atom_df, segment_df, volume, fingerprint
+
+    @staticmethod
+    def _build_molecules_df(
+        successful_molecules: list[str],
+        segment_offsets: list[int],
+        atom_offsets: list[int],
+        num_atoms: list[int],
+        volumes: list[float],
+        cluster_ids: NDArray[np.int64],
+    ) -> pd.DataFrame:
+        """Assemble the per-molecule table written to ``molecules.parquet``."""
+        return pd.DataFrame(
+            {
+                "smiles": successful_molecules,
+                "segment_offsets": np.array(segment_offsets, dtype="int64"),
+                "atom_offsets": np.array(atom_offsets, dtype="int64"),
+                "num_atoms": np.array(num_atoms, dtype="int64"),
+                "volume": np.array(volumes, dtype="float64"),
+                "cluster_id": np.array(cluster_ids, dtype="int64"),
+            }
+        )
+
     def compute_averaged_sigmas(
         self,
         schemes: Sequence[AveragingScheme] | None = None,
@@ -364,13 +435,14 @@ class SegmentStore:
         )
 
     @classmethod
-    def from_cosmo_files(
+    def from_cosmo_files(  # noqa: PLR0913
         cls,
         cosmo_files_dir: pathlib.Path,
         smiles_to_filename: dict[str, str],
         storage_dir: pathlib.Path,
         ignore_errors: bool = False,
         schemes: Sequence[AveragingScheme] | None = None,
+        clustering_specs: ClusteringSpecs | None = None,
         num_threads: int | None = None,
     ) -> "SegmentStore":
         """Parse COSMO files, build a store, and write it to ``storage_dir``.
@@ -398,6 +470,10 @@ class SegmentStore:
         schemes : Sequence[AveragingScheme] | None, optional
             Averaging schemes to compute. ``None`` (default) uses
             ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging.
+        clustering_specs : ClusteringSpecs | None, optional
+            Fingerprinting and Butina-clustering parameters, used to
+            assign each molecule a ``cluster_id``. ``None`` (default)
+            uses ``ClusteringSpecs()``.
         num_threads : int | None, optional
             Thread count for averaging. ``None`` (default) uses every CPU
             core.
@@ -414,32 +490,26 @@ class SegmentStore:
             if no molecule could be stored, or if a scheme name collides
             with a reserved store filename.
         """
+        if clustering_specs is None:
+            clustering_specs = ClusteringSpecs()
+
         data_chunks, atoms_chunks = [], []
         segment_offsets, segment_offset = [], 0
         atom_offsets, atom_offset = [], 0
+        fingerprints = []
         num_atoms = []
         volumes = []
         successful_molecules = []
         num_cosmo_parse_failures = 0
+        fingerprint_generator = FingerprintGenerator(clustering_specs)
 
         for smi, filename in tqdm(
             smiles_to_filename.items(), desc="Processing COSMO files"
         ):
             try:
-                _, atom_df, segment_df, volume = parse_cosmo_file(
-                    (cosmo_files_dir / filename).read_text(
-                        encoding="utf-8", errors="replace"
-                    )
+                mol, atom_df, segment_df, volume, fingerprint = cls._parse_molecule(
+                    cosmo_files_dir, filename, smi, fingerprint_generator
                 )
-                mol = Chem.MolFromSmiles(smi, _SMILES_PARSER_PARAMS)
-                if mol is None:
-                    raise ValueError(f"RDKit could not parse SMILES {smi!r}")
-                if mol.GetNumAtoms() != len(atom_df):
-                    raise ValueError(
-                        f"SMILES {smi!r} has {mol.GetNumAtoms()} atoms, but "
-                        f"{filename} has {len(atom_df)}"
-                    )
-                mol = cls._reorder_molecule(mol)
             except (ValueError, AssertionError) as e:
                 if ignore_errors:
                     tqdm.write(f"Error parsing {smi}->{filename}: {e}")
@@ -452,7 +522,7 @@ class SegmentStore:
                 segment_df[["x", "y", "z", "charge", "area"]].values.astype("float32")
             )
             atoms_chunks.append(segment_df["atom"].values.astype("int64") + atom_offset)
-
+            fingerprints.append(fingerprint)
             segment_offsets.append(segment_offset)
             segment_offset += len(segment_df)
             atom_offsets.append(atom_offset)
@@ -464,16 +534,18 @@ class SegmentStore:
         if not successful_molecules:
             raise ValueError("No COSMO files could be parsed successfully.")
 
+        fingerprint_array = np.stack(fingerprints, axis=0)
+        cluster_ids = butina_cluster(fingerprint_array, clustering_specs.cutoff)
+
         data = np.concatenate(data_chunks, axis=0)
         atom_indices = np.concatenate(atoms_chunks)
-        molecules_df = pd.DataFrame(
-            {
-                "smiles": successful_molecules,
-                "segment_offsets": np.array(segment_offsets, dtype="int64"),
-                "atom_offsets": np.array(atom_offsets, dtype="int64"),
-                "num_atoms": np.array(num_atoms, dtype="int64"),
-                "volume": np.array(volumes, dtype="float64"),
-            }
+        molecules_df = cls._build_molecules_df(
+            successful_molecules,
+            segment_offsets,
+            atom_offsets,
+            num_atoms,
+            volumes,
+            cluster_ids,
         )
         metadata = StoreMetadata(
             num_molecules=len(successful_molecules),
