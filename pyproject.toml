@@ -42,6 +42,7 @@ dependencies = [
 
 [project.scripts]
 cosmoview = "cosmolayer.cosmosac.visualize:main"
+cosmostore = "cosmolayer.store.__main__:main"
 
 [project.urls]
 "Source" = "https://github.com/craabreu/cosmolayer/"

@@ -258,7 +258,9 @@ html_theme_options = {
 html_sidebars = {
     "api/**": ["sidebar-nav-bs"],
     "getting_started": [],
+    "cli": [],
     "visualization": [],
+    "cosmostore": [],
     "references": [],
 }
 

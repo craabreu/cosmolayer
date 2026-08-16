@@ -4,7 +4,7 @@ profiles.
 
 Run as::
 
-    python -m cosmolayer.store --storage-dir DIR \\
+    cosmostore --storage-dir DIR \\
         --cosmo-files-dir DIR --smiles-to-filename FILE.json
 """
 
@@ -36,9 +36,10 @@ def _timed(label: str, fn: Callable[[], _T]) -> _T:
     return result
 
 
-def _build_arg_parser() -> argparse.ArgumentParser:
+def get_parser() -> argparse.ArgumentParser:
+    """Return the argument parser for cosmostore (used by sphinx-argparse)."""
     arg_parser = argparse.ArgumentParser(
-        prog="python -m cosmolayer.store",
+        prog="cosmostore",
         description=(
             "Build the segment data store (if missing) and print summary "
             "statistics for atom- and molecule-level charges, areas, and "
@@ -197,7 +198,7 @@ def _report_molecule_stats(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Entry point for ``python -m cosmolayer.store``.
+    """Entry point for ``cosmostore``.
 
     Parameters
     ----------
@@ -209,7 +210,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     int
         Process exit code (0 on success).
     """
-    arg_parser = _build_arg_parser()
+    arg_parser = get_parser()
     args = arg_parser.parse_args(argv)
     storage_dir = pathlib.Path(args.storage_dir)
 
