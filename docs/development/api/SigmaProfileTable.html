@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../" >
+<html lang="en" data-content_root="../" data-theme="auto">
 
   <head>
     <meta charset="utf-8" />
@@ -22,8 +22,8 @@
   
   
   <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
   </script>
   <!--
     this give us a css class that will be invisible only if js is disabled
@@ -68,7 +68,7 @@
   </head>
   
   
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="auto">
 
   
   
@@ -155,8 +155,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -288,8 +288,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -379,7 +379,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CosmoSac2010Model.html">CosmoSac2010Model</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">cosmolayer.store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">Segment Data Store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="AveragingScheme.html">AveragingScheme</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SegmentStore.html">SegmentStore</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SigmaGrid.html">SigmaGrid</a></li>
@@ -435,7 +435,7 @@
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">API Reference</a></li>
     
     
-    <li class="breadcrumb-item"><a href="store.html" class="nav-link">cosmolayer.store</a></li>
+    <li class="breadcrumb-item"><a href="store.html" class="nav-link">Segment Data Store</a></li>
     
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">SigmaProfileTable</span></li>
   </ul>
@@ -459,26 +459,22 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="cosmolayer.store.SigmaProfileTable">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">cosmolayer.store.</span></span><span class="sig-name descname"><span class="pre">SigmaProfileTable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">areas</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">charges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">profiles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centered</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_offsets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/profiles.html#SigmaProfileTable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SigmaProfileTable" title="Link to this definition">#</a></dt>
-<dd><p>A set of area-weighted sigma profiles, at atom or molecule level.</p>
-<p>Construct via <code class="docutils literal notranslate"><span class="pre">from_segments</span></code> (bins fresh segment-level data) or
-<code class="docutils literal notranslate"><span class="pre">aggregate</span></code> (reassembles an atom-level table into a molecule-level
-one). Ordinary <code class="docutils literal notranslate"><span class="pre">__init__</span></code> is for wrapping already-computed arrays,
-e.g. ones read back from disk.</p>
+<dd><p>Area-weighted sigma profiles, at atom or molecule level.</p>
+<p>Build with <code class="docutils literal notranslate"><span class="pre">from_segments</span></code> (bin segment-level data) or <code class="docutils literal notranslate"><span class="pre">aggregate</span></code>
+(atom-level table to molecule-level). Direct construction wraps
+already-computed arrays.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>areas</strong> (<em>np.ndarray</em>) – Per-row area, shape <code class="docutils literal notranslate"><span class="pre">(n,)</span></code>.</p></li>
-<li><p><strong>charges</strong> (<em>np.ndarray</em>) – Per-row net (or smoothed “equivalent”) charge, shape <code class="docutils literal notranslate"><span class="pre">(n,)</span></code>.</p></li>
+<li><p><strong>charges</strong> (<em>np.ndarray</em>) – Per-row net (or smoothed equivalent) charge, shape <code class="docutils literal notranslate"><span class="pre">(n,)</span></code>.</p></li>
 <li><p><strong>profiles</strong> (<em>np.ndarray</em>) – Per-row area-fraction sigma profile, shape <code class="docutils literal notranslate"><span class="pre">(n,</span> <span class="pre">len(grid))</span></code>.</p></li>
-<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a>) – The grid these profiles are binned on – exactly the one the
-caller asked for, whether or not they are centered.</p></li>
-<li><p><strong>centered</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether each row’s profile was centered on its own mean charge
-density before binning, giving it zero first moment. A property of
-the <em>data</em>; it does not affect which grid is used.</p></li>
-<li><p><strong>atom_offsets</strong> (<em>np.ndarray</em><em> | </em><em>None</em><em>, </em><em>optional</em>) – Global index of each molecule’s first atom, by default None,
-meaning this table is already at molecule level. When given, this
-table is at atom level, and <code class="docutils literal notranslate"><span class="pre">aggregate</span></code> can reassemble it into a
-molecule-level table.</p></li>
+<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a>) – Grid these profiles are binned on.</p></li>
+<li><p><strong>centered</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether each row was centered on its mean charge density before
+binning (zero first moment). A property of the data, not the grid.</p></li>
+<li><p><strong>atom_offsets</strong> (<em>np.ndarray</em><em> | </em><em>None</em><em>, </em><em>optional</em>) – Global index of each molecule’s first atom. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default)
+means molecule-level; when set, the table is atom-level and
+<code class="docutils literal notranslate"><span class="pre">aggregate</span></code> can reassemble it.</p></li>
 </ul>
 </dd>
 </dl>
@@ -522,37 +518,29 @@ molecule.</p>
 <dt class="sig sig-object py" id="cosmolayer.store.SigmaProfileTable.aggregate">
 <span class="sig-name descname"><span class="pre">aggregate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/profiles.html#SigmaProfileTable.aggregate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SigmaProfileTable.aggregate" title="Link to this definition">#</a></dt>
 <dd><p>Reassemble per-molecule profiles from these per-atom ones.</p>
-<p>Area-weighted sum of atom profiles onto a shared molecule axis,
-with each atom’s own mean charge density un-translated first when
-<code class="docutils literal notranslate"><span class="pre">self.centered</span></code> is True.</p>
-<p>The result is always uncentered (<code class="docutils literal notranslate"><span class="pre">centered=False</span></code>): un-translating
-returns each atom’s mass to absolute sigma, so a centered atom table
-aggregates into an uncentered molecule one.</p>
+<p>Area-weighted sum of atom profiles onto a shared molecule axis.
+If this table is centered, each atom is translated back by its
+mean charge density first. The result is always uncentered.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Grid for the output molecule profiles, by default None,
-meaning <code class="docutils literal notranslate"><span class="pre">self.grid</span></code> (same axis as the atom profiles). A
-different grid must share this table’s <code class="docutils literal notranslate"><span class="pre">bin_width</span></code>: the
-column alignment is <code class="docutils literal notranslate"><span class="pre">k</span> <span class="pre">-&gt;</span> <span class="pre">k</span> <span class="pre">+</span> <span class="pre">(len(grid)</span> <span class="pre">-</span> <span class="pre">len(self.grid))</span> <span class="pre">/</span> <span class="pre">2</span></code>,
-which is only valid for two symmetric grids of equal bin width.</p></li>
-<li><p><strong>normalize</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – Whether to divide each molecule’s profile by its total area
-so it sums to 1, by default False.</p></li>
-<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Number of threads to use, by default None, meaning every
-available CPU core.</p></li>
+<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Grid for the molecule profiles. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses
+<code class="docutils literal notranslate"><span class="pre">self.grid</span></code>. A different grid must share this table’s
+<code class="docutils literal notranslate"><span class="pre">bin_width</span></code>.</p></li>
+<li><p><strong>normalize</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – If True, divide each molecule’s profile by its total area so
+it sums to 1.</p></li>
+<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Thread count. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses every CPU core.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Molecule-level (<code class="docutils literal notranslate"><span class="pre">atom_offsets</span> <span class="pre">is</span> <span class="pre">None</span></code>, <code class="docutils literal notranslate"><span class="pre">centered</span></code> False),
-with <code class="docutils literal notranslate"><span class="pre">profiles</span></code> having <code class="docutils literal notranslate"><span class="pre">len(grid)</span></code> columns.</p>
+<dd class="field-even"><p>Molecule-level (<code class="docutils literal notranslate"><span class="pre">atom_offsets</span></code> is None, <code class="docutils literal notranslate"><span class="pre">centered</span></code> False).</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#cosmolayer.store.SigmaProfileTable" title="cosmolayer.store.SigmaProfileTable">SigmaProfileTable</a></p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">self.atom_offsets</span></code> is None (already at molecule level,
-    nothing to aggregate), or if <code class="docutils literal notranslate"><span class="pre">grid</span></code> does not share this
-    table’s <code class="docutils literal notranslate"><span class="pre">bin_width</span></code>.</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If this table is already molecule-level, or if <code class="docutils literal notranslate"><span class="pre">grid</span></code> does
+    not share this table’s <code class="docutils literal notranslate"><span class="pre">bin_width</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -562,57 +550,33 @@ with <code class="docutils literal notranslate"><span class="pre">profiles</span
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_segments</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigmas</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">areas</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">segment_offsets</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_rows</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SigmaGrid(max_abs_sigma=0.025,</span> <span class="pre">num_points=51)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/profiles.html#SigmaProfileTable.from_segments"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SigmaProfileTable.from_segments" title="Link to this definition">#</a></dt>
 <dd><p>Bin segment-level data into per-atom or per-molecule sigma
 profiles.</p>
-<p>Takes each segment’s charge density directly, as <code class="docutils literal notranslate"><span class="pre">sigmas</span></code> –
-pass raw <code class="docutils literal notranslate"><span class="pre">charges</span> <span class="pre">/</span> <span class="pre">areas</span></code>, or an averaged density from
+<p><code class="docutils literal notranslate"><span class="pre">sigmas</span></code> is each segment’s charge density: pass raw
+<code class="docutils literal notranslate"><span class="pre">charges</span> <span class="pre">/</span> <span class="pre">areas</span></code>, or an averaged density from
 <code class="docutils literal notranslate"><span class="pre">average_sigmas_by_molecule</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>sigmas</strong> (<em>np.ndarray</em>) – Charge density of the surface segments, in e/Å² – raw or
-averaged, at the caller’s choice (see above).</p></li>
-<li><p><strong>areas</strong> (<em>np.ndarray</em>) – Areas of the surface segments.</p></li>
-<li><p><strong>segment_offsets</strong> (<em>np.ndarray</em>) – Start index of each molecule’s segments within the
-segment-level arrays. Must describe <em>exactly</em> the molecules
-present in <code class="docutils literal notranslate"><span class="pre">areas</span></code> / <code class="docutils literal notranslate"><span class="pre">sigmas</span></code> / <code class="docutils literal notranslate"><span class="pre">atom_indices</span></code>: the last
-molecule’s segments run to the end of those arrays. Slicing
-<code class="docutils literal notranslate"><span class="pre">segment_offsets</span></code> and the segment-level arrays for a subset
-must be done together, or leftover segments are silently
-attributed to the wrong molecule – pass a matching,
-under-sized <code class="docutils literal notranslate"><span class="pre">num_rows</span></code> to turn that mistake into an
-<code class="docutils literal notranslate"><span class="pre">AssertionError</span></code> instead.</p></li>
-<li><p><strong>atom_indices</strong> (<em>np.ndarray</em><em> | </em><em>None</em><em>, </em><em>optional</em>) – Global atom index associated with each segment. By default
-None, meaning build one profile <em>per molecule</em> instead of per
-atom – segments are grouped straight by <code class="docutils literal notranslate"><span class="pre">segment_offsets</span></code>
-(faking one monoatomic “atom” per molecule), and the result’s
-<code class="docutils literal notranslate"><span class="pre">atom_offsets</span></code> stays None. When given, one profile is built
-<em>per atom</em> instead, grouped via <code class="docutils literal notranslate"><span class="pre">atom_indices</span></code>, and the
-result’s <code class="docutils literal notranslate"><span class="pre">atom_offsets</span></code> (each molecule’s first atom index,
-so <code class="docutils literal notranslate"><span class="pre">aggregate</span></code> can later reassemble these into
-molecule-level profiles) is derived as
-<code class="docutils literal notranslate"><span class="pre">atom_indices[segment_offsets]</span></code> – correct because segments
-are grouped by ascending atom index within a molecule (true of
-the COSMO file formats this package parses; verified against a
-real TURBOMOLE file).</p></li>
-<li><p><strong>num_rows</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Total number of profile rows to build. By default None,
-meaning <code class="docutils literal notranslate"><span class="pre">len(segment_offsets)</span></code> (molecule level) or
-<code class="docutils literal notranslate"><span class="pre">int(atom_indices.max())</span> <span class="pre">+</span> <span class="pre">1</span></code> (atom level) – correct for a
-full store, but potentially wrong for an already-subsetted one
-(see the <code class="docutils literal notranslate"><span class="pre">segment_offsets</span></code> caveat above); pass it explicitly
+<li><p><strong>sigmas</strong> (<em>np.ndarray</em>) – Segment charge density, in e/Å² (raw or averaged).</p></li>
+<li><p><strong>areas</strong> (<em>np.ndarray</em>) – Segment areas.</p></li>
+<li><p><strong>segment_offsets</strong> (<em>np.ndarray</em>) – Start index of each molecule’s segments. Must describe
+<em>exactly</em> the molecules present in the segment-level arrays;
+slice offsets and arrays together.</p></li>
+<li><p><strong>atom_indices</strong> (<em>np.ndarray</em><em> | </em><em>None</em><em>, </em><em>optional</em>) – Global atom index of each segment. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) builds
+one profile per molecule. When given, builds one profile per
+atom; the result’s <code class="docutils literal notranslate"><span class="pre">atom_offsets</span></code> is
+<code class="docutils literal notranslate"><span class="pre">atom_indices[segment_offsets]</span></code>.</p></li>
+<li><p><strong>num_rows</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Number of profile rows. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses
+<code class="docutils literal notranslate"><span class="pre">len(segment_offsets)</span></code> (molecule level) or
+<code class="docutils literal notranslate"><span class="pre">int(atom_indices.max())</span> <span class="pre">+</span> <span class="pre">1</span></code> (atom level). Pass explicitly
 when subsetting.</p></li>
-<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a><em>, </em><em>optional</em>) – Grid to bin profiles onto, by default <code class="docutils literal notranslate"><span class="pre">DEFAULT_SIGMA_GRID</span></code>.
-Used exactly as given, so the result’s <code class="docutils literal notranslate"><span class="pre">profiles</span></code> always has
-<code class="docutils literal notranslate"><span class="pre">len(grid)</span></code> columns regardless of <code class="docutils literal notranslate"><span class="pre">centered</span></code>.</p></li>
-<li><p><strong>centered</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – Whether to center each profile on its own mean charge density
-before binning, by default False. Affects the binned values,
-not the grid they land on.</p></li>
-<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Number of threads to use, by default None, meaning every
-available CPU core.</p></li>
+<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a><em>, </em><em>optional</em>) – Grid to bin onto, by default <code class="docutils literal notranslate"><span class="pre">DEFAULT_SIGMA_GRID</span></code>.</p></li>
+<li><p><strong>centered</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – If True, center each profile on its mean charge density
+before binning.</p></li>
+<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Thread count. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses every CPU core.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Atom-level if <code class="docutils literal notranslate"><span class="pre">atom_indices</span></code> is given, else molecule-level.
-<code class="docutils literal notranslate"><span class="pre">charges</span></code> is the true net charge when <code class="docutils literal notranslate"><span class="pre">sigmas</span></code> is raw, or
-a smoothed “equivalent charge” when it isn’t.</p>
+<dd class="field-even"><p>Atom-level if <code class="docutils literal notranslate"><span class="pre">atom_indices</span></code> is given, else molecule-level.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#cosmolayer.store.SigmaProfileTable" title="cosmolayer.store.SigmaProfileTable">SigmaProfileTable</a></p>

@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="./" >
+<html lang="en" data-content_root="./" data-theme="auto">
 
   <head>
     <meta charset="utf-8" />
@@ -11,12 +11,12 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="visualization.html" />
 <meta property="og:site_name" content="CosmoLayer dev" />
-<meta property="og:description" content="Cosmoview: CosmoLayer offers a command line interface for visualizing COSMO files. The cosmoview command launches a window displaying the molecular structure along with a tessellated COSMO cavity s..." />
+<meta property="og:description" content="Cosmoviz: CosmoLayer offers a command line interface for visualizing COSMO files. The cosmoviz command launches a window displaying the molecular structure along with a tessellated COSMO cavity sur..." />
 <meta property="og:image:width" content="1146" />
 <meta property="og:image:height" content="600" />
-<meta property="og:image" content="_images/social_previews/summary_visualization_c50a59e3.png" />
-<meta property="og:image:alt" content="Cosmoview: CosmoLayer offers a command line interface for visualizing COSMO files. The cosmoview command launches a window displaying the molecular structure along with a tessellated COSMO cavity s..." />
-<meta name="description" content="Cosmoview: CosmoLayer offers a command line interface for visualizing COSMO files. The cosmoview command launches a window displaying the molecular structure along with a tessellated COSMO cavity s..." />
+<meta property="og:image" content="_images/social_previews/summary_visualization_0becd37b.png" />
+<meta property="og:image:alt" content="Cosmoviz: CosmoLayer offers a command line interface for visualizing COSMO files. The cosmoviz command launches a window displaying the molecular structure along with a tessellated COSMO cavity sur..." />
+<meta name="description" content="Cosmoviz: CosmoLayer offers a command line interface for visualizing COSMO files. The cosmoviz command launches a window displaying the molecular structure along with a tessellated COSMO cavity sur..." />
 <meta name="twitter:card" content="summary_large_image" />
 
     <title>Visualization &#8212; CosmoLayer dev  documentation</title>
@@ -24,8 +24,8 @@
   
   
   <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
   </script>
   <!--
     this give us a css class that will be invisible only if js is disabled
@@ -62,15 +62,15 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'visualization';</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Bibliography" href="references.html" />
-    <link rel="prev" title="COSMO_SAC_2010" href="api/COSMO_SAC_2010.html" />
+    <link rel="next" title="Cosmostore" href="cosmostore.html" />
+    <link rel="prev" title="CLI Reference" href="cli.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="dev" />
   </head>
   
   
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="auto">
 
   
   
@@ -157,8 +157,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
-    Visualization
+  <a class="nav-link nav-internal" href="cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -290,8 +290,8 @@
 
 
 <li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
-    Visualization
+  <a class="nav-link nav-internal" href="cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -392,6 +392,9 @@
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
+    
+    <li class="breadcrumb-item"><a href="cli.html" class="nav-link">CLI Reference</a></li>
+    
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Visualization</span></li>
   </ul>
 </nav>
@@ -411,31 +414,31 @@
                   
   <section id="visualization">
 <h1>Visualization<a class="headerlink" href="#visualization" title="Link to this heading">#</a></h1>
-<section id="cosmoview">
-<h2>Cosmoview<a class="headerlink" href="#cosmoview" title="Link to this heading">#</a></h2>
+<section id="cosmoviz">
+<h2>Cosmoviz<a class="headerlink" href="#cosmoviz" title="Link to this heading">#</a></h2>
 <p>CosmoLayer offers a command line interface for visualizing COSMO files.
-The <code class="docutils literal notranslate"><span class="pre">cosmoview</span></code> command launches a window displaying the molecular structure along
+The <code class="docutils literal notranslate"><span class="pre">cosmoviz</span></code> command launches a window displaying the molecular structure along
 with a tessellated COSMO cavity surface, where each segment is color-coded according to
 its charge density.</p>
 <p><p>Visualize COSMO files</p>
 </p>
-<div class="highlight-default notranslate" id="id0"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">cosmoview</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">show</span><span class="o">-</span><span class="n">original</span><span class="o">-</span><span class="n">charge</span><span class="o">-</span><span class="n">densities</span><span class="p">]</span>
-                 <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">continuous</span><span class="o">-</span><span class="n">colors</span><span class="p">]</span>
-                 <span class="p">[</span><span class="o">--</span><span class="n">segment</span><span class="o">-</span><span class="n">edge</span><span class="o">-</span><span class="n">color</span> <span class="n">SEGMENT_EDGE_COLOR</span><span class="p">]</span>
-                 <span class="p">[</span><span class="o">--</span><span class="n">colormap</span> <span class="n">COLORMAP</span><span class="p">]</span>
-                 <span class="n">cosmo_file</span>
+<div class="highlight-default notranslate" id="id0"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">cosmoviz</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">show</span><span class="o">-</span><span class="n">original</span><span class="o">-</span><span class="n">charge</span><span class="o">-</span><span class="n">densities</span><span class="p">]</span>
+                <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">continuous</span><span class="o">-</span><span class="n">colors</span><span class="p">]</span>
+                <span class="p">[</span><span class="o">--</span><span class="n">segment</span><span class="o">-</span><span class="n">edge</span><span class="o">-</span><span class="n">color</span> <span class="n">SEGMENT_EDGE_COLOR</span><span class="p">]</span>
+                <span class="p">[</span><span class="o">--</span><span class="n">colormap</span> <span class="n">COLORMAP</span><span class="p">]</span>
+                <span class="n">cosmo_file</span>
 </pre></div>
 </div>
-<section id="cosmoview-positional-arguments">
-<span id="cosmolayer.cosmosac.visualize-get_parser-positional-arguments"></span><h3>Positional Arguments<a class="headerlink" href="#cosmoview-positional-arguments" title="Link to this heading">#</a></h3>
+<section id="cosmoviz-positional-arguments">
+<span id="cosmolayer.cosmosac.visualize-get_parser-positional-arguments"></span><h3>Positional Arguments<a class="headerlink" href="#cosmoviz-positional-arguments" title="Link to this heading">#</a></h3>
 <dl class="option-list">
 <dt><kbd>cosmo_file</kbd></dt>
 <dd><p>Path to a COSMO quantum mechanical output file</p>
 </dd>
 </dl>
 </section>
-<section id="cosmoview-named-arguments">
-<span id="cosmolayer.cosmosac.visualize-get_parser-named-arguments"></span><h3>Named Arguments<a class="headerlink" href="#cosmoview-named-arguments" title="Link to this heading">#</a></h3>
+<section id="cosmoviz-named-arguments">
+<span id="cosmolayer.cosmosac.visualize-get_parser-named-arguments"></span><h3>Named Arguments<a class="headerlink" href="#cosmoviz-named-arguments" title="Link to this heading">#</a></h3>
 <dl class="option-list">
 <dt><kbd>--show-original-charge-densities</kbd></dt>
 <dd><p>Show original charge densities instead of smoothed ones</p>
@@ -468,20 +471,20 @@ its charge density.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="api/COSMO_SAC_2010.html"
+       href="cli.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">COSMO_SAC_2010</p>
+        <p class="prev-next-title">CLI Reference</p>
       </div>
     </a>
     <a class="right-next"
-       href="references.html"
+       href="cosmostore.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Bibliography</p>
+        <p class="prev-next-title">Cosmostore</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -504,9 +507,9 @@ its charge density.</p>
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cosmoview">Cosmoview</a><ul class="visible nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cosmoview-positional-arguments">Positional Arguments</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cosmoview-named-arguments">Named Arguments</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cosmoviz">Cosmoviz</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cosmoviz-positional-arguments">Positional Arguments</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cosmoviz-named-arguments">Named Arguments</a></li>
 </ul>
 </li>
 </ul>

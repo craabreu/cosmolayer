@@ -7,19 +7,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta property="og:title" content="Getting Started" />
+<meta property="og:title" content="Cosmostore" />
 <meta property="og:type" content="website" />
-<meta property="og:url" content="getting_started.html" />
+<meta property="og:url" content="cosmostore.html" />
 <meta property="og:site_name" content="CosmoLayer dev" />
-<meta property="og:description" content="Introduction: CosmoLayer is a package implementing differentiable COSMO-type activity coefficient calculation layers for neural network models. CosmoLayer leverages automatic differentiation and GP..." />
+<meta property="og:description" content="The cosmostore command builds a segment-data store from.cosmo files (if one is not already present) and prints summary statistics for atom- and molecule-level charges, areas, and sigma profiles. Bu..." />
 <meta property="og:image:width" content="1146" />
 <meta property="og:image:height" content="600" />
-<meta property="og:image" content="_images/social_previews/summary_getting_started_0c901499.png" />
-<meta property="og:image:alt" content="Introduction: CosmoLayer is a package implementing differentiable COSMO-type activity coefficient calculation layers for neural network models. CosmoLayer leverages automatic differentiation and GP..." />
-<meta name="description" content="Introduction: CosmoLayer is a package implementing differentiable COSMO-type activity coefficient calculation layers for neural network models. CosmoLayer leverages automatic differentiation and GP..." />
+<meta property="og:image" content="_images/social_previews/summary_cosmostore_e4e3595e.png" />
+<meta property="og:image:alt" content="The cosmostore command builds a segment-data store from.cosmo files (if one is not already present) and prints summary statistics for atom- and molecule-level charges, areas, and sigma profiles. Bu..." />
+<meta name="description" content="The cosmostore command builds a segment-data store from.cosmo files (if one is not already present) and prints summary statistics for atom- and molecule-level charges, areas, and sigma profiles. Bu..." />
 <meta name="twitter:card" content="summary_large_image" />
 
-    <title>Getting Started &#8212; CosmoLayer dev  documentation</title>
+    <title>Cosmostore &#8212; CosmoLayer dev  documentation</title>
   
   
   
@@ -59,11 +59,11 @@
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="_static/copybutton.js?v=ccdb6887"></script>
     <script src="_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'getting_started';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'cosmostore';</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="API Reference" href="api/index.html" />
-    <link rel="prev" title="CosmoLayer" href="index.html" />
+    <link rel="next" title="Bibliography" href="references.html" />
+    <link rel="prev" title="Visualization" href="visualization.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="dev" />
@@ -142,8 +142,8 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="getting_started.html">
     Getting Started
   </a>
 </li>
@@ -156,7 +156,7 @@
 </li>
 
 
-<li class="nav-item ">
+<li class="nav-item current active">
   <a class="nav-link nav-internal" href="cli.html">
     CLI Reference
   </a>
@@ -275,8 +275,8 @@
 <nav>
   <ul class="bd-navbar-elements navbar-nav">
     
-<li class="nav-item current active">
-  <a class="nav-link nav-internal" href="#">
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="getting_started.html">
     Getting Started
   </a>
 </li>
@@ -289,7 +289,7 @@
 </li>
 
 
-<li class="nav-item ">
+<li class="nav-item current active">
   <a class="nav-link nav-internal" href="cli.html">
     CLI Reference
   </a>
@@ -392,7 +392,10 @@
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Getting Started</span></li>
+    
+    <li class="breadcrumb-item"><a href="cli.html" class="nav-link">CLI Reference</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Cosmostore</span></li>
   </ul>
 </nav>
 </div>
@@ -409,38 +412,38 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="getting-started">
-<h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading">#</a></h1>
-<section id="introduction">
-<h2>Introduction<a class="headerlink" href="#introduction" title="Link to this heading">#</a></h2>
-<p>CosmoLayer is a package implementing differentiable COSMO-type activity coefficient calculation layers for neural network models.</p>
-<p>CosmoLayer leverages automatic differentiation and GPU acceleration to enable efficient computation and gradient-based optimization of COSMO model parameters.</p>
-</section>
-<section id="installation">
-<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">#</a></h2>
-<p>To install CosmoLayer in a conda environment, run the following command:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">conda</span> <span class="n">install</span> <span class="o">-</span><span class="n">c</span> <span class="n">conda</span><span class="o">-</span><span class="n">forge</span> <span class="o">-</span><span class="n">c</span> <span class="n">mdtools</span> <span class="n">cosmolayer</span>
+  <section id="cosmostore">
+<h1>Cosmostore<a class="headerlink" href="#cosmostore" title="Link to this heading">#</a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">cosmostore</span></code> command builds a segment-data store from <code class="docutils literal notranslate"><span class="pre">.cosmo</span></code>
+files (if one is not already present) and prints summary statistics for
+atom- and molecule-level charges, areas, and sigma profiles.</p>
+<p><p>Build the segment data store (if missing) and print summary statistics for atom- and molecule-level charges, areas, and sigma profiles.</p>
+</p>
+<div class="highlight-default notranslate" id="id0"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">cosmostore</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="o">--</span><span class="n">storage</span><span class="o">-</span><span class="nb">dir</span> <span class="n">STORAGE_DIR</span>
+                  <span class="p">[</span><span class="o">--</span><span class="n">cosmo</span><span class="o">-</span><span class="n">files</span><span class="o">-</span><span class="nb">dir</span> <span class="n">COSMO_FILES_DIR</span><span class="p">]</span>
+                  <span class="p">[</span><span class="o">--</span><span class="n">smiles</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">filename</span> <span class="n">SMILES_TO_FILENAME</span><span class="p">]</span>
+                  <span class="p">[</span><span class="o">--</span><span class="n">num</span><span class="o">-</span><span class="n">threads</span> <span class="n">NUM_THREADS</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">sigma</span><span class="o">-</span><span class="n">scheme</span> <span class="n">SIGMA_SCHEME</span><span class="p">]</span>
 </pre></div>
 </div>
-<p>Or use mamba instead:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mamba</span> <span class="n">install</span> <span class="o">-</span><span class="n">c</span> <span class="n">mdtools</span> <span class="n">cosmolayer</span>
-</pre></div>
-</div>
-</section>
-<section id="usage">
-<h2>Usage<a class="headerlink" href="#usage" title="Link to this heading">#</a></h2>
-<p>To use CosmoLayer, import the package in your Python script or Jupyter notebook:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">cosmolayer</span>
-</pre></div>
-</div>
-<p>Basic usage example (placeholder for future implementation):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Compute sigma profile for a molecule</span>
-<span class="c1"># sigma_profile = cosmolayer.compute_sigma_profile(molecule)</span>
-
-<span class="c1"># Calculate activity coefficients</span>
-<span class="c1"># activity_coeffs = cosmolayer.cosmo_sac(sigma_profiles, temperature)</span>
-</pre></div>
-</div>
+<section id="cosmostore-named-arguments">
+<span id="cosmolayer.store.__main__-get_parser-named-arguments"></span><h2>Named Arguments<a class="headerlink" href="#cosmostore-named-arguments" title="Link to this heading">#</a></h2>
+<dl class="option-list">
+<dt><kbd>--storage-dir</kbd></dt>
+<dd><p>The directory to store (or load) the segment data.</p>
+</dd>
+<dt><kbd>--cosmo-files-dir</kbd></dt>
+<dd><p>Directory containing the .cosmo files referenced by –smiles-to-filename. Required only if –storage-dir doesn’t already hold a built store.</p>
+</dd>
+<dt><kbd>--smiles-to-filename</kbd></dt>
+<dd><p>Path to a JSON file mapping each SMILES string to its .cosmo filename (relative to –cosmo-files-dir). Required only if –storage-dir doesn’t already hold a built store.</p>
+</dd>
+<dt><kbd>--num-threads</kbd></dt>
+<dd><p>Number of threads to use for every threaded step (segment averaging, sigma-profile binning). Defaults to every available CPU core – lower this on a shared machine to leave headroom for other users.</p>
+</dd>
+<dt><kbd>--sigma-scheme</kbd></dt>
+<dd><p>Averaging scheme for every statistic (e.g. ‘cosmo-rs’, ‘cosmo-sac-2002’, ‘cosmo-sac-2010’). The store must already contain that scheme. Default: raw sigma.</p>
+</dd>
+</dl>
 </section>
 </section>
 
@@ -455,20 +458,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="index.html"
+       href="visualization.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">CosmoLayer</p>
+        <p class="prev-next-title">Visualization</p>
       </div>
     </a>
     <a class="right-next"
-       href="api/index.html"
+       href="references.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">API Reference</p>
+        <p class="prev-next-title">Bibliography</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -491,9 +494,7 @@
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#introduction">Introduction</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation">Installation</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#usage">Usage</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cosmostore-named-arguments">Named Arguments</a></li>
 </ul>
   </nav></div>
 

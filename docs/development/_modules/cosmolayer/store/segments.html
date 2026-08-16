@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../../../" >
+<html lang="en" data-content_root="../../../" data-theme="auto">
 
   <head>
     <meta charset="utf-8" />
@@ -12,8 +12,8 @@
   
   
   <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
   </script>
   <!--
     this give us a css class that will be invisible only if js is disabled
@@ -56,7 +56,7 @@
   </head>
   
   
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="auto">
 
   
   
@@ -143,8 +143,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../../../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -274,8 +274,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../../../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -401,9 +401,8 @@
 <span class="sd">charges, and areas, plus the per-molecule table describing them.</span>
 
 <span class="sd">Build one from ``.cosmo`` files with ``SegmentStore.from_cosmo_files``, or</span>
-<span class="sd">load an existing one with ``SegmentStore.load``. Both work with a flat</span>
-<span class="sd">``storage_dir`` holding these files, none of which change name or shape</span>
-<span class="sd">under this package&#39;s revisions of the surrounding code::</span>
+<span class="sd">load an existing one with ``SegmentStore.load``. Both use a flat</span>
+<span class="sd">``storage_dir``::</span>
 
 <span class="sd">    &lt;storage_dir&gt;/data.npy          float32 (n_segs_total, 5): [x, y, z, charge, area]</span>
 <span class="sd">    &lt;storage_dir&gt;/atom_indices.npy  int64   (n_segs_total,):   global atom index per</span>
@@ -413,10 +412,9 @@
 <span class="sd">    &lt;storage_dir&gt;/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}</span>
 <span class="sd">    &lt;storage_dir&gt;/&lt;scheme&gt;.npy      float32 (n_segs_total,): one per averaging scheme</span>
 
-<span class="sd">Every function taking ``segment_offsets`` (the ``molecules_df`` column of</span>
-<span class="sd">that name) requires it to describe *exactly* the molecules present in the</span>
-<span class="sd">accompanying segment-level arrays: the last molecule&#39;s segments are</span>
-<span class="sd">assumed to run to the end of those arrays.</span>
+<span class="sd">``segment_offsets`` (the ``molecules_df`` column of that name) must describe</span>
+<span class="sd">*exactly* the molecules present in the accompanying segment-level arrays:</span>
+<span class="sd">the last molecule&#39;s segments run to the end of those arrays.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
@@ -450,31 +448,14 @@
 
 <span class="n">_STORE_FILES</span> <span class="o">=</span> <span class="p">(</span><span class="n">DATA_FILE</span><span class="p">,</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="n">MOLECULES_FILE</span><span class="p">,</span> <span class="n">METADATA_FILE</span><span class="p">)</span>
 
-<span class="c1"># A scheme&#39;s averaged sigmas are written to &quot;&lt;name&gt;.npy&quot; (see save()), so</span>
-<span class="c1"># only the store&#39;s own *.npy files can actually collide with one -- not</span>
-<span class="c1"># MOLECULES_FILE or METADATA_FILE, which have different suffixes and so</span>
-<span class="c1"># can never share a name with a &quot;&lt;name&gt;.npy&quot; scheme output. Derived from</span>
-<span class="c1"># _STORE_FILES itself rather than a second, hand-maintained set, so the</span>
-<span class="c1"># two can&#39;t drift apart.</span>
+<span class="c1"># Averaged sigmas are written to &quot;&lt;name&gt;.npy&quot;, so scheme names must not</span>
+<span class="c1"># collide with the store&#39;s own .npy stems (data, atom_indices).</span>
 <span class="n">_RESERVED_SCHEME_NAMES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span>
     <span class="n">f</span><span class="o">.</span><span class="n">stem</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">_STORE_FILES</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="n">DATA_FILE</span><span class="o">.</span><span class="n">suffix</span>
 <span class="p">)</span>
 
-<span class="c1"># A .cosmo file&#39;s atom table always lists every atom explicitly, hydrogens</span>
-<span class="c1"># included, and _reorder_molecule&#39;s atom-mapping contract requires each</span>
-<span class="c1"># SMILES atom to correspond 1:1 with a COSMO atom -- so explicit hydrogens</span>
-<span class="c1"># in a SMILES string must survive parsing as real atoms. RDKit&#39;s default</span>
-<span class="c1"># parser silently folds ordinary terminal &quot;[H]&quot; atoms back into implicit</span>
-<span class="c1"># valence on read (even when atom-mapped), which would desync the two atom</span>
-<span class="c1"># orderings; removeHs=False disables that folding. SMILES with only</span>
-<span class="c1"># implicit hydrogens (e.g. &quot;CCO&quot;) are unaffected either way.</span>
-<span class="c1">#</span>
-<span class="c1"># Assigned through cast(Any, ...) rather than a plain attribute set:</span>
-<span class="c1"># rdkit&#39;s generated stubs for this Boost.Python class have typed removeHs</span>
-<span class="c1"># inconsistently across releases, and lint_env.yaml pins no rdkit</span>
-<span class="c1"># version, so whatever mypy infers here can vary by CI run. cast(Any, ...)</span>
-<span class="c1"># opts this one assignment out of that check unconditionally, instead of</span>
-<span class="c1"># a `# type: ignore` that would itself be version-sensitive.</span>
+<span class="c1"># COSMO atom tables include explicit hydrogens; disable RDKit&#39;s default</span>
+<span class="c1"># folding of terminal [H] so SMILES atoms match the COSMO file.</span>
 <span class="n">_SMILES_PARSER_PARAMS</span> <span class="o">=</span> <span class="n">Chem</span><span class="o">.</span><span class="n">SmilesParserParams</span><span class="p">()</span>
 <span class="n">cast</span><span class="p">(</span><span class="n">Any</span><span class="p">,</span> <span class="n">_SMILES_PARSER_PARAMS</span><span class="p">)</span><span class="o">.</span><span class="n">removeHs</span> <span class="o">=</span> <span class="kc">False</span>
 
@@ -505,16 +486,7 @@
 <div class="viewcode-block" id="StoreMetadata.to_dict">
 <a class="viewcode-back" href="../../../api/StoreMetadata.html#cosmolayer.store.StoreMetadata.to_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Serialize to the JSON-compatible shape written to</span>
-<span class="sd">        ``metadata.json``.</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        dict</span>
-<span class="sd">            ``{&quot;num_molecules&quot;: ..., &quot;num_cosmo_parse_failures&quot;: ...,</span>
-<span class="sd">            &quot;schemes&quot;: {name: {&quot;averaging_radius&quot;: ..., &quot;f_decay&quot;:</span>
-<span class="sd">            ...}}}``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Serialize to the JSON-compatible shape written to ``metadata.json``.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="p">{</span>
             <span class="s2">&quot;num_molecules&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_molecules</span><span class="p">,</span>
             <span class="s2">&quot;num_cosmo_parse_failures&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_cosmo_parse_failures</span><span class="p">,</span>
@@ -532,16 +504,12 @@
 <a class="viewcode-back" href="../../../api/StoreMetadata.html#cosmolayer.store.StoreMetadata.from_dict">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">&quot;StoreMetadata&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reconstruct from the shape read back from ``metadata.json``.</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reconstruct from the dict produced by ``to_dict``.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        data : dict</span>
 <span class="sd">            As produced by ``to_dict``.</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        StoreMetadata</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">schemes</span> <span class="o">=</span> <span class="p">{</span>
             <span class="n">name</span><span class="p">:</span> <span class="n">AveragingScheme</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;averaging_radius&quot;</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;f_decay&quot;</span><span class="p">])</span>
@@ -559,14 +527,12 @@
 <div class="viewcode-block" id="SegmentStore">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">SegmentStore</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A segment-data store: segment arrays plus the per-molecule</span>
-<span class="sd">    ``molecules_df`` table describing them, and any averaged sigmas</span>
-<span class="sd">    computed for it.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;On-disk COSMO segment arrays, the per-molecule table describing</span>
+<span class="sd">    them, and any averaged sigmas computed for the store.</span>
 
-<span class="sd">    Construct directly only if you already have every component in hand</span>
-<span class="sd">    (e.g. re-wrapping arrays); normal callers use ``load`` (read an</span>
-<span class="sd">    existing store from disk, memory-mapped) or ``from_cosmo_files``</span>
-<span class="sd">    (build a new one).</span>
+<span class="sd">    Prefer ``load`` (read an existing store, memory-mapped) or</span>
+<span class="sd">    ``from_cosmo_files`` (build a new one). Direct construction is for</span>
+<span class="sd">    wrapping arrays already in hand.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -580,13 +546,11 @@
 <span class="sd">        One row per molecule, with columns ``smiles``, ``segment_offsets``,</span>
 <span class="sd">        ``atom_offsets``, ``num_atoms``, and ``volume``.</span>
 <span class="sd">    metadata : StoreMetadata</span>
-<span class="sd">        Molecule/failure counts for this store, plus whichever averaging</span>
-<span class="sd">        schemes have been computed for it so far.</span>
+<span class="sd">        Molecule and parse-failure counts, plus averaging schemes already</span>
+<span class="sd">        computed for this store.</span>
 <span class="sd">    averaged_sigmas : dict[str, np.ndarray]</span>
-<span class="sd">        Scheme name -&gt; ``(n_segs_total,)`` averaged charge density,</span>
-<span class="sd">        computed automatically by ``from_cosmo_files`` for whatever</span>
-<span class="sd">        schemes have been computed for this store so far. Empty if none</span>
-<span class="sd">        have.</span>
+<span class="sd">        Scheme name to ``(n_segs_total,)`` averaged charge density. Empty</span>
+<span class="sd">        if none have been computed.</span>
 
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
@@ -615,14 +579,11 @@
 
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_reorder_molecule</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Chem</span><span class="o">.</span><span class="n">Mol</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Chem</span><span class="o">.</span><span class="n">Mol</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reorder a molecule&#39;s atoms by their AtomMapNum property.</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reorder atoms into ascending AtomMapNum order.</span>
 
-<span class="sd">        Sorts atoms into ascending AtomMapNum order, so atom ``i`` ends up</span>
-<span class="sd">        carrying ``AtomMapNum == i`` (0-based mapping) or ``AtomMapNum ==</span>
-<span class="sd">        i + 1`` (1-based). ``from_cosmo_files`` relies on this: it uses</span>
-<span class="sd">        each segment&#39;s COSMO-file atom index directly as its global atom</span>
-<span class="sd">        index, which only matches a molecule&#39;s atom-mapped SMILES once the</span>
-<span class="sd">        atoms are in this order.</span>
+<span class="sd">        After reordering, atom ``i`` has ``AtomMapNum == i`` (0-based) or</span>
+<span class="sd">        ``AtomMapNum == i + 1`` (1-based), matching the COSMO file&#39;s</span>
+<span class="sd">        0-based atom indices used as global atom indices.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -637,7 +598,8 @@
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
-<span class="sd">            If the molecule has bad atom map numbers.</span>
+<span class="sd">            If the atom map numbers are not all 0, or a 0-based or</span>
+<span class="sd">            1-based permutation of the atom indices.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">num_atoms</span> <span class="o">=</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span>
         <span class="n">map_nums</span> <span class="o">=</span> <span class="p">{</span><span class="n">atom</span><span class="o">.</span><span class="n">GetAtomMapNum</span><span class="p">()</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetAtoms</span><span class="p">()}</span>
@@ -662,39 +624,27 @@
         <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">]]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute averaged sigmas for this store under every scheme in</span>
-<span class="sd">        ``schemes``.</span>
-
-<span class="sd">        Pure: returns the computed arrays without writing anything or</span>
-<span class="sd">        mutating ``self``. Called by ``from_cosmo_files``, which passes</span>
-<span class="sd">        the result to ``save``. A store&#39;s averaged sigmas are meant to be</span>
-<span class="sd">        computed once, at build time -- this is exposed mainly so</span>
-<span class="sd">        ``from_cosmo_files`` (and tests) don&#39;t have to go through disk.</span>
-
-<span class="sd">        Calls ``average_sigmas_by_molecule`` once, sharing the</span>
-<span class="sd">        pairwise-distance computation across every scheme.</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute averaged charge densities under each scheme, without</span>
+<span class="sd">        writing to disk or mutating this store.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        schemes : Sequence[AveragingScheme] | None, optional</span>
-<span class="sd">            Schemes to average under, by default None, meaning</span>
-<span class="sd">            ``AVERAGING_SCHEMES`` (Klamt, COSMO-SAC 2002, COSMO-SAC 2010).</span>
+<span class="sd">            Schemes to apply. ``None`` (default) uses ``AVERAGING_SCHEMES``.</span>
 <span class="sd">        num_threads : int | None, optional</span>
-<span class="sd">            Number of threads to use, by default None, meaning every</span>
-<span class="sd">            available CPU core.</span>
+<span class="sd">            Thread count. ``None`` (default) uses every CPU core.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        dict[str, np.ndarray]</span>
-<span class="sd">            Scheme name -&gt; ``(n_segs_total,)`` float32 averaged charge</span>
-<span class="sd">            density, one entry per scheme in ``schemes``.</span>
+<span class="sd">            Scheme name to ``(n_segs_total,)`` float32 averaged charge</span>
+<span class="sd">            density.</span>
 
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
-<span class="sd">            If a scheme&#39;s name collides with a reserved store filename</span>
-<span class="sd">            stem (i.e. would overwrite ``DATA_FILE`` or</span>
-<span class="sd">            ``ATOM_INDICES_FILE`` on ``save``).</span>
+<span class="sd">            If a scheme&#39;s name would overwrite ``data.npy`` or</span>
+<span class="sd">            ``atom_indices.npy`` on ``save``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">schemes</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">schemes</span> <span class="o">=</span> <span class="n">AVERAGING_SCHEMES</span>
@@ -726,20 +676,14 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Write this store&#39;s arrays, table, metadata, and averaged</span>
 <span class="sd">        sigmas to disk.</span>
 
-<span class="sd">        ``metadata.json`` is written atomically (temp file + rename), so a</span>
-<span class="sd">        process interrupted mid-``save`` never leaves a store that</span>
-<span class="sd">        ``exists()`` reports as complete but that ``load`` cannot actually</span>
-<span class="sd">        read.</span>
+<span class="sd">        ``metadata.json`` is written atomically (temp file + rename), so an</span>
+<span class="sd">        interrupted save is never reported as complete by ``exists``.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        storage_dir : pathlib.Path | str | None, optional</span>
-<span class="sd">            Destination directory, by default None, meaning</span>
+<span class="sd">            Destination directory. ``None`` (default) uses</span>
 <span class="sd">            ``self.storage_dir``. Created if missing.</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        None</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">storage_dir</span> <span class="o">=</span> <span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">storage_dir</span> <span class="k">if</span> <span class="n">storage_dir</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">storage_dir</span><span class="p">)</span>
@@ -768,12 +712,10 @@
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.exists">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">storage_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check whether a directory holds a complete segment-data store.</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return whether ``storage_dir`` holds a complete store.</span>
 
-<span class="sd">        Checks not just the four fixed files but every scheme ``.npy``</span>
-<span class="sd">        listed in ``metadata.json``, so an interrupted build (metadata</span>
-<span class="sd">        written before its scheme arrays) is correctly reported as</span>
-<span class="sd">        incomplete.</span>
+<span class="sd">        Requires the four fixed files and every scheme ``.npy`` listed in</span>
+<span class="sd">        ``metadata.json``.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -783,7 +725,7 @@
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        bool</span>
-<span class="sd">            True if the store is complete, False otherwise.</span>
+<span class="sd">            True if the store is complete.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">storage_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">storage_dir</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">((</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">_STORE_FILES</span><span class="p">):</span>
@@ -855,17 +797,12 @@
         <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;SegmentStore&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse COSMO files, build a store in memory, and persist it to</span>
-<span class="sd">        ``storage_dir``.</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse COSMO files, build a store, and write it to ``storage_dir``.</span>
 
-<span class="sd">        A molecule&#39;s atoms are numbered by the COSMO file&#39;s own 0-based</span>
-<span class="sd">        order directly, which is why each SMILES&#39;s atom count is checked</span>
-<span class="sd">        against its COSMO file and, if atom-mapped, reordered via</span>
-<span class="sd">        ``_reorder_molecule`` onto that same indexing.</span>
-
-<span class="sd">        Also computes and writes averaged sigmas for the new store (see</span>
-<span class="sd">        ``compute_averaged_sigmas``), unless ``schemes`` is an empty</span>
-<span class="sd">        sequence.</span>
+<span class="sd">        Atoms are numbered in the COSMO file&#39;s 0-based order. Each SMILES</span>
+<span class="sd">        must have the same atom count as its COSMO file; atom-mapped SMILES</span>
+<span class="sd">        are reordered onto that indexing. Averaged sigmas are computed and</span>
+<span class="sd">        written unless ``schemes`` is an empty sequence.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -873,22 +810,21 @@
 <span class="sd">            Directory containing the ``.cosmo`` files named by</span>
 <span class="sd">            ``smiles_to_filename``&#39;s values.</span>
 <span class="sd">        smiles_to_filename : dict[str, str]</span>
-<span class="sd">            SMILES string -&gt; ``.cosmo`` filename (relative to</span>
+<span class="sd">            SMILES string to ``.cosmo`` filename (relative to</span>
 <span class="sd">            ``cosmo_files_dir``), one entry per molecule to store.</span>
 <span class="sd">        storage_dir : pathlib.Path</span>
 <span class="sd">            Destination directory for the output files. Created if</span>
 <span class="sd">            missing.</span>
 <span class="sd">        ignore_errors : bool, optional</span>
-<span class="sd">            If True, a molecule that fails to parse or validate is skipped</span>
-<span class="sd">            (and counted in ``metadata.num_cosmo_parse_failures``) instead</span>
-<span class="sd">            of raising. By default False.</span>
+<span class="sd">            If True, skip molecules that fail to parse or validate and</span>
+<span class="sd">            count them in ``metadata.num_cosmo_parse_failures``. Default</span>
+<span class="sd">            False.</span>
 <span class="sd">        schemes : Sequence[AveragingScheme] | None, optional</span>
-<span class="sd">            Passed to ``compute_averaged_sigmas``, by default None,</span>
-<span class="sd">            meaning ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging</span>
-<span class="sd">            entirely.</span>
+<span class="sd">            Averaging schemes to compute. ``None`` (default) uses</span>
+<span class="sd">            ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging.</span>
 <span class="sd">        num_threads : int | None, optional</span>
-<span class="sd">            Passed to ``compute_averaged_sigmas``, by default None,</span>
-<span class="sd">            meaning every available CPU core.</span>
+<span class="sd">            Thread count for averaging. ``None`` (default) uses every CPU</span>
+<span class="sd">            core.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -898,10 +834,9 @@
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
-<span class="sd">            If a molecule&#39;s SMILES or COSMO file cannot be parsed and</span>
-<span class="sd">            ``ignore_errors`` is False, if no molecule could be stored, or</span>
-<span class="sd">            if a scheme&#39;s name collides with a reserved store filename</span>
-<span class="sd">            stem (see ``compute_averaged_sigmas``).</span>
+<span class="sd">            If a molecule cannot be parsed and ``ignore_errors`` is False,</span>
+<span class="sd">            if no molecule could be stored, or if a scheme name collides</span>
+<span class="sd">            with a reserved store filename.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">data_chunks</span><span class="p">,</span> <span class="n">atoms_chunks</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
         <span class="n">segment_offsets</span><span class="p">,</span> <span class="n">segment_offset</span> <span class="o">=</span> <span class="p">[],</span> <span class="mi">0</span>
@@ -1027,35 +962,29 @@
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">centered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SigmaProfileTable</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute this store&#39;s per-atom sigma profiles.</span>
-
-<span class="sd">        A thin wrapper around ``SigmaProfileTable.from_segments`` that</span>
-<span class="sd">        supplies this store&#39;s own ``areas``/``atom_indices``/</span>
-<span class="sd">        ``segment_offsets``, and resolves ``sigmas`` from ``scheme`` (see</span>
-<span class="sd">        ``sigmas``).</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute per-atom sigma profiles for this store.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        scheme : str | None, optional</span>
-<span class="sd">            Passed to ``sigmas``, by default None (raw charge density).</span>
+<span class="sd">            Charge-density source. ``None`` (default) uses raw</span>
+<span class="sd">            ``charges / areas``; a name selects ``averaged_sigmas[scheme]``.</span>
 <span class="sd">        grid : SigmaGrid, optional</span>
-<span class="sd">            Base grid to bin profiles onto, by default ``DEFAULT_SIGMA_GRID``.</span>
+<span class="sd">            Grid to bin onto, by default ``DEFAULT_SIGMA_GRID``.</span>
 <span class="sd">        num_threads : int | None, optional</span>
-<span class="sd">            Number of threads to use, by default None, meaning every</span>
-<span class="sd">            available CPU core.</span>
+<span class="sd">            Thread count. ``None`` (default) uses every CPU core.</span>
 <span class="sd">        centered : bool, optional</span>
-<span class="sd">            Whether to center each atom&#39;s profile on its own mean charge</span>
-<span class="sd">            density, by default False.</span>
+<span class="sd">            If True, center each atom&#39;s profile on its mean charge density.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        SigmaProfileTable</span>
-<span class="sd">            Atom-level.</span>
+<span class="sd">            One row per atom.</span>
 
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        KeyError</span>
-<span class="sd">            If ``scheme`` is given but not in ``self.averaged_sigmas``.</span>
+<span class="sd">            If ``scheme`` is given but not in ``averaged_sigmas``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">sigmas</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigmas</span><span class="p">(</span><span class="n">scheme</span><span class="p">)</span>
         <span class="n">segment_offsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">&quot;segment_offsets&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span>
@@ -1081,30 +1010,28 @@
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">centered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SigmaProfileTable</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute this store&#39;s per-molecule sigma profiles directly from</span>
-<span class="sd">        segment-level data.</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute per-molecule sigma profiles from segment-level data.</span>
 
-<span class="sd">        Equivalent to ``self.compute_atom_sigma_profiles(...).aggregate()``</span>
-<span class="sd">        but skips the atom-level intermediate; mainly useful as a</span>
-<span class="sd">        cross-check for that two-step path.</span>
+<span class="sd">        Bins segments directly to molecules, without an atom-level</span>
+<span class="sd">        intermediate.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        scheme : str | None, optional</span>
-<span class="sd">            Passed to ``sigmas``, by default None (raw charge density).</span>
+<span class="sd">            Charge-density source. ``None`` (default) uses raw</span>
+<span class="sd">            ``charges / areas``; a name selects ``averaged_sigmas[scheme]``.</span>
 <span class="sd">        grid : SigmaGrid, optional</span>
-<span class="sd">            Base grid to bin profiles onto, by default ``DEFAULT_SIGMA_GRID``.</span>
+<span class="sd">            Grid to bin onto, by default ``DEFAULT_SIGMA_GRID``.</span>
 <span class="sd">        num_threads : int | None, optional</span>
-<span class="sd">            Number of threads to use, by default None, meaning every</span>
-<span class="sd">            available CPU core.</span>
+<span class="sd">            Thread count. ``None`` (default) uses every CPU core.</span>
 <span class="sd">        centered : bool, optional</span>
-<span class="sd">            Whether to center each molecule&#39;s profile on its own mean</span>
-<span class="sd">            charge density, by default False.</span>
+<span class="sd">            If True, center each molecule&#39;s profile on its mean charge</span>
+<span class="sd">            density.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        SigmaProfileTable</span>
-<span class="sd">            Molecule-level.</span>
+<span class="sd">            One row per molecule.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">sigmas</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigmas</span><span class="p">(</span><span class="n">scheme</span><span class="p">)</span>
         <span class="n">segment_offsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">&quot;segment_offsets&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span>

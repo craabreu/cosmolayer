@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../" >
+<html lang="en" data-content_root="../" data-theme="auto">
 
   <head>
     <meta charset="utf-8" />
@@ -22,8 +22,8 @@
   
   
   <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
   </script>
   <!--
     this give us a css class that will be invisible only if js is disabled
@@ -68,7 +68,7 @@
   </head>
   
   
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="auto">
 
   
   
@@ -155,8 +155,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -288,8 +288,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -379,7 +379,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CosmoSac2010Model.html">CosmoSac2010Model</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">cosmolayer.store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">Segment Data Store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="AveragingScheme.html">AveragingScheme</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SegmentStore.html">SegmentStore</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SigmaGrid.html">SigmaGrid</a></li>
@@ -435,7 +435,7 @@
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">API Reference</a></li>
     
     
-    <li class="breadcrumb-item"><a href="store.html" class="nav-link">cosmolayer.store</a></li>
+    <li class="breadcrumb-item"><a href="store.html" class="nav-link">Segment Data Store</a></li>
     
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">StoreMetadata</span></li>
   </ul>
@@ -476,13 +476,13 @@ scheme name.</p></li>
 <dl class="py method">
 <dt class="sig sig-object py" id="cosmolayer.store.StoreMetadata.from_dict">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#StoreMetadata.from_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.StoreMetadata.from_dict" title="Link to this definition">#</a></dt>
-<dd><p>Reconstruct from the shape read back from <code class="docutils literal notranslate"><span class="pre">metadata.json</span></code>.</p>
+<dd><p>Reconstruct from the dict produced by <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – As produced by <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="#cosmolayer.store.StoreMetadata" title="cosmolayer.store.StoreMetadata">StoreMetadata</a></p>
+<dd class="field-even"><p><a class="reference internal" href="#cosmolayer.store.StoreMetadata" title="cosmolayer.store.segments.StoreMetadata"><em>StoreMetadata</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -490,16 +490,10 @@ scheme name.</p></li>
 <dl class="py method">
 <dt class="sig sig-object py" id="cosmolayer.store.StoreMetadata.to_dict">
 <span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#StoreMetadata.to_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.StoreMetadata.to_dict" title="Link to this definition">#</a></dt>
-<dd><p>Serialize to the JSON-compatible shape written to
-<code class="docutils literal notranslate"><span class="pre">metadata.json</span></code>.</p>
+<dd><p>Serialize to the JSON-compatible shape written to <code class="docutils literal notranslate"><span class="pre">metadata.json</span></code>.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">{&quot;num_molecules&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;num_cosmo_parse_failures&quot;:</span> <span class="pre">...,</span>
-<span class="pre">&quot;schemes&quot;:</span> <span class="pre">{name:</span> <span class="pre">{&quot;averaging_radius&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;f_decay&quot;:</span>
-<span class="pre">...}}}</span></code>.</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><em>Any</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>

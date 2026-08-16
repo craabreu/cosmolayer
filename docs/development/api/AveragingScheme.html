@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../" >
+<html lang="en" data-content_root="../" data-theme="auto">
 
   <head>
     <meta charset="utf-8" />
@@ -22,8 +22,8 @@
   
   
   <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
   </script>
   <!--
     this give us a css class that will be invisible only if js is disabled
@@ -61,14 +61,14 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="SegmentStore" href="SegmentStore.html" />
-    <link rel="prev" title="cosmolayer.store" href="store.html" />
+    <link rel="prev" title="Segment Data Store" href="store.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="dev" />
   </head>
   
   
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="auto">
 
   
   
@@ -155,8 +155,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -288,8 +288,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -379,7 +379,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CosmoSac2010Model.html">CosmoSac2010Model</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">cosmolayer.store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">Segment Data Store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">AveragingScheme</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SegmentStore.html">SegmentStore</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SigmaGrid.html">SigmaGrid</a></li>
@@ -435,7 +435,7 @@
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">API Reference</a></li>
     
     
-    <li class="breadcrumb-item"><a href="store.html" class="nav-link">cosmolayer.store</a></li>
+    <li class="breadcrumb-item"><a href="store.html" class="nav-link">Segment Data Store</a></li>
     
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">AveragingScheme</span></li>
   </ul>
@@ -459,17 +459,14 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="cosmolayer.store.AveragingScheme">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">cosmolayer.store.</span></span><span class="sig-name descname"><span class="pre">AveragingScheme</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">averaging_radius</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">f_decay</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/averaging.html#AveragingScheme"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.AveragingScheme" title="Link to this definition">#</a></dt>
-<dd><p>One COSMO-SAC-style segment-averaging scheme.</p>
-<p>A pure value object describing the physics of a scheme – it has no
-notion of storage, so it does not (and cannot, without an import
-cycle) validate its name against a <code class="docutils literal notranslate"><span class="pre">SegmentStore</span></code>’s on-disk layout.
-<code class="docutils literal notranslate"><span class="pre">SegmentStore</span></code> becomes the stem of the <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.npy</span></code> file it writes
-this scheme’s averaged sigmas to, and rejects a colliding name itself
-(see <code class="docutils literal notranslate"><span class="pre">SegmentStore.compute_averaged_sigmas</span></code>).</p>
+<dd><p>Named averaging scheme (radius and decay) for segment charge
+densities.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Scheme identifier.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Identifier used as the <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;.npy</span></code> stem when a store saves
+averaged sigmas. Must not collide with reserved store filenames
+(<code class="docutils literal notranslate"><span class="pre">data</span></code>, <code class="docutils literal notranslate"><span class="pre">atom_indices</span></code>).</p></li>
 <li><p><strong>averaging_radius</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Effective averaging radius <code class="docutils literal notranslate"><span class="pre">r_av</span></code>, in Å.</p></li>
 <li><p><strong>f_decay</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Exponential decay factor.</p></li>
 </ul>
@@ -495,7 +492,7 @@ this scheme’s averaged sigmas to, and rejects a colliding name itself
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">cosmolayer.store</p>
+        <p class="prev-next-title">Segment Data Store</p>
       </div>
     </a>
     <a class="right-next"

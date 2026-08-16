@@ -1,5 +1,5 @@
-cosmolayer.store
-================
+Segment Data Store
+==================
 
 Classes
 -------

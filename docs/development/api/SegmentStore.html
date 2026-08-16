@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../" >
+<html lang="en" data-content_root="../" data-theme="auto">
 
   <head>
     <meta charset="utf-8" />
@@ -22,8 +22,8 @@
   
   
   <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
   </script>
   <!--
     this give us a css class that will be invisible only if js is disabled
@@ -68,7 +68,7 @@
   </head>
   
   
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="auto">
 
   
   
@@ -155,8 +155,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -288,8 +288,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -379,7 +379,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CosmoSac2010Model.html">CosmoSac2010Model</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">cosmolayer.store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">Segment Data Store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="AveragingScheme.html">AveragingScheme</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">SegmentStore</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SigmaGrid.html">SigmaGrid</a></li>
@@ -435,7 +435,7 @@
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">API Reference</a></li>
     
     
-    <li class="breadcrumb-item"><a href="store.html" class="nav-link">cosmolayer.store</a></li>
+    <li class="breadcrumb-item"><a href="store.html" class="nav-link">Segment Data Store</a></li>
     
     <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">SegmentStore</span></li>
   </ul>
@@ -459,13 +459,11 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="cosmolayer.store.SegmentStore">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">cosmolayer.store.</span></span><span class="sig-name descname"><span class="pre">SegmentStore</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">storage_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">molecules_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">averaged_sigmas</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore" title="Link to this definition">#</a></dt>
-<dd><p>A segment-data store: segment arrays plus the per-molecule
-<code class="docutils literal notranslate"><span class="pre">molecules_df</span></code> table describing them, and any averaged sigmas
-computed for it.</p>
-<p>Construct directly only if you already have every component in hand
-(e.g. re-wrapping arrays); normal callers use <code class="docutils literal notranslate"><span class="pre">load</span></code> (read an
-existing store from disk, memory-mapped) or <code class="docutils literal notranslate"><span class="pre">from_cosmo_files</span></code>
-(build a new one).</p>
+<dd><p>On-disk COSMO segment arrays, the per-molecule table describing
+them, and any averaged sigmas computed for the store.</p>
+<p>Prefer <code class="docutils literal notranslate"><span class="pre">load</span></code> (read an existing store, memory-mapped) or
+<code class="docutils literal notranslate"><span class="pre">from_cosmo_files</span></code> (build a new one). Direct construction is for
+wrapping arrays already in hand.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -474,12 +472,10 @@ existing store from disk, memory-mapped) or <code class="docutils literal notran
 <li><p><strong>atom_indices</strong> (<em>np.ndarray</em>) – <code class="docutils literal notranslate"><span class="pre">(n_segs_total,)</span></code> global atom index of each segment.</p></li>
 <li><p><strong>molecules_df</strong> (<em>pd.DataFrame</em>) – One row per molecule, with columns <code class="docutils literal notranslate"><span class="pre">smiles</span></code>, <code class="docutils literal notranslate"><span class="pre">segment_offsets</span></code>,
 <code class="docutils literal notranslate"><span class="pre">atom_offsets</span></code>, <code class="docutils literal notranslate"><span class="pre">num_atoms</span></code>, and <code class="docutils literal notranslate"><span class="pre">volume</span></code>.</p></li>
-<li><p><strong>metadata</strong> (<a class="reference internal" href="StoreMetadata.html#cosmolayer.store.StoreMetadata" title="cosmolayer.store.StoreMetadata"><em>StoreMetadata</em></a>) – Molecule/failure counts for this store, plus whichever averaging
-schemes have been computed for it so far.</p></li>
-<li><p><strong>averaged_sigmas</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>np.ndarray</em><em>]</em>) – Scheme name -&gt; <code class="docutils literal notranslate"><span class="pre">(n_segs_total,)</span></code> averaged charge density,
-computed automatically by <code class="docutils literal notranslate"><span class="pre">from_cosmo_files</span></code> for whatever
-schemes have been computed for this store so far. Empty if none
-have.</p></li>
+<li><p><strong>metadata</strong> (<a class="reference internal" href="StoreMetadata.html#cosmolayer.store.StoreMetadata" title="cosmolayer.store.StoreMetadata"><em>StoreMetadata</em></a>) – Molecule and parse-failure counts, plus averaging schemes already
+computed for this store.</p></li>
+<li><p><strong>averaged_sigmas</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>np.ndarray</em><em>]</em>) – Scheme name to <code class="docutils literal notranslate"><span class="pre">(n_segs_total,)</span></code> averaged charge density. Empty
+if none have been computed.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Variables<span class="colon">:</span></dt>
@@ -490,30 +486,25 @@ have.</p></li>
 <dl class="py method">
 <dt class="sig sig-object py" id="cosmolayer.store.SegmentStore.compute_atom_sigma_profiles">
 <span class="sig-name descname"><span class="pre">compute_atom_sigma_profiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scheme</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SigmaGrid(max_abs_sigma=0.025,</span> <span class="pre">num_points=51)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore.compute_atom_sigma_profiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore.compute_atom_sigma_profiles" title="Link to this definition">#</a></dt>
-<dd><p>Compute this store’s per-atom sigma profiles.</p>
-<p>A thin wrapper around <code class="docutils literal notranslate"><span class="pre">SigmaProfileTable.from_segments</span></code> that
-supplies this store’s own <code class="docutils literal notranslate"><span class="pre">areas</span></code>/<code class="docutils literal notranslate"><span class="pre">atom_indices</span></code>/
-<code class="docutils literal notranslate"><span class="pre">segment_offsets</span></code>, and resolves <code class="docutils literal notranslate"><span class="pre">sigmas</span></code> from <code class="docutils literal notranslate"><span class="pre">scheme</span></code> (see
-<code class="docutils literal notranslate"><span class="pre">sigmas</span></code>).</p>
+<dd><p>Compute per-atom sigma profiles for this store.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>scheme</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Passed to <code class="docutils literal notranslate"><span class="pre">sigmas</span></code>, by default None (raw charge density).</p></li>
-<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a><em>, </em><em>optional</em>) – Base grid to bin profiles onto, by default <code class="docutils literal notranslate"><span class="pre">DEFAULT_SIGMA_GRID</span></code>.</p></li>
-<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Number of threads to use, by default None, meaning every
-available CPU core.</p></li>
-<li><p><strong>centered</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – Whether to center each atom’s profile on its own mean charge
-density, by default False.</p></li>
+<li><p><strong>scheme</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Charge-density source. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses raw
+<code class="docutils literal notranslate"><span class="pre">charges</span> <span class="pre">/</span> <span class="pre">areas</span></code>; a name selects <code class="docutils literal notranslate"><span class="pre">averaged_sigmas[scheme]</span></code>.</p></li>
+<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a><em>, </em><em>optional</em>) – Grid to bin onto, by default <code class="docutils literal notranslate"><span class="pre">DEFAULT_SIGMA_GRID</span></code>.</p></li>
+<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Thread count. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses every CPU core.</p></li>
+<li><p><strong>centered</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – If True, center each atom’s profile on its mean charge density.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Atom-level.</p>
+<dd class="field-even"><p>One row per atom.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="SigmaProfileTable.html#cosmolayer.store.SigmaProfileTable" title="cosmolayer.store.SigmaProfileTable">SigmaProfileTable</a></p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">scheme</span></code> is given but not in <code class="docutils literal notranslate"><span class="pre">self.averaged_sigmas</span></code>.</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">scheme</span></code> is given but not in <code class="docutils literal notranslate"><span class="pre">averaged_sigmas</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -521,35 +512,25 @@ density, by default False.</p></li>
 <dl class="py method">
 <dt class="sig sig-object py" id="cosmolayer.store.SegmentStore.compute_averaged_sigmas">
 <span class="sig-name descname"><span class="pre">compute_averaged_sigmas</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schemes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore.compute_averaged_sigmas"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore.compute_averaged_sigmas" title="Link to this definition">#</a></dt>
-<dd><p>Compute averaged sigmas for this store under every scheme in
-<code class="docutils literal notranslate"><span class="pre">schemes</span></code>.</p>
-<p>Pure: returns the computed arrays without writing anything or
-mutating <code class="docutils literal notranslate"><span class="pre">self</span></code>. Called by <code class="docutils literal notranslate"><span class="pre">from_cosmo_files</span></code>, which passes
-the result to <code class="docutils literal notranslate"><span class="pre">save</span></code>. A store’s averaged sigmas are meant to be
-computed once, at build time – this is exposed mainly so
-<code class="docutils literal notranslate"><span class="pre">from_cosmo_files</span></code> (and tests) don’t have to go through disk.</p>
-<p>Calls <code class="docutils literal notranslate"><span class="pre">average_sigmas_by_molecule</span></code> once, sharing the
-pairwise-distance computation across every scheme.</p>
+<dd><p>Compute averaged charge densities under each scheme, without
+writing to disk or mutating this store.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>schemes</strong> (<em>Sequence</em><em>[</em><a class="reference internal" href="AveragingScheme.html#cosmolayer.store.AveragingScheme" title="cosmolayer.store.AveragingScheme"><em>AveragingScheme</em></a><em>] </em><em>| </em><em>None</em><em>, </em><em>optional</em>) – Schemes to average under, by default None, meaning
-<code class="docutils literal notranslate"><span class="pre">AVERAGING_SCHEMES</span></code> (Klamt, COSMO-SAC 2002, COSMO-SAC 2010).</p></li>
-<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Number of threads to use, by default None, meaning every
-available CPU core.</p></li>
+<li><p><strong>schemes</strong> (<em>Sequence</em><em>[</em><a class="reference internal" href="AveragingScheme.html#cosmolayer.store.AveragingScheme" title="cosmolayer.store.AveragingScheme"><em>AveragingScheme</em></a><em>] </em><em>| </em><em>None</em><em>, </em><em>optional</em>) – Schemes to apply. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses <code class="docutils literal notranslate"><span class="pre">AVERAGING_SCHEMES</span></code>.</p></li>
+<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Thread count. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses every CPU core.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Scheme name -&gt; <code class="docutils literal notranslate"><span class="pre">(n_segs_total,)</span></code> float32 averaged charge
-density, one entry per scheme in <code class="docutils literal notranslate"><span class="pre">schemes</span></code>.</p>
+<dd class="field-even"><p>Scheme name to <code class="docutils literal notranslate"><span class="pre">(n_segs_total,)</span></code> float32 averaged charge
+density.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>, np.ndarray]</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a scheme’s name collides with a reserved store filename
-    stem (i.e. would overwrite <code class="docutils literal notranslate"><span class="pre">DATA_FILE</span></code> or
-    <code class="docutils literal notranslate"><span class="pre">ATOM_INDICES_FILE</span></code> on <code class="docutils literal notranslate"><span class="pre">save</span></code>).</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a scheme’s name would overwrite <code class="docutils literal notranslate"><span class="pre">data.npy</span></code> or
+    <code class="docutils literal notranslate"><span class="pre">atom_indices.npy</span></code> on <code class="docutils literal notranslate"><span class="pre">save</span></code>.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -557,24 +538,22 @@ density, one entry per scheme in <code class="docutils literal notranslate"><spa
 <dl class="py method">
 <dt class="sig sig-object py" id="cosmolayer.store.SegmentStore.compute_molecule_sigma_profiles">
 <span class="sig-name descname"><span class="pre">compute_molecule_sigma_profiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scheme</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">SigmaGrid(max_abs_sigma=0.025,</span> <span class="pre">num_points=51)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore.compute_molecule_sigma_profiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore.compute_molecule_sigma_profiles" title="Link to this definition">#</a></dt>
-<dd><p>Compute this store’s per-molecule sigma profiles directly from
-segment-level data.</p>
-<p>Equivalent to <code class="docutils literal notranslate"><span class="pre">self.compute_atom_sigma_profiles(...).aggregate()</span></code>
-but skips the atom-level intermediate; mainly useful as a
-cross-check for that two-step path.</p>
+<dd><p>Compute per-molecule sigma profiles from segment-level data.</p>
+<p>Bins segments directly to molecules, without an atom-level
+intermediate.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>scheme</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Passed to <code class="docutils literal notranslate"><span class="pre">sigmas</span></code>, by default None (raw charge density).</p></li>
-<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a><em>, </em><em>optional</em>) – Base grid to bin profiles onto, by default <code class="docutils literal notranslate"><span class="pre">DEFAULT_SIGMA_GRID</span></code>.</p></li>
-<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Number of threads to use, by default None, meaning every
-available CPU core.</p></li>
-<li><p><strong>centered</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – Whether to center each molecule’s profile on its own mean
-charge density, by default False.</p></li>
+<li><p><strong>scheme</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Charge-density source. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses raw
+<code class="docutils literal notranslate"><span class="pre">charges</span> <span class="pre">/</span> <span class="pre">areas</span></code>; a name selects <code class="docutils literal notranslate"><span class="pre">averaged_sigmas[scheme]</span></code>.</p></li>
+<li><p><strong>grid</strong> (<a class="reference internal" href="SigmaGrid.html#cosmolayer.store.SigmaGrid" title="cosmolayer.store.SigmaGrid"><em>SigmaGrid</em></a><em>, </em><em>optional</em>) – Grid to bin onto, by default <code class="docutils literal notranslate"><span class="pre">DEFAULT_SIGMA_GRID</span></code>.</p></li>
+<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Thread count. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses every CPU core.</p></li>
+<li><p><strong>centered</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – If True, center each molecule’s profile on its mean charge
+density.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Molecule-level.</p>
+<dd class="field-even"><p>One row per molecule.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="SigmaProfileTable.html#cosmolayer.store.SigmaProfileTable" title="cosmolayer.store.SigmaProfileTable">SigmaProfileTable</a></p>
@@ -585,17 +564,15 @@ charge density, by default False.</p></li>
 <dl class="py method">
 <dt class="sig sig-object py" id="cosmolayer.store.SegmentStore.exists">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">exists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">storage_dir</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore.exists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore.exists" title="Link to this definition">#</a></dt>
-<dd><p>Check whether a directory holds a complete segment-data store.</p>
-<p>Checks not just the four fixed files but every scheme <code class="docutils literal notranslate"><span class="pre">.npy</span></code>
-listed in <code class="docutils literal notranslate"><span class="pre">metadata.json</span></code>, so an interrupted build (metadata
-written before its scheme arrays) is correctly reported as
-incomplete.</p>
+<dd><p>Return whether <code class="docutils literal notranslate"><span class="pre">storage_dir</span></code> holds a complete store.</p>
+<p>Requires the four fixed files and every scheme <code class="docutils literal notranslate"><span class="pre">.npy</span></code> listed in
+<code class="docutils literal notranslate"><span class="pre">metadata.json</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>storage_dir</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>pathlib.Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Directory to check.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>True if the store is complete, False otherwise.</p>
+<dd class="field-even"><p>True if the store is complete.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)">bool</a></p>
@@ -606,32 +583,27 @@ incomplete.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="cosmolayer.store.SegmentStore.from_cosmo_files">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_cosmo_files</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmo_files_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smiles_to_filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_errors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schemes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore.from_cosmo_files"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore.from_cosmo_files" title="Link to this definition">#</a></dt>
-<dd><p>Parse COSMO files, build a store in memory, and persist it to
-<code class="docutils literal notranslate"><span class="pre">storage_dir</span></code>.</p>
-<p>A molecule’s atoms are numbered by the COSMO file’s own 0-based
-order directly, which is why each SMILES’s atom count is checked
-against its COSMO file and, if atom-mapped, reordered via
-<code class="docutils literal notranslate"><span class="pre">_reorder_molecule</span></code> onto that same indexing.</p>
-<p>Also computes and writes averaged sigmas for the new store (see
-<code class="docutils literal notranslate"><span class="pre">compute_averaged_sigmas</span></code>), unless <code class="docutils literal notranslate"><span class="pre">schemes</span></code> is an empty
-sequence.</p>
+<dd><p>Parse COSMO files, build a store, and write it to <code class="docutils literal notranslate"><span class="pre">storage_dir</span></code>.</p>
+<p>Atoms are numbered in the COSMO file’s 0-based order. Each SMILES
+must have the same atom count as its COSMO file; atom-mapped SMILES
+are reordered onto that indexing. Averaged sigmas are computed and
+written unless <code class="docutils literal notranslate"><span class="pre">schemes</span></code> is an empty sequence.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>cosmo_files_dir</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>pathlib.Path</em></a>) – Directory containing the <code class="docutils literal notranslate"><span class="pre">.cosmo</span></code> files named by
 <code class="docutils literal notranslate"><span class="pre">smiles_to_filename</span></code>’s values.</p></li>
-<li><p><strong>smiles_to_filename</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – SMILES string -&gt; <code class="docutils literal notranslate"><span class="pre">.cosmo</span></code> filename (relative to
+<li><p><strong>smiles_to_filename</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>]</em>) – SMILES string to <code class="docutils literal notranslate"><span class="pre">.cosmo</span></code> filename (relative to
 <code class="docutils literal notranslate"><span class="pre">cosmo_files_dir</span></code>), one entry per molecule to store.</p></li>
 <li><p><strong>storage_dir</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>pathlib.Path</em></a>) – Destination directory for the output files. Created if
 missing.</p></li>
-<li><p><strong>ignore_errors</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – If True, a molecule that fails to parse or validate is skipped
-(and counted in <code class="docutils literal notranslate"><span class="pre">metadata.num_cosmo_parse_failures</span></code>) instead
-of raising. By default False.</p></li>
-<li><p><strong>schemes</strong> (<em>Sequence</em><em>[</em><a class="reference internal" href="AveragingScheme.html#cosmolayer.store.AveragingScheme" title="cosmolayer.store.AveragingScheme"><em>AveragingScheme</em></a><em>] </em><em>| </em><em>None</em><em>, </em><em>optional</em>) – Passed to <code class="docutils literal notranslate"><span class="pre">compute_averaged_sigmas</span></code>, by default None,
-meaning <code class="docutils literal notranslate"><span class="pre">AVERAGING_SCHEMES</span></code>. Pass <code class="docutils literal notranslate"><span class="pre">()</span></code> to skip averaging
-entirely.</p></li>
-<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Passed to <code class="docutils literal notranslate"><span class="pre">compute_averaged_sigmas</span></code>, by default None,
-meaning every available CPU core.</p></li>
+<li><p><strong>ignore_errors</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>optional</em>) – If True, skip molecules that fail to parse or validate and
+count them in <code class="docutils literal notranslate"><span class="pre">metadata.num_cosmo_parse_failures</span></code>. Default
+False.</p></li>
+<li><p><strong>schemes</strong> (<em>Sequence</em><em>[</em><a class="reference internal" href="AveragingScheme.html#cosmolayer.store.AveragingScheme" title="cosmolayer.store.AveragingScheme"><em>AveragingScheme</em></a><em>] </em><em>| </em><em>None</em><em>, </em><em>optional</em>) – Averaging schemes to compute. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses
+<code class="docutils literal notranslate"><span class="pre">AVERAGING_SCHEMES</span></code>. Pass <code class="docutils literal notranslate"><span class="pre">()</span></code> to skip averaging.</p></li>
+<li><p><strong>num_threads</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Thread count for averaging. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses every CPU
+core.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -641,10 +613,9 @@ meaning every available CPU core.</p></li>
 <dd class="field-odd"><p><a class="reference internal" href="#cosmolayer.store.SegmentStore" title="cosmolayer.store.SegmentStore">SegmentStore</a></p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a molecule’s SMILES or COSMO file cannot be parsed and
-    <code class="docutils literal notranslate"><span class="pre">ignore_errors</span></code> is False, if no molecule could be stored, or
-    if a scheme’s name collides with a reserved store filename
-    stem (see <code class="docutils literal notranslate"><span class="pre">compute_averaged_sigmas</span></code>).</p>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If a molecule cannot be parsed and <code class="docutils literal notranslate"><span class="pre">ignore_errors</span></code> is False,
+    if no molecule could be stored, or if a scheme name collides
+    with a reserved store filename.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -676,17 +647,12 @@ are memory-mapped (<code class="docutils literal notranslate"><span class="pre">
 <span class="sig-name descname"><span class="pre">save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">storage_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/cosmolayer/store/segments.html#SegmentStore.save"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#cosmolayer.store.SegmentStore.save" title="Link to this definition">#</a></dt>
 <dd><p>Write this store’s arrays, table, metadata, and averaged
 sigmas to disk.</p>
-<p><code class="docutils literal notranslate"><span class="pre">metadata.json</span></code> is written atomically (temp file + rename), so a
-process interrupted mid-<code class="docutils literal notranslate"><span class="pre">save</span></code> never leaves a store that
-<code class="docutils literal notranslate"><span class="pre">exists()</span></code> reports as complete but that <code class="docutils literal notranslate"><span class="pre">load</span></code> cannot actually
-read.</p>
+<p><code class="docutils literal notranslate"><span class="pre">metadata.json</span></code> is written atomically (temp file + rename), so an
+interrupted save is never reported as complete by <code class="docutils literal notranslate"><span class="pre">exists</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>storage_dir</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>pathlib.Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Destination directory, by default None, meaning
+<dd class="field-odd"><p><strong>storage_dir</strong> (<a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><em>pathlib.Path</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> | </em><em>None</em><em>, </em><em>optional</em>) – Destination directory. <code class="docutils literal notranslate"><span class="pre">None</span></code> (default) uses
 <code class="docutils literal notranslate"><span class="pre">self.storage_dir</span></code>. Created if missing.</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>None</p>
 </dd>
 </dl>
 </dd></dl>

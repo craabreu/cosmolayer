@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../../../" >
+<html lang="en" data-content_root="../../../" data-theme="auto">
 
   <head>
     <meta charset="utf-8" />
@@ -12,8 +12,8 @@
   
   
   <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
   </script>
   <!--
     this give us a css class that will be invisible only if js is disabled
@@ -56,7 +56,7 @@
   </head>
   
   
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="auto">
 
   
   
@@ -143,8 +143,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../../../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -274,8 +274,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../../../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -399,25 +399,18 @@
   <h1>Source code for cosmolayer.store.grid</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;The symmetric, evenly spaced grid a sigma profile is binned onto.</span>
 
-<span class="sd">Every sigma profile in this package -- per-segment, per-atom, or</span>
-<span class="sd">per-molecule -- is a histogram of surface area over charge density</span>
-<span class="sd">(sigma, in e/Å²), binned linearly onto a :class:`SigmaGrid`.</span>
+<span class="sd">A sigma profile is a histogram of surface area over charge density</span>
+<span class="sd">(sigma, in e/Å²). Profiles are always binned onto the ``SigmaGrid``</span>
+<span class="sd">passed in.</span>
 
-<span class="sd">A grid is whatever the caller asks for: profiles are always binned onto</span>
-<span class="sd">the exact ``SigmaGrid`` passed in, so a table&#39;s ``profiles`` always has</span>
-<span class="sd">``len(grid)`` columns. Nothing here substitutes a different grid behind</span>
-<span class="sd">the caller&#39;s back.</span>
+<span class="sd">Two operations are named separately because both are sometimes called</span>
+<span class="sd">&quot;shifting&quot;:</span>
 
-<span class="sd">Two distinct operations both get called &quot;shifting&quot; elsewhere in this</span>
-<span class="sd">domain, so this package keeps them apart by name:</span>
-
-<span class="sd">- *centering* a profile subtracts a row&#39;s own mean charge density from its</span>
-<span class="sd">  segments **before** binning, so the resulting profile has zero first</span>
-<span class="sd">  moment. It transforms the *data*, never the grid, and is recorded as</span>
-<span class="sd">  ``SigmaProfileTable.centered``.</span>
-<span class="sd">- *translating* a profile moves an already-binned row along a grid, which</span>
-<span class="sd">  is how ``binning.accumulate_translated_profiles`` un-centers atom</span>
-<span class="sd">  profiles while summing them to molecule level.</span>
+<span class="sd">- *centering* subtracts a row&#39;s mean charge density from its segments</span>
+<span class="sd">  **before** binning, so the profile has zero first moment. It changes</span>
+<span class="sd">  the data, not the grid (``SigmaProfileTable.centered``).</span>
+<span class="sd">- *translating* moves an already-binned row along a grid, used when</span>
+<span class="sd">  un-centering atom profiles while summing them to molecule level.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
@@ -443,11 +436,7 @@
 <span class="sd">        default ``DEFAULT_MAX_ABS_SIGMA``.</span>
 <span class="sd">    num_points : int, optional</span>
 <span class="sd">        Number of grid points, by default ``DEFAULT_NUM_POINTS``. An odd</span>
-<span class="sd">        count puts a point exactly at sigma = 0; an even count straddles</span>
-<span class="sd">        it. Both are supported for centered and uncentered profiles alike</span>
-<span class="sd">        -- pick whichever suits the model consuming the profiles. To bin</span>
-<span class="sd">        centered profiles with no point at exactly zero, ask for an even</span>
-<span class="sd">        count directly, e.g. ``SigmaGrid(0.0255, 52)``.</span>
+<span class="sd">        count puts a point at sigma = 0; an even count straddles it.</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
@@ -522,7 +511,7 @@
 
 
 <span class="n">DEFAULT_SIGMA_GRID</span> <span class="o">=</span> <span class="n">SigmaGrid</span><span class="p">()</span>
-<span class="sd">&quot;&quot;&quot;The default grid, usable as a shared immutable default argument value.&quot;&quot;&quot;</span>
+<span class="sd">&quot;&quot;&quot;Default 51-point grid from -0.025 to 0.025 e/Å².&quot;&quot;&quot;</span>
 </pre></div>
 
                 </article>

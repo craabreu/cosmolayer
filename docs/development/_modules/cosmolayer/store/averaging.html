@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../../../" >
+<html lang="en" data-content_root="../../../" data-theme="auto">
 
   <head>
     <meta charset="utf-8" />
@@ -12,8 +12,8 @@
   
   
   <script data-cfasync="false">
-    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
-    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
   </script>
   <!--
     this give us a css class that will be invisible only if js is disabled
@@ -56,7 +56,7 @@
   </head>
   
   
-  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="auto">
 
   
   
@@ -143,8 +143,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../../../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -274,8 +274,8 @@
 
 
 <li class="nav-item ">
-  <a class="nav-link nav-internal" href="../../../visualization.html">
-    Visualization
+  <a class="nav-link nav-internal" href="../../../cli.html">
+    CLI Reference
   </a>
 </li>
 
@@ -399,16 +399,13 @@
   <h1>Source code for cosmolayer.store.averaging</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;COSMO-SAC-style distance-weighted averaging of segment charge density.</span>
 
-<span class="sd">In COSMO-RS and COSMO-SAC, &quot;sigma&quot; refers to this averaged charge</span>
-<span class="sd">density, not to the raw per-segment ``charge / area`` -- averaging is not</span>
-<span class="sd">an optional smoothing step on top of &quot;the real sigma&quot;, it *is* sigma.</span>
+<span class="sd">In COSMO-RS and COSMO-SAC, &quot;sigma&quot; is this averaged charge density, not</span>
+<span class="sd">the raw per-segment ``charge / area``.</span>
 
-<span class="sd">Every function here that takes ``segment_offsets`` requires it to</span>
-<span class="sd">describe *exactly* the molecules present in the accompanying segment-level</span>
-<span class="sd">arrays: the last molecule&#39;s segments are assumed to run to the end of</span>
-<span class="sd">those arrays. Slicing ``segment_offsets`` and the segment-level arrays for</span>
-<span class="sd">a subset must always be done together, or leftover segments are silently</span>
-<span class="sd">attributed to the wrong molecule.</span>
+<span class="sd">``segment_offsets`` must describe *exactly* the molecules present in the</span>
+<span class="sd">accompanying segment-level arrays: the last molecule&#39;s segments run to</span>
+<span class="sd">the end of those arrays. Slice ``segment_offsets`` and the arrays</span>
+<span class="sd">together, or leftover segments are attributed to the wrong molecule.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
@@ -431,19 +428,15 @@
 <a class="viewcode-back" href="../../../api/AveragingScheme.html#cosmolayer.store.AveragingScheme">[docs]</a>
 <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">AveragingScheme</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;One COSMO-SAC-style segment-averaging scheme.</span>
-
-<span class="sd">    A pure value object describing the physics of a scheme -- it has no</span>
-<span class="sd">    notion of storage, so it does not (and cannot, without an import</span>
-<span class="sd">    cycle) validate its name against a ``SegmentStore``&#39;s on-disk layout.</span>
-<span class="sd">    ``SegmentStore`` becomes the stem of the ``&lt;name&gt;.npy`` file it writes</span>
-<span class="sd">    this scheme&#39;s averaged sigmas to, and rejects a colliding name itself</span>
-<span class="sd">    (see ``SegmentStore.compute_averaged_sigmas``).</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Named averaging scheme (radius and decay) for segment charge</span>
+<span class="sd">    densities.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    name : str</span>
-<span class="sd">        Scheme identifier.</span>
+<span class="sd">        Identifier used as the ``&lt;name&gt;.npy`` stem when a store saves</span>
+<span class="sd">        averaged sigmas. Must not collide with reserved store filenames</span>
+<span class="sd">        (``data``, ``atom_indices``).</span>
 <span class="sd">    averaging_radius : float</span>
 <span class="sd">        Effective averaging radius ``r_av``, in Å.</span>
 <span class="sd">    f_decay : float</span>
@@ -473,10 +466,7 @@
     <span class="n">COSMO_SAC_2002</span><span class="p">,</span>
     <span class="n">COSMO_SAC_2010</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="sd">&quot;&quot;&quot;Every scheme this package knows about. Each carries its own ``name``,</span>
-<span class="sd">so this is a plain sequence rather than a name-keyed mapping -- keying it</span>
-<span class="sd">by name too would just be a second copy of information ``AveragingScheme``</span>
-<span class="sd">already has.&quot;&quot;&quot;</span>
+<span class="sd">&quot;&quot;&quot;Built-in schemes: COSMO-RS, COSMO-SAC 2002, and COSMO-SAC 2010.&quot;&quot;&quot;</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">average_sigmas</span><span class="p">(</span>
@@ -486,7 +476,7 @@
     <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">],</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Distance-weighted average of one molecule&#39;s segment charge</span>
-<span class="sd">    densities, under one or more averaging schemes at once.</span>
+<span class="sd">    densities, under one or more averaging schemes.</span>
 
 <span class="sd">    For every segment ``m``, replaces its raw charge density</span>
 <span class="sd">    ``sigma_m = q_m / A_m`` with a weighted average over every segment</span>
@@ -496,23 +486,10 @@
 <span class="sd">        w[m, n] = (r_n^2 * r_av^2 / (r_n^2 + r_av^2))</span>
 <span class="sd">                  * exp(-f_decay * d_mn^2 / (r_n^2 + r_av^2))</span>
 
-<span class="sd">    where ``r_n = sqrt(A_n / pi)`` is segment ``n``&#39;s own effective radius</span>
-<span class="sd">    and ``d_mn`` is the distance between segment centroids ``m`` and</span>
-<span class="sd">    ``n``. The weight uses the *neighbor* segment&#39;s radius ``r_n``, not</span>
-<span class="sd">    the segment being averaged -- easy to get backwards, since it makes</span>
-<span class="sd">    ``w`` asymmetric even though ``d_mn`` itself is symmetric.</span>
-
-<span class="sd">    Accepts multiple schemes so they can share one pairwise-distance</span>
-<span class="sd">    computation; each scheme&#39;s result is returned as its own row. O(n^2)</span>
-<span class="sd">    in the molecule&#39;s own segment count, computed densely (no distance</span>
-<span class="sd">    cutoff), matching the reference implementation exactly. Always upcast</span>
-<span class="sd">    to float64 internally regardless of input dtype, since a store&#39;s own</span>
-<span class="sd">    arrays are float32 and the Gram-matrix distance expansion loses</span>
-<span class="sd">    significant precision at that width.</span>
-
-<span class="sd">    The caller must never pass segments from more than one molecule at</span>
-<span class="sd">    once (see ``average_sigmas_by_molecule`` for the whole-dataset</span>
-<span class="sd">    wrapper).</span>
+<span class="sd">    where ``r_n = sqrt(A_n / pi)`` is the *neighbor* segment&#39;s effective</span>
+<span class="sd">    radius and ``d_mn`` is the distance between centroids, so ``w`` is</span>
+<span class="sd">    asymmetric even though ``d_mn`` is not. Pass segments of a single</span>
+<span class="sd">    molecule only; use ``average_sigmas_by_molecule`` for a dataset.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -524,11 +501,7 @@
 <span class="sd">    areas : np.ndarray</span>
 <span class="sd">        Segment areas for the same molecule, shape ``(n_segs,)``.</span>
 <span class="sd">    schemes : Sequence[AveragingScheme]</span>
-<span class="sd">        Schemes to average under, in the order the result rows are</span>
-<span class="sd">        returned. COSMO-SAC 2010 uses ``r_av = sqrt(7.25 / pi)``,</span>
-<span class="sd">        ``f_decay = 3.57``; COSMO-SAC 2002 uses ``r_av = 0.8176300195``,</span>
-<span class="sd">        ``f_decay = 1.0``; Klamt&#39;s original COSMO-RS scheme uses</span>
-<span class="sd">        ``r_av = 0.5``, ``f_decay = 1.0``.</span>
+<span class="sd">        Schemes to apply, in the order of the result rows.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -536,6 +509,7 @@
 <span class="sd">        Averaged charge density for each segment under each scheme, in</span>
 <span class="sd">        e/Å², row ``i`` matching ``schemes[i]``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># float64: the Gram-matrix distance expansion loses precision in float32.</span>
     <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="n">charges</span> <span class="o">=</span> <span class="n">charges</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="n">areas</span> <span class="o">=</span> <span class="n">areas</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
@@ -567,15 +541,11 @@
     <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">],</span>
     <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply one or more averaging schemes to every segment of a dataset,</span>
-<span class="sd">    in one threaded pass.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply one or more averaging schemes to every molecule in a dataset.</span>
 
-<span class="sd">    Calls ``average_sigmas`` once per molecule -- each thread handles a</span>
-<span class="sd">    disjoint range of whole molecules (see ``run_in_threads``), so this is</span>
-<span class="sd">    safe with no locking. Output row ``i``</span>
-<span class="sd">    (``average_sigmas_by_molecule(...)[i]``) matches ``schemes[i]``, and</span>
-<span class="sd">    can be passed as ``sigmas`` straight into</span>
-<span class="sd">    ``SigmaProfileTable.from_segments``, alongside the same ``areas``.</span>
+<span class="sd">    Each thread handles a disjoint range of whole molecules. Row ``i`` of</span>
+<span class="sd">    the result matches ``schemes[i]`` and can be passed as ``sigmas`` to</span>
+<span class="sd">    ``SigmaProfileTable.from_segments``.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -586,14 +556,12 @@
 <span class="sd">    areas : np.ndarray</span>
 <span class="sd">        Segment areas, shape ``(n_segs_total,)``.</span>
 <span class="sd">    segment_offsets : np.ndarray</span>
-<span class="sd">        Start index of each molecule&#39;s segments within the segment-level</span>
-<span class="sd">        arrays (see module docstring for the exactness requirement).</span>
+<span class="sd">        Start index of each molecule&#39;s segments. Must describe exactly</span>
+<span class="sd">        the molecules present in the segment-level arrays.</span>
 <span class="sd">    schemes : Sequence[AveragingScheme]</span>
-<span class="sd">        Schemes to average under, in the order the result rows are</span>
-<span class="sd">        returned.</span>
+<span class="sd">        Schemes to apply, in the order of the result rows.</span>
 <span class="sd">    num_threads : int | None, optional</span>
-<span class="sd">        Number of threads to use, by default None, meaning every</span>
-<span class="sd">        available CPU core.</span>
+<span class="sd">        Thread count. ``None`` (default) uses every CPU core.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
