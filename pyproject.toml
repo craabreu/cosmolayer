@@ -167,6 +167,9 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 ignore_missing_imports = true
 strict = true
+# CI and rdkit>=2023.09.6 wheels ship rdkit-stubs, so ClusterData is an
+# untyped def. Older conda builds have no stubs and treat rdkit as Any.
+untyped_calls_exclude = ["rdkit"]
 
 # PyTorch has limited stubs: allow untyped calls, subclassing Any, untyped decorators
 [[tool.mypy.overrides]]
