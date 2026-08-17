@@ -119,7 +119,7 @@ class CosmoLayer(torch.nn.Module):
         learn_matrices: bool = False,
         implicit_diff: bool = True,
         max_iter: int | None = None,
-    ):
+    ) -> None:
         super().__init__()
         self._implicit_diff = implicit_diff
         if max_iter is None:

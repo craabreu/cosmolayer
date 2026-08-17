@@ -50,7 +50,7 @@ jobs:
           ruff check cosmolayer
           ruff check --select I cosmolayer
 
-      - name: Run type checker (mypy)
+      - name: Run type checker (ty)
         shell: bash -l {0}
         run: |
-          mypy cosmolayer
+          ty check cosmolayer

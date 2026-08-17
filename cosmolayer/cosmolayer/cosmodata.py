@@ -202,7 +202,7 @@ class MixtureInferenceDataset(_DatasetBase[InputsType]):
         self,
         mixtures: Sequence[MixtureDatapoint],
         dtype: torch.dtype,
-    ):
+    ) -> None:
         if len(mixtures) == 0:
             raise ValueError(
                 "MixtureInferenceDataset must contain at least one mixture"
@@ -282,7 +282,7 @@ class MixtureTrainingDataset(_DatasetBase[tuple[InputsType, Tensor1D]]):
         self,
         mixtures: Sequence[MixtureDatapoint],
         dtype: torch.dtype = torch.float64,
-    ):
+    ) -> None:
         if len(mixtures) == 0:
             raise ValueError("MixtureTrainingDataset must contain at least one mixture")
         shape = mixtures[0].shape

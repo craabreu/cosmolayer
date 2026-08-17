@@ -157,7 +157,7 @@ class SegmentStore:
         molecules_df: pd.DataFrame,
         metadata: StoreMetadata,
         averaged_sigmas: dict[str, NDArray[np.float32]],
-    ):
+    ) -> None:
         self.storage_dir = pathlib.Path(storage_dir)
         self.data = data
         self.atom_indices = atom_indices
@@ -316,9 +316,9 @@ class SegmentStore:
         segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
 
         averaged = average_sigmas_by_molecule(
-            np.asarray(self.coords),
-            np.asarray(self.charges),
-            np.asarray(self.areas),
+            np.asarray(self.coords, dtype=np.float64),
+            np.asarray(self.charges, dtype=np.float64),
+            np.asarray(self.areas, dtype=np.float64),
             segment_offsets,
             schemes,
             num_threads=num_threads,
@@ -595,7 +595,7 @@ class SegmentStore:
                 f"No averaged sigmas for scheme {scheme!r} in this store. "
                 f"Known schemes: {sorted(self.averaged_sigmas)}."
             )
-        return np.asarray(self.averaged_sigmas[scheme])
+        return np.asarray(self.averaged_sigmas[scheme], dtype=np.float64)
 
     def compute_atom_sigma_profiles(
         self,
@@ -633,7 +633,7 @@ class SegmentStore:
         total_num_atoms = int(self.molecules_df["num_atoms"].sum())
         return SigmaProfileTable.from_segments(
             sigmas,
-            np.asarray(self.areas),
+            np.asarray(self.areas, dtype=np.float64),
             segment_offsets,
             atom_indices=np.asarray(self.atom_indices),
             num_rows=total_num_atoms,
@@ -676,7 +676,7 @@ class SegmentStore:
         segment_offsets = self.molecules_df["segment_offsets"].values.astype("int64")
         return SigmaProfileTable.from_segments(
             sigmas,
-            np.asarray(self.areas),
+            np.asarray(self.areas, dtype=np.float64),
             segment_offsets,
             num_rows=len(self.molecules_df),
             grid=grid,

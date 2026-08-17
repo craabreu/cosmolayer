@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import torch
-from torch.autograd.function import FunctionCtx, NestedIOFunction
+from torch.autograd.function import FunctionCtx
 
 from .utils import log_matmul_exp
 
@@ -186,14 +186,15 @@ class CosmoSolver(torch.autograd.Function):
 
     @staticmethod
     def backward(
-        ctx: NestedIOFunction,
-        grad_log_gamma: torch.Tensor | None,
-        grad_converged: torch.Tensor | None,
+        ctx: FunctionCtx,
+        *grad_outputs: torch.Tensor | None,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None, None]:
+        grad_log_gamma = grad_outputs[0] if grad_outputs else None
         if grad_log_gamma is None:
             return None, None, None
 
-        log_gamma, p, U_RT = ctx.saved_tensors
+        ctx_any: Any = ctx
+        log_gamma, p, U_RT = ctx_any.saved_tensors
 
         gamma = log_gamma.exp()
         B = torch.exp(-U_RT)
@@ -220,7 +221,6 @@ class CosmoSolver(torch.autograd.Function):
         grad_U_RT = r * B * pg.unsqueeze(-2)
 
         # Reduce to original shapes if broadcasting happened
-        ctx_any: Any = ctx
         grad_p = grad_p.sum_to_size(ctx_any.p_shape)
         grad_U_RT = grad_U_RT.sum_to_size(ctx_any.u_shape)
 

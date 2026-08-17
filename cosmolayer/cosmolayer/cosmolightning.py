@@ -17,7 +17,7 @@ from torchmetrics import MeanAbsoluteError, MeanSquaredError, R2Score
 
 from .cosmodata import InputsType
 from .layer import CosmoLayer
-from .utils import is_loss_function
+from .utils import LossFn, is_loss_function
 
 EPSILON = 1e-8
 
@@ -148,7 +148,7 @@ class LogGammaLightningModule(pl.LightningModule):
         self.normalize_targets = normalize_targets
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.loss_function = loss_callable
+        self.loss_function: LossFn = loss_callable
 
         initial_matrices = self._build_initial_matrices(
             initialization=initialization,
@@ -226,10 +226,12 @@ class LogGammaLightningModule(pl.LightningModule):
     @torch.no_grad()
     def _compute_target_statistics(self) -> None:
         trainer = self.trainer
-        if hasattr(trainer, "datamodule") and trainer.datamodule is not None:
-            dataloader = trainer.datamodule.train_dataloader()
+        datamodule = getattr(trainer, "datamodule", None)
+        train_dl_from_dm = getattr(datamodule, "train_dataloader", None)
+        if callable(train_dl_from_dm):
+            dataloader = train_dl_from_dm()
         else:
-            dataloader = trainer.train_dataloader
+            dataloader = getattr(trainer, "train_dataloader", None)
 
         if dataloader is None:
             raise ValueError(

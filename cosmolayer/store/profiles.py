@@ -139,13 +139,13 @@ class SigmaProfileTable:
             atom_offsets = None
         else:
             row_indices = np.asarray(atom_indices)
-            num_rows = int(row_indices.max()) + 1 if num_rows is None else num_rows
+            num_rows = int(np.max(row_indices)) + 1 if num_rows is None else num_rows
             atom_offsets = row_indices[segment_offsets].astype(np.int64)
 
         areas_out = np.zeros(num_rows, dtype=np.float32)
         charges_out = np.zeros(num_rows, dtype=np.float32)
         profiles_out = np.zeros((num_rows, len(grid)), dtype=np.float32)
-        assert int(row_indices.max(initial=-1)) < num_rows, (
+        assert int(np.max(row_indices, initial=-1)) < num_rows, (
             "atom_indices/segment_offsets reference a row index >= num_rows; "
             "segment_offsets must describe exactly the molecules present in "
             "the segment-level arrays"

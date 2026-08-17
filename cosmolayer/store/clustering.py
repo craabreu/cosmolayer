@@ -53,7 +53,7 @@ class FingerprintGenerator:
         Fingerprint parameters (radius, size, chirality).
     """
 
-    def __init__(self, specs: ClusteringSpecs):
+    def __init__(self, specs: ClusteringSpecs) -> None:
         self.specs = specs
         self._generator = rdFingerprintGenerator.GetMorganGenerator(
             radius=specs.radius,
@@ -112,4 +112,4 @@ def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.
         return np.zeros(1, dtype=np.int64)
 
     cluster_ids = _chalcedon_butina_cluster(fingerprints, cutoff=cutoff)
-    return cast(NDArray[np.int64], cluster_ids.astype(np.int64))
+    return cluster_ids.astype(np.int64)

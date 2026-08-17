@@ -26,4 +26,5 @@ dependencies:
 
     # Linting
   - ruff
-  - mypy
+  - ty = 0.0.72
+  - pytest
