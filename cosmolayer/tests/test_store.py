@@ -12,6 +12,7 @@ from importlib.resources import files
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 from rdkit import Chem
 
 from cosmolayer.cosmosac import Component
@@ -315,6 +316,27 @@ class TestButinaCluster:
         # The two long-chain alkanes are near-identical; benzene is not.
         assert result[0] == result[1]
         assert result[2] != result[0]
+
+    def test_delegates_to_vendored_chalcedon(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression guard: butina_cluster must call the vendored
+        chalcedon implementation, not a re-inlined copy of it. Patches by
+        dotted-path string (rather than a static attribute reference) so
+        this doesn't reach into clustering.py's private import binding in
+        a way mypy's strict re-export check would flag."""
+        call_sizes: list[int] = []
+
+        def spy(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.intp]:
+            call_sizes.append(fingerprints.shape[0])
+            return np.zeros(fingerprints.shape[0], dtype=np.intp)
+
+        monkeypatch.setattr(
+            "cosmolayer.store.clustering._chalcedon_butina_cluster", spy
+        )
+        fp = np.array([[1, 0, 1, 0], [0, 1, 0, 1]], dtype=np.int8)
+        butina_cluster(fp, cutoff=0.1)
+        assert call_sizes == [2]
 
 
 class TestSegmentStoreClustering:

@@ -39,6 +39,9 @@ dependencies = [
     "torch",
     "tqdm",
 ]
+# Note: "tqdm" above already covers cosmolayer.store._chalcedon's
+# progress bars (disabled by default in library use); see that
+# subpackage's NOTICE for provenance.
 
 [project.scripts]
 cosmoviz = "cosmolayer.cosmosac.visualize:main"
@@ -119,6 +122,7 @@ exclude = [
     "devtools/**",
     "docs/**",
     ".github/**",
+    "cosmolayer/store/_chalcedon/**",
 ]
 extend-exclude = ["_version.py"]
 
@@ -180,3 +184,12 @@ disable_error_code = ["no-untyped-call", "misc", "untyped-decorator"]
 [[tool.mypy.overrides]]
 module = "cosmolayer.tests.*"
 disable_error_code = ["method-assign", "no-untyped-call", "misc", "untyped-decorator"]
+
+# Vendored third-party source (see cosmolayer/store/_chalcedon/NOTICE): kept
+# as a clean diff against upstream, not held to this repo's strict typing
+# bar. Not covered by mypy's top-level `exclude`, which only skips files
+# passed as explicit targets -- imported modules are still followed and
+# checked unless ignored here.
+[[tool.mypy.overrides]]
+module = "cosmolayer.store._chalcedon.*"
+ignore_errors = true

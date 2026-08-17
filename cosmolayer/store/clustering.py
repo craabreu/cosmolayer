@@ -14,7 +14,10 @@ import numpy as np
 from numpy.typing import NDArray
 from rdkit import Chem, rdBase
 from rdkit.Chem import rdFingerprintGenerator
-from rdkit.ML.Cluster import Butina
+
+from cosmolayer.store._chalcedon.butina_cluster import (
+    butina_cluster as _chalcedon_butina_cluster,
+)
 
 
 @dataclass(frozen=True)
@@ -76,39 +79,15 @@ class FingerprintGenerator:
         return cast(NDArray[np.int8], fp)
 
 
-def _tanimoto_distances(fingerprints: NDArray[np.int8]) -> list[float]:
-    """Condensed lower-triangle Tanimoto distance matrix, in the row-major
-    ``i in range(n); j in range(i)`` order required by
-    ``rdkit.ML.Cluster.Butina.ClusterData(..., isDistData=True)``.
-
-    Parameters
-    ----------
-    fingerprints : np.ndarray, shape (n, fp_size)
-        Dense 0/1 bit arrays, one row per molecule.
-
-    Returns
-    -------
-    list[float]
-        ``n * (n - 1) / 2`` pairwise Tanimoto distances.
-    """
-    fp = fingerprints.astype(np.float32)
-    popcount = fp.sum(axis=1)
-    intersection = fp @ fp.T
-    union = popcount[:, None] + popcount[None, :] - intersection
-    similarity = np.divide(
-        intersection, union, out=np.ones_like(intersection), where=union > 0
-    )
-    distance = 1.0 - similarity
-    rows, cols = np.tril_indices(fp.shape[0], k=-1)
-    return cast(list[float], distance[rows, cols].tolist())
-
-
 def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.int64]:
     """Butina-cluster molecules by fingerprint Tanimoto distance.
 
-    Pairwise distances are computed densely (``O(n**2)`` memory), as
-    required by RDKit's Butina implementation, so this is intended for
-    dataset-scale molecule counts rather than unbounded streaming.
+    Delegates to chalcedon's count-sort-assign Butina implementation
+    (vendored in ``cosmolayer.store._chalcedon``), which produces
+    the same partition as RDKit's reference implementation at typical
+    cheminformatics cutoffs but scales substantially better with ``n``.
+    Pairwise work is still effectively ``O(n**2)``, so this is intended
+    for dataset-scale molecule counts rather than unbounded streaming.
 
     Parameters
     ----------
@@ -116,8 +95,8 @@ def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.
         One fingerprint per molecule, as produced by
         ``FingerprintGenerator.generate``.
     cutoff : float
-        Tanimoto distance threshold passed to
-        ``rdkit.ML.Cluster.Butina.ClusterData``.
+        Tanimoto distance threshold: molecules within ``cutoff`` of a
+        cluster centroid join that cluster.
 
     Returns
     -------
@@ -127,16 +106,10 @@ def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.
         per Butina's algorithm), not by input order.
     """
     n = fingerprints.shape[0]
-    cluster_ids = np.empty(n, dtype=np.int64)
     if n == 0:
-        return cluster_ids
+        return np.empty(n, dtype=np.int64)
     if n == 1:
-        cluster_ids[0] = 0
-        return cluster_ids
+        return np.zeros(1, dtype=np.int64)
 
-    distances = _tanimoto_distances(fingerprints)
-    clusters = Butina.ClusterData(distances, n, cutoff, isDistData=True)
-    for cluster_id, members in enumerate(clusters):
-        for member in members:
-            cluster_ids[member] = cluster_id
-    return cluster_ids
+    cluster_ids = _chalcedon_butina_cluster(fingerprints, cutoff=cutoff)
+    return cast(NDArray[np.int64], cluster_ids.astype(np.int64))
