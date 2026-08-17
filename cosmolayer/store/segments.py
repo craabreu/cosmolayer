@@ -157,7 +157,7 @@ class SegmentStore:
         molecules_df: pd.DataFrame,
         metadata: StoreMetadata,
         averaged_sigmas: dict[str, NDArray[np.float32]],
-    ):
+    ) -> None:
         self.storage_dir = pathlib.Path(storage_dir)
         self.data = data
         self.atom_indices = atom_indices

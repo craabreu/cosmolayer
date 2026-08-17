@@ -111,7 +111,7 @@ class CosmoSacMixtureDatapoint(MixtureDatapoint):
         temperature: float,
         targets: Sequence[float] | None = None,
         model: Model = CosmoSac2010Model,
-    ):
+    ) -> None:
         """Build a mixture datapoint from COSMO files and optional targets.
 
         Parameters

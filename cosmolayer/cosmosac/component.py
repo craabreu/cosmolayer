@@ -148,7 +148,7 @@ class Component:
         f_decay: float = COSMO_SAC_2010_F_DECAY,
         sigma_0: float | None = COSMO_SAC_2010_SIGMA_0,  # e/Å²
         merge_profiles: bool = False,
-    ):
+    ) -> None:
         self._min_sigma = min_sigma
         self._grid = np.linspace(min_sigma, max_sigma, num_points)
         self._bin_width = (max_sigma - min_sigma) / (num_points - 1)

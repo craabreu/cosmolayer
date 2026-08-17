@@ -53,7 +53,7 @@ class FingerprintGenerator:
         Fingerprint parameters (radius, size, chirality).
     """
 
-    def __init__(self, specs: ClusteringSpecs):
+    def __init__(self, specs: ClusteringSpecs) -> None:
         self.specs = specs
         self._generator = rdFingerprintGenerator.GetMorganGenerator(
             radius=specs.radius,
