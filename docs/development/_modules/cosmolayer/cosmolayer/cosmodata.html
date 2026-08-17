@@ -612,7 +612,7 @@
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">mixtures</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">MixtureDatapoint</span><span class="p">],</span>
         <span class="n">dtype</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
-    <span class="p">):</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mixtures</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
                 <span class="s2">&quot;MixtureInferenceDataset must contain at least one mixture&quot;</span>
@@ -695,7 +695,7 @@
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">mixtures</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">MixtureDatapoint</span><span class="p">],</span>
         <span class="n">dtype</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
-    <span class="p">):</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mixtures</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;MixtureTrainingDataset must contain at least one mixture&quot;</span><span class="p">)</span>
         <span class="n">shape</span> <span class="o">=</span> <span class="n">mixtures</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
