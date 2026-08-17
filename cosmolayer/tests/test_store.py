@@ -12,9 +12,9 @@ from importlib.resources import files
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 from rdkit import Chem
 
-import cosmolayer.store.clustering as clustering_module
 from cosmolayer.cosmosac import Component
 from cosmolayer.store import (
     AVERAGING_SCHEMES,
@@ -321,18 +321,22 @@ class TestButinaCluster:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Regression guard: butina_cluster must call the vendored
-        chalcedon implementation, not a re-inlined copy of it."""
-        calls = []
-        real = clustering_module._chalcedon_butina_cluster
+        chalcedon implementation, not a re-inlined copy of it. Patches by
+        dotted-path string (rather than a static attribute reference) so
+        this doesn't reach into clustering.py's private import binding in
+        a way mypy's strict re-export check would flag."""
+        call_sizes: list[int] = []
 
-        def spy(*args: object, **kwargs: object) -> np.ndarray:
-            calls.append((args, kwargs))
-            return real(*args, **kwargs)
+        def spy(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.intp]:
+            call_sizes.append(fingerprints.shape[0])
+            return np.zeros(fingerprints.shape[0], dtype=np.intp)
 
-        monkeypatch.setattr(clustering_module, "_chalcedon_butina_cluster", spy)
+        monkeypatch.setattr(
+            "cosmolayer.store.clustering._chalcedon_butina_cluster", spy
+        )
         fp = np.array([[1, 0, 1, 0], [0, 1, 0, 1]], dtype=np.int8)
         butina_cluster(fp, cutoff=0.1)
-        assert len(calls) == 1
+        assert call_sizes == [2]
 
 
 class TestSegmentStoreClustering:

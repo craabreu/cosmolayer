@@ -184,3 +184,12 @@ disable_error_code = ["no-untyped-call", "misc", "untyped-decorator"]
 [[tool.mypy.overrides]]
 module = "cosmolayer.tests.*"
 disable_error_code = ["method-assign", "no-untyped-call", "misc", "untyped-decorator"]
+
+# Vendored third-party source (see cosmolayer/store/_vendor/*/NOTICE): kept
+# as a clean diff against upstream, not held to this repo's strict typing
+# bar. Not covered by mypy's top-level `exclude`, which only skips files
+# passed as explicit targets -- imported modules are still followed and
+# checked unless ignored here.
+[[tool.mypy.overrides]]
+module = "cosmolayer.store._vendor.*"
+ignore_errors = true
