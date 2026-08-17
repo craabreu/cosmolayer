@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 from rdkit import Chem, rdBase
 from rdkit.Chem import rdFingerprintGenerator
 
-from cosmolayer.store._vendor.chalcedon.butina_cluster import (
+from cosmolayer.store._chalcedon.butina_cluster import (
     butina_cluster as _chalcedon_butina_cluster,
 )
 
@@ -83,7 +83,7 @@ def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.
     """Butina-cluster molecules by fingerprint Tanimoto distance.
 
     Delegates to chalcedon's count-sort-assign Butina implementation
-    (vendored in ``cosmolayer.store._vendor.chalcedon``), which produces
+    (vendored in ``cosmolayer.store._chalcedon``), which produces
     the same partition as RDKit's reference implementation at typical
     cheminformatics cutoffs but scales substantially better with ``n``.
     Pairwise work is still effectively ``O(n**2)``, so this is intended

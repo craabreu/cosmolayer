@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from tqdm import tqdm
 
-from cosmolayer.store._vendor.chalcedon.tanimoto_similarity import (
+from cosmolayer.store._chalcedon.tanimoto_similarity import (
     Precision,
     TanimotoSimilarity,
 )
