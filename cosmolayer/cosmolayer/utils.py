@@ -1,5 +1,5 @@
 """
-.. module:: cosmolayer.utils
+.. module:: cosmolayer.cosmolayer.utils
    :synopsis: Utility functions for the COSMO-related computations.
 
 .. functionauthor:: Charlles Abreu <craabreu@gmail.com>
