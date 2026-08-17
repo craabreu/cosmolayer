@@ -413,7 +413,10 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">numpy.typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">NDArray</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chem</span><span class="p">,</span> <span class="n">rdBase</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem</span><span class="w"> </span><span class="kn">import</span> <span class="n">rdFingerprintGenerator</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.ML.Cluster</span><span class="w"> </span><span class="kn">import</span> <span class="n">Butina</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">cosmolayer.store._chalcedon.butina_cluster</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">butina_cluster</span> <span class="k">as</span> <span class="n">_chalcedon_butina_cluster</span><span class="p">,</span>
+<span class="p">)</span>
 
 
 <div class="viewcode-block" id="ClusteringSpecs">
@@ -478,39 +481,15 @@
         <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">],</span> <span class="n">fp</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_tanimoto_distances</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Condensed lower-triangle Tanimoto distance matrix, in the row-major</span>
-<span class="sd">    ``i in range(n); j in range(i)`` order required by</span>
-<span class="sd">    ``rdkit.ML.Cluster.Butina.ClusterData(..., isDistData=True)``.</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    fingerprints : np.ndarray, shape (n, fp_size)</span>
-<span class="sd">        Dense 0/1 bit arrays, one row per molecule.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    list[float]</span>
-<span class="sd">        ``n * (n - 1) / 2`` pairwise Tanimoto distances.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">fp</span> <span class="o">=</span> <span class="n">fingerprints</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
-    <span class="n">popcount</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-    <span class="n">intersection</span> <span class="o">=</span> <span class="n">fp</span> <span class="o">@</span> <span class="n">fp</span><span class="o">.</span><span class="n">T</span>
-    <span class="n">union</span> <span class="o">=</span> <span class="n">popcount</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">popcount</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">intersection</span>
-    <span class="n">similarity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">divide</span><span class="p">(</span>
-        <span class="n">intersection</span><span class="p">,</span> <span class="n">union</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">intersection</span><span class="p">),</span> <span class="n">where</span><span class="o">=</span><span class="n">union</span> <span class="o">&gt;</span> <span class="mi">0</span>
-    <span class="p">)</span>
-    <span class="n">distance</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">similarity</span>
-    <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tril_indices</span><span class="p">(</span><span class="n">fp</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">k</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">distance</span><span class="p">[</span><span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
-
-
 <span class="k">def</span><span class="w"> </span><span class="nf">butina_cluster</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">],</span> <span class="n">cutoff</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Butina-cluster molecules by fingerprint Tanimoto distance.</span>
 
-<span class="sd">    Pairwise distances are computed densely (``O(n**2)`` memory), as</span>
-<span class="sd">    required by RDKit&#39;s Butina implementation, so this is intended for</span>
-<span class="sd">    dataset-scale molecule counts rather than unbounded streaming.</span>
+<span class="sd">    Delegates to chalcedon&#39;s count-sort-assign Butina implementation</span>
+<span class="sd">    (vendored in ``cosmolayer.store._chalcedon``), which produces</span>
+<span class="sd">    the same partition as RDKit&#39;s reference implementation at typical</span>
+<span class="sd">    cheminformatics cutoffs but scales substantially better with ``n``.</span>
+<span class="sd">    Pairwise work is still effectively ``O(n**2)``, so this is intended</span>
+<span class="sd">    for dataset-scale molecule counts rather than unbounded streaming.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -518,8 +497,8 @@
 <span class="sd">        One fingerprint per molecule, as produced by</span>
 <span class="sd">        ``FingerprintGenerator.generate``.</span>
 <span class="sd">    cutoff : float</span>
-<span class="sd">        Tanimoto distance threshold passed to</span>
-<span class="sd">        ``rdkit.ML.Cluster.Butina.ClusterData``.</span>
+<span class="sd">        Tanimoto distance threshold: molecules within ``cutoff`` of a</span>
+<span class="sd">        cluster centroid join that cluster.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -529,19 +508,13 @@
 <span class="sd">        per Butina&#39;s algorithm), not by input order.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">n</span> <span class="o">=</span> <span class="n">fingerprints</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">cluster_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">cluster_ids</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="n">cluster_ids</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="k">return</span> <span class="n">cluster_ids</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
 
-    <span class="n">distances</span> <span class="o">=</span> <span class="n">_tanimoto_distances</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">)</span>
-    <span class="n">clusters</span> <span class="o">=</span> <span class="n">Butina</span><span class="o">.</span><span class="n">ClusterData</span><span class="p">(</span><span class="n">distances</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">,</span> <span class="n">isDistData</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="k">for</span> <span class="n">cluster_id</span><span class="p">,</span> <span class="n">members</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">clusters</span><span class="p">):</span>
-        <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">members</span><span class="p">:</span>
-            <span class="n">cluster_ids</span><span class="p">[</span><span class="n">member</span><span class="p">]</span> <span class="o">=</span> <span class="n">cluster_id</span>
-    <span class="k">return</span> <span class="n">cluster_ids</span>
+    <span class="n">cluster_ids</span> <span class="o">=</span> <span class="n">_chalcedon_butina_cluster</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="n">cutoff</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">],</span> <span class="n">cluster_ids</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">))</span>
 </pre></div>
 
                 </article>
