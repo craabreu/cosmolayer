@@ -27,3 +27,4 @@ dependencies:
     # Linting
   - ruff
   - ty = 0.0.72
+  - pytest
