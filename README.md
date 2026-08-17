@@ -2,11 +2,11 @@ Differentiable COSMO-Type Activity Coefficient Layer
 ====================================================
 
 [//]: # (Badges)
-[![GitHub Actions Build Status](https://github.com/craabreu/cosmolayer/workflows/Linux/badge.svg)](https://github.com/craabreu/cosmolayer/actions?query=workflow%3ALinux)
-[![GitHub Actions Build Status](https://github.com/craabreu/cosmolayer/workflows/MacOS/badge.svg)](https://github.com/craabreu/cosmolayer/actions?query=workflow%3AMacOS)
-[![GitHub Actions Build Status](https://github.com/craabreu/cosmolayer/workflows/Windows/badge.svg)](https://github.com/craabreu/cosmolayer/actions?query=workflow%3AWindows)
-[![GitHub Actions Build Status](https://github.com/craabreu/cosmolayer/workflows/Linter/badge.svg)](https://github.com/craabreu/cosmolayer/actions?query=workflow%3ALinter)
-[![Documentation Status](https://github.com/craabreu/cosmolayer/workflows/Docs/badge.svg)](https://github.com/craabreu/cosmolayer/actions?query=workflow%3ADocs)
+[![GitHub Actions Build Status](https://github.com/craabreu/cosmolayer/actions/workflows/Linux.yaml/badge.svg?branch=main&event=push)](https://github.com/craabreu/cosmolayer/actions/workflows/Linux.yaml?query=branch%3Amain+event%3Apush)
+[![GitHub Actions Build Status](https://github.com/craabreu/cosmolayer/actions/workflows/MacOS.yaml/badge.svg?branch=main&event=push)](https://github.com/craabreu/cosmolayer/actions/workflows/MacOS.yaml?query=branch%3Amain+event%3Apush)
+[![GitHub Actions Build Status](https://github.com/craabreu/cosmolayer/actions/workflows/Windows.yaml/badge.svg?branch=main&event=push)](https://github.com/craabreu/cosmolayer/actions/workflows/Windows.yaml?query=branch%3Amain+event%3Apush)
+[![GitHub Actions Build Status](https://github.com/craabreu/cosmolayer/actions/workflows/Linter.yaml/badge.svg?branch=main&event=push)](https://github.com/craabreu/cosmolayer/actions/workflows/Linter.yaml?query=branch%3Amain+event%3Apush)
+[![Documentation Status](https://github.com/craabreu/cosmolayer/actions/workflows/Docs.yaml/badge.svg?branch=main&event=push)](https://github.com/craabreu/cosmolayer/actions/workflows/Docs.yaml?query=branch%3Amain+event%3Apush)
 [![Coverage Report](https://craabreu.github.io/cosmolayer/development/coverage/coverage.svg)](https://craabreu.github.io/cosmolayer/development/coverage)
 
 [![Conda version](https://img.shields.io/conda/v/mdtools/cosmolayer.svg)](https://anaconda.org/mdtools/cosmolayer)
@@ -17,6 +17,8 @@ Differentiable COSMO-Type Activity Coefficient Layer
 [![PyPI version](https://img.shields.io/pypi/pyversions/cosmolayer.svg)](https://pypi.org/project/cosmolayer)
 [![PyPI version](https://img.shields.io/pypi/dm/cosmolayer.svg)](https://pypi.org/project/cosmolayer)
 
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Typing: ty](https://img.shields.io/badge/typing-ty-EFC621.svg)](https://github.com/astral-sh/ty)
 [![License](https://img.shields.io/badge/License-MIT-yellowgreen.svg?style=flat)](https://github.com/craabreu/cosmolayer/blob/main/LICENSE.md)
 
 ### Overview
@@ -27,7 +29,15 @@ CosmoLayer leverages automatic differentiation and GPU acceleration to enable ef
 
 ### Installation and Usage
 
-CosmoLayer is available as a conda package on the [mdtools] channel. To install it, run:
+CosmoLayer is available on [PyPI] and as a conda package on the [mdtools] channel.
+
+To install from PyPI:
+
+```bash
+    pip install cosmolayer
+```
+
+To install with conda:
 
 ```bash
     conda install -c conda-forge -c mdtools cosmolayer
@@ -56,3 +66,4 @@ Copyright (c) 2026 [Charlles Abreu](https://github.com/craabreu)
 
 [Github Pages]: https://craabreu.github.io/cosmolayer/latest
 [mdtools]: https://anaconda.org/mdtools/cosmolayer
+[PyPI]: https://pypi.org/project/cosmolayer
