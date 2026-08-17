@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 from rdkit import Chem
 
+import cosmolayer.store.clustering as clustering_module
 from cosmolayer.cosmosac import Component
 from cosmolayer.store import (
     AVERAGING_SCHEMES,
@@ -315,6 +316,23 @@ class TestButinaCluster:
         # The two long-chain alkanes are near-identical; benzene is not.
         assert result[0] == result[1]
         assert result[2] != result[0]
+
+    def test_delegates_to_vendored_chalcedon(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression guard: butina_cluster must call the vendored
+        chalcedon implementation, not a re-inlined copy of it."""
+        calls = []
+        real = clustering_module._chalcedon_butina_cluster
+
+        def spy(*args: object, **kwargs: object) -> np.ndarray:
+            calls.append((args, kwargs))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(clustering_module, "_chalcedon_butina_cluster", spy)
+        fp = np.array([[1, 0, 1, 0], [0, 1, 0, 1]], dtype=np.int8)
+        butina_cluster(fp, cutoff=0.1)
+        assert len(calls) == 1
 
 
 class TestSegmentStoreClustering:
