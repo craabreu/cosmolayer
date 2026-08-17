@@ -1,10 +1,11 @@
 import os
+import sys
 from typing import Any, TextIO
 
-try:
+if sys.version_info >= (3, 11):
     from importlib.resources.abc import Traversable
-except (ImportError, AttributeError):
-    Traversable = Any  # fallback when Traversable not available (e.g. Python < 3.9)
+else:
+    Traversable = Any
 
 import numpy as np
 import pandas as pd
@@ -190,8 +191,10 @@ class Component:
         float
             Covalent radius in Å, scaled by factor 1.3.
         """
-        radius: float = float(pt.elements.symbol(element).covalent_radius)
-        return COVALENT_FACTOR * radius
+        covalent_radius = pt.elements.symbol(element).covalent_radius
+        if covalent_radius is None:
+            raise ValueError(f"Unknown covalent radius for element {element!r}")
+        return COVALENT_FACTOR * float(covalent_radius)
 
     def _detect_bonds(self) -> list[tuple[int, int]]:
         """Determines bonds from interatomic distances."""

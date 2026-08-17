@@ -41,7 +41,10 @@ Z_AXIS: np.ndarray = np.array([0.0, 0.0, 1.0])
 
 
 def estimate_vdw_radius(element: str) -> float:
-    return float(pt.elements.symbol(element).covalent_radius) + 0.8  # Å
+    covalent_radius = pt.elements.symbol(element).covalent_radius
+    if covalent_radius is None:
+        raise ValueError(f"Unknown covalent radius for element {element!r}")
+    return float(covalent_radius) + 0.8  # Å
 
 
 def create_atom_spheres(
@@ -52,16 +55,22 @@ def create_atom_spheres(
 ) -> list[o3d.geometry.TriangleMesh]:
     atom_df = component.atom_data
     spheres: list[o3d.geometry.TriangleMesh] = []
-    for item in atom_df.itertuples(index=False):
-        element = str(item.element).strip()
-        radius = estimate_vdw_radius(element) * radius_scale
+    for element, x, y, z in zip(
+        atom_df["element"],
+        atom_df["x"],
+        atom_df["y"],
+        atom_df["z"],
+        strict=True,
+    ):
+        element_name = str(element).strip()
+        radius = estimate_vdw_radius(element_name) * radius_scale
         sphere = o3d.geometry.TriangleMesh.create_sphere(
             radius=radius,
             resolution=resolution,
         )
         sphere.compute_vertex_normals()
-        sphere.translate((item.x, item.y, item.z))
-        rgb = np.array(ELEMENT_COLORS.get(element, default_color))
+        sphere.translate((float(x), float(y), float(z)))
+        rgb = np.array(ELEMENT_COLORS.get(element_name, default_color))
         sphere.paint_uniform_color(rgb)
         spheres.append(sphere)
     return spheres
@@ -418,7 +427,7 @@ def main() -> None:
         args.colormap,
         args.segment_edge_color,
     )
-    o3d.visualization.draw_geometries(
+    o3d.visualization.draw_geometries(  # ty: ignore[possibly-missing-submodule]
         geometries,
         mesh_show_back_face=True,
         window_name=f"Surface Segments from {args.cosmo_file.name}",

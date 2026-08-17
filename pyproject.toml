@@ -60,12 +60,8 @@ test = [
 [tool.setuptools]
 # This subkey is a beta stage development and keys may change in the future, see https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html for more details
 #
-# As of version 0.971, mypy does not support type checking of installed zipped
-# packages (because it does not actually import the Python packages).
-# We declare the package not-zip-safe so that our type hints are also available
-# when checking client code that uses our (installed) package.
-# Ref:
-# https://mypy.readthedocs.io/en/stable/installed_packages.html?highlight=zip#using-installed-packages-with-mypy-pep-561
+# Keep type hints available to downstream type checkers (including mypy) that
+# cannot read PEP 561 data from zipped eggs.
 zip-safe = false
 # Let setuptools discover the package in the current directory,
 # but be explicit about non-Python files.
@@ -164,37 +160,19 @@ markers = [
     "cuda: mark test as requiring a CUDA GPU",
 ]
 
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-ignore_missing_imports = true
-strict = true
-# CI and rdkit>=2023.09.6 wheels ship rdkit-stubs, so ClusterData is an
-# untyped def. Older conda builds have no stubs and treat rdkit as Any.
-untyped_calls_exclude = ["rdkit"]
+[tool.ty.environment]
+python-version = "3.10"
 
-# PyTorch has limited stubs: allow untyped calls, subclassing Any, untyped decorators
-[[tool.mypy.overrides]]
-module = [
-    "cosmolayer.cosmosolver",
-    "cosmolayer.cosmolayer",
-    "cosmolayer.cosmolayer.*",
-    "cosmolayer.cosmolightning",
-]
-disable_error_code = ["no-untyped-call", "misc", "untyped-decorator"]
-
-# In tests: allow untyped calls and untyped decorators (pytest fixtures/parametrize)
-[[tool.mypy.overrides]]
-module = "cosmolayer.tests.*"
-disable_error_code = ["method-assign", "no-untyped-call", "misc", "untyped-decorator"]
+[tool.ty.analysis]
+# Optional COSMOSAC reference package: installed in test CI, not in the linter env.
+allowed-unresolved-imports = ["cCOSMO"]
 
 # Vendored third-party source (see cosmolayer/store/_chalcedon/NOTICE): kept
-# as a clean diff against upstream, not held to this repo's strict typing
-# bar. Not covered by mypy's top-level `exclude`, which only skips files
-# passed as explicit targets -- imported modules are still followed and
-# checked unless ignored here.
-[[tool.mypy.overrides]]
-module = "cosmolayer.store._chalcedon.*"
-ignore_errors = true
+# as a clean diff against upstream, not held to this repo's typing bar.
+# `ty check cosmolayer` passes the package as an explicit path, which bypasses
+# src.exclude, so an override is required.
+[[tool.ty.overrides]]
+include = ["cosmolayer/store/_chalcedon/**"]
+
+[tool.ty.overrides.rules]
+all = "ignore"

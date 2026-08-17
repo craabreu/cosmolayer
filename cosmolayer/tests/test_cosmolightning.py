@@ -50,11 +50,11 @@ class _ScaledLogGammaLightningModule(LogGammaLightningModule):
 
     def predict_from_log_gamma(
         self,
-        temperature: torch.Tensor,
-        mole_fractions: torch.Tensor,
+        T: torch.Tensor,
+        x: torch.Tensor,
         log_gamma: torch.Tensor,
     ) -> torch.Tensor:
-        del temperature, mole_fractions
+        del T, x
         return self.scale * log_gamma
 
 
@@ -99,7 +99,7 @@ def test_configure_optimizers_returns_adam() -> None:
     assert isinstance(optimizer, torch.optim.Adam)
 
 
-def test_training_step_uses_loss_function() -> None:
+def test_training_step_uses_loss_function(monkeypatch: pytest.MonkeyPatch) -> None:
     module = LogGammaLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
@@ -107,14 +107,14 @@ def test_training_step_uses_loss_function() -> None:
     )
     module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
     batch = _make_batch()
-    module.log = lambda *args, **kwargs: None
+    monkeypatch.setattr(module, "log", lambda *args, **kwargs: None)
 
     loss = module.training_step(batch, 0)
 
     torch.testing.assert_close(loss, torch.tensor(0.0))
 
 
-def test_validation_and_test_steps_run() -> None:
+def test_validation_and_test_steps_run(monkeypatch: pytest.MonkeyPatch) -> None:
     module = LogGammaLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
@@ -122,8 +122,8 @@ def test_validation_and_test_steps_run() -> None:
     )
     module.cosmo_layer = cast(CosmoLayer, _DummyCosmoLayer())
     batch = _make_batch()
-    module.log = lambda *args, **kwargs: None
-    module.log_dict = lambda *args, **kwargs: None
+    monkeypatch.setattr(module, "log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "log_dict", lambda *args, **kwargs: None)
 
     val_loss = module.validation_step(batch, 0)
     test_loss = module.test_step(batch, 0)
@@ -132,7 +132,9 @@ def test_validation_and_test_steps_run() -> None:
     torch.testing.assert_close(test_loss, torch.tensor(0.0))
 
 
-def test_test_step_normalizes_loss_when_enabled() -> None:
+def test_test_step_normalizes_loss_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = LogGammaLightningModule(
         num_segment_types=4,
         temperature_exponents=(1,),
@@ -144,7 +146,7 @@ def test_test_step_normalizes_loss_when_enabled() -> None:
     targets = torch.zeros(3)
     module.target_mean.data = torch.zeros(3)
     module.target_std.data = torch.full((3,), 2.0)
-    module.log_dict = lambda *args, **kwargs: None
+    monkeypatch.setattr(module, "log_dict", lambda *args, **kwargs: None)
 
     test_loss = module.test_step((inputs, targets), 0)
 

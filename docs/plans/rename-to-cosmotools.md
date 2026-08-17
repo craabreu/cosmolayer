@@ -31,14 +31,14 @@ The current top-level shims (`cosmolayer/cosmosolver.py`, `cosmolayer/cosmodata.
 
 ## 2. Packaging metadata
 
-- [ ] [`pyproject.toml`](../../pyproject.toml): `project.name`, URLs, `[project.scripts]` (`cosmoview = "cosmotools.cosmosac.visualize:main"`), `[tool.setuptools.package-data]`, `[tool.versioningit.write]`, `[tool.pytest.ini_options]` (`--cov`, `testpaths`), `[tool.mypy.overrides]`
+- [ ] [`pyproject.toml`](../../pyproject.toml): `project.name`, URLs, `[project.scripts]` (`cosmoview = "cosmotools.cosmosac.visualize:main"`), `[tool.setuptools.package-data]`, `[tool.versioningit.write]`, `[tool.pytest.ini_options]` (`--cov`, `testpaths`), `[tool.ty.overrides]`
 - [ ] [`setup.cfg`](../../setup.cfg): coverage omit path for `_version.py`
 - [ ] [`devtools/conda-recipes/anaconda/meta.yaml`](../../devtools/conda-recipes/anaconda/meta.yaml): package name, `test.imports`, home/doc/dev URLs
 - [ ] Decide whether `COSMOLAYER_VERSION` in Docs/PyPI/Anaconda workflows and [`docs/conf.py`](../conf.py) becomes `COSMOTOOLS_VERSION`
 
 ## 3. CI, docs, and scripts
 
-- [ ] [`.github/workflows/Linter.yaml`](../../.github/workflows/Linter.yaml): `ruff` / `mypy` paths
+- [ ] [`.github/workflows/Linter.yaml`](../../.github/workflows/Linter.yaml): `ruff` / `ty` paths
 - [ ] [`.github/workflows/PyPI.yaml`](../../.github/workflows/PyPI.yaml) and [`Anaconda.yaml`](../../.github/workflows/Anaconda.yaml): log strings and version env
 - [ ] [`docs/conf.py`](../conf.py), [`docs/getting_started.rst`](../getting_started.rst), [`docs/visualization.rst`](../visualization.rst), [`docs/index.rst`](../index.rst)
 - [ ] [`devtools/scripts/format_and_check.sh`](../../devtools/scripts/format_and_check.sh)

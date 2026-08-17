@@ -6,8 +6,12 @@
 """
 
 import inspect
+from collections.abc import Callable
+from typing import TypeGuard
 
 import torch
+
+LossFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 def log_matmul_exp(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
@@ -30,7 +34,7 @@ def log_matmul_exp(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     return torch.logsumexp(A.unsqueeze(-1) + B.unsqueeze(-3), dim=-2)
 
 
-def is_loss_function(func: object) -> bool:
+def is_loss_function(func: object) -> TypeGuard[LossFn]:
     if not callable(func):
         return False
 

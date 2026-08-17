@@ -31,7 +31,7 @@ def print_stats(
     print(f"\n{'Statistic':<10} | {title:>20}")
     print("-" * 33)
     print(f"{'Count':<10} | {len(properties):>20}")
-    print(f"{'Min':<10} | {properties.min():>20{value_format}}")
+    print(f"{'Min':<10} | {np.min(properties):>20{value_format}}")
     for q in sorted(quantiles):
         q_percent = q * 100
         if int(q_percent) == q_percent:
@@ -39,6 +39,6 @@ def print_stats(
         else:
             qtext = f"{q_percent:.1f}%"
         print(f"{qtext:<10} | {np.quantile(properties, q):>20{value_format}}")
-    print(f"{'Max':<10} | {properties.max():>20{value_format}}")
+    print(f"{'Max':<10} | {np.max(properties):>20{value_format}}")
     print(f"{'Mean':<10} | {properties.mean():>20{value_format}}")
     print()

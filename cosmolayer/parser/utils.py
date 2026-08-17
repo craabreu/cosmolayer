@@ -21,7 +21,7 @@ def parse_table(
         }
         for row_match in row_regex.finditer(section_match.group(1))
     ]
-    return pd.DataFrame(rows, columns=schema.keys())
+    return pd.DataFrame(rows, columns=list(schema))
 
 
 def parse_value(contents: str, regex: re.Pattern[str]) -> float:
