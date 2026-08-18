@@ -9,7 +9,7 @@ load an existing one with ``SegmentStore.load``. Both use a flat
     <storage_dir>/atom_indices.npy  int64   (n_segs_total,):   global atom index per
                                      segment
     <storage_dir>/molecules.parquet columns: smiles, segment_offsets, atom_offsets,
-                                     num_atoms, volume, cluster_id
+                                     num_atoms, volume, cluster_id, split (optional)
     <storage_dir>/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}
     <storage_dir>/<scheme>.npy      float32 (n_segs_total,): one per averaging scheme
 
@@ -22,7 +22,7 @@ import json
 import os
 import pathlib
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -42,6 +42,7 @@ from .averaging import (
 from .clustering import ClusteringSpecs, FingerprintGenerator, butina_cluster
 from .grid import DEFAULT_SIGMA_GRID, SigmaGrid
 from .profiles import SigmaProfileTable
+from .splitting import greedy_cluster_split
 
 DATA_FILE = pathlib.Path("data.npy")
 ATOM_INDICES_FILE = pathlib.Path("atom_indices.npy")
@@ -328,6 +329,42 @@ class SegmentStore:
             for scheme, arr in zip(schemes, averaged, strict=True)
         }
 
+    def assign_splits(self, fractions: Mapping[str, float]) -> NDArray[np.str_]:
+        """Partition this store's molecules into named splits (e.g.
+        train/val/test) that respect ``cluster_id`` boundaries, and record
+        the result as ``molecules_df["split"]``.
+
+        Splitting is independent of ``ClusteringSpecs``: it's a cheap pass
+        over the already-computed ``cluster_id`` column, so it can be
+        called (and re-called, e.g. to try different fractions) on a
+        freshly built or a loaded store, without recomputing fingerprints
+        or clusters. Each call overwrites any previous ``split`` column.
+        Call ``save`` afterward to persist the result.
+
+        Parameters
+        ----------
+        fractions : Mapping[str, float]
+            Target fraction per split name, e.g. ``{"train": 0.8, "val":
+            0.1, "test": 0.1}`` or ``{"train": 0.8, "test": 0.2}``. Values
+            must be positive and sum to 1.0.
+
+        Returns
+        -------
+        np.ndarray, shape (n_molecules,)
+            Split name assigned to each molecule, in ``molecules_df`` row
+            order (the same array written to ``molecules_df["split"]``).
+
+        Raises
+        ------
+        ValueError
+            If ``fractions`` is empty, contains non-positive values, or
+            doesn't sum to 1.0.
+        """
+        cluster_ids = self.molecules_df["cluster_id"].values.astype("int64")
+        labels = greedy_cluster_split(cluster_ids, fractions)
+        self.molecules_df["split"] = labels
+        return labels
+
     def save(self, storage_dir: pathlib.Path | str | None = None) -> None:
         """Write this store's arrays, table, metadata, and averaged
         sigmas to disk.
@@ -435,7 +472,7 @@ class SegmentStore:
         )
 
     @classmethod
-    def from_cosmo_files(  # noqa: PLR0913
+    def from_cosmo_files(  # noqa: PLR0913, PLR0917
         cls,
         cosmo_files_dir: pathlib.Path,
         smiles_to_filename: dict[str, str],
@@ -443,6 +480,7 @@ class SegmentStore:
         ignore_errors: bool = False,
         schemes: Sequence[AveragingScheme] | None = None,
         clustering_specs: ClusteringSpecs | None = None,
+        split_fractions: Mapping[str, float] | None = None,
         num_threads: int | None = None,
     ) -> "SegmentStore":
         """Parse COSMO files, build a store, and write it to ``storage_dir``.
@@ -474,6 +512,13 @@ class SegmentStore:
             Fingerprinting and Butina-clustering parameters, used to
             assign each molecule a ``cluster_id``. ``None`` (default)
             uses ``ClusteringSpecs()``.
+        split_fractions : Mapping[str, float] | None, optional
+            Target fraction per named split (e.g. ``{"train": 0.8, "val":
+            0.1, "test": 0.1}``), assigned via ``assign_splits`` and
+            written to ``molecules_df["split"]``. ``None`` (default) skips
+            splitting; the ``split`` column is omitted. Can also be
+            applied later, without rebuilding, via ``assign_splits`` on a
+            loaded store.
         num_threads : int | None, optional
             Thread count for averaging. ``None`` (default) uses every CPU
             core.
@@ -561,6 +606,8 @@ class SegmentStore:
                 schemes=resolved_schemes, num_threads=num_threads
             )
             store.metadata.schemes.update({s.name: s for s in resolved_schemes})
+        if split_fractions is not None:
+            store.assign_splits(split_fractions)
         store.save()
         return store
 

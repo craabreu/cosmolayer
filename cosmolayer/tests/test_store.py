@@ -33,6 +33,7 @@ from cosmolayer.store.binning import (
     row_indices_from_offsets,
 )
 from cosmolayer.store.clustering import FingerprintGenerator, butina_cluster
+from cosmolayer.store.splitting import greedy_cluster_split
 
 COSMO_DATA_DIR = pathlib.Path(str(files("cosmolayer.data")))
 # Each .cosmo fixture's atom table includes explicit hydrogens, so the
@@ -359,6 +360,130 @@ class TestSegmentStoreClustering:
         # cutoff=0.0 means only exact fingerprint matches share a cluster;
         # these four molecules are all distinct, so each is its own cluster.
         assert sorted(s.molecules_df["cluster_id"].tolist()) == [0, 1, 2, 3]
+
+
+# --------------------------------------------------------------------- #
+# splitting
+# --------------------------------------------------------------------- #
+
+
+class TestGreedyClusterSplit:
+    def test_empty_input(self) -> None:
+        result = greedy_cluster_split(
+            np.empty(0, dtype=np.int64), {"train": 0.8, "test": 0.2}
+        )
+        assert result.shape == (0,)
+
+    def test_matches_chalcedon_doctest_example(self) -> None:
+        # Mirrors chalcedon.greedy_cluster_split's own doctest: whole
+        # clusters go to whichever split is furthest below target.
+        cluster_ids = np.array([0, 0, 0, 1, 1, 2, 3], dtype=np.int64)
+        result = greedy_cluster_split(cluster_ids, {"train": 0.6, "test": 0.4})
+        expected = ["train", "train", "train", "test", "test", "train", "test"]
+        assert result.tolist() == expected
+
+    def test_clusters_never_split_across_splits(self) -> None:
+        cluster_ids = np.array([0, 0, 0, 1, 1, 2, 3], dtype=np.int64)
+        result = greedy_cluster_split(cluster_ids, {"train": 0.6, "test": 0.4})
+        for cluster_id in np.unique(cluster_ids):
+            assert len(set(result[cluster_ids == cluster_id].tolist())) == 1
+
+    def test_invalid_fractions_raise(self) -> None:
+        cluster_ids = np.array([0, 1], dtype=np.int64)
+        with pytest.raises(ValueError, match="sum to 1.0"):
+            greedy_cluster_split(cluster_ids, {"train": 0.5, "test": 0.6})
+
+    def test_delegates_to_vendored_chalcedon(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression guard: greedy_cluster_split must call the vendored
+        chalcedon implementation, not a re-inlined copy of it."""
+        calls: list[NDArray[np.int64]] = []
+
+        def spy(
+            cluster_ids: NDArray[np.int64], fractions: dict[str, float]
+        ) -> dict[str, NDArray[np.intp]]:
+            calls.append(cluster_ids)
+            return {
+                "train": np.array([0], dtype=np.intp),
+                "test": np.array([1], dtype=np.intp),
+            }
+
+        monkeypatch.setattr(
+            "cosmolayer.store.splitting._chalcedon_greedy_cluster_split", spy
+        )
+        cluster_ids = np.array([0, 1], dtype=np.int64)
+        result = greedy_cluster_split(cluster_ids, {"train": 0.5, "test": 0.5})
+        assert len(calls) == 1
+        assert result.tolist() == ["train", "test"]
+
+
+class TestSegmentStoreSplitting:
+    def test_no_split_column_by_default(self, store: SegmentStore) -> None:
+        assert "split" not in store.molecules_df.columns
+
+    def test_assign_splits_adds_column(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        labels = s.assign_splits({"train": 0.75, "test": 0.25})
+        assert "split" in s.molecules_df.columns
+        np.testing.assert_array_equal(s.molecules_df["split"].values, labels)
+        assert set(labels.tolist()) <= {"train", "test"}
+
+    def test_assign_splits_overwrites_previous_column(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        s.assign_splits({"train": 0.75, "test": 0.25})
+        second = s.assign_splits({"a": 0.5, "b": 0.5})
+        assert set(s.molecules_df["split"].tolist()) <= {"a", "b"}
+        np.testing.assert_array_equal(s.molecules_df["split"].values, second)
+
+    def test_invalid_fractions_raise(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        with pytest.raises(ValueError):
+            s.assign_splits({"train": 0.5})
+
+    def test_split_fractions_at_build_time(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            split_fractions={"train": 0.75, "test": 0.25},
+            schemes=(),
+            num_threads=1,
+        )
+        assert "split" in s.molecules_df.columns
+        assert set(s.molecules_df["split"].tolist()) <= {"train", "test"}
+
+    def test_split_omitted_without_split_fractions(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        assert "split" not in s.molecules_df.columns
+
+    def test_split_column_survives_save_load_round_trip(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            split_fractions={"train": 0.75, "test": 0.25},
+            schemes=(),
+            num_threads=1,
+        )
+        reloaded = SegmentStore.load(tmp_path)
+        np.testing.assert_array_equal(
+            s.molecules_df["split"].values, reloaded.molecules_df["split"].values
+        )
 
 
 class TestSegmentStoreSigmas:
