@@ -33,6 +33,7 @@ from cosmolayer.store.binning import (
     row_indices_from_offsets,
 )
 from cosmolayer.store.clustering import FingerprintGenerator, butina_cluster
+from cosmolayer.store.coarse_graining import compute_atom_remap
 from cosmolayer.store.segments import _SMILES_PARSER_PARAMS
 from cosmolayer.store.splitting import greedy_cluster_split
 from cosmolayer.store.subsampling import apportion_counts, restrict_to_molecules
@@ -637,6 +638,120 @@ class TestSegmentStoreSubsample:
             s.subsample(0)
         with pytest.raises(ValueError):
             s.subsample(100)
+
+
+# --------------------------------------------------------------------- #
+# coarse-graining
+# --------------------------------------------------------------------- #
+
+
+def _atom_mapped(smi: str) -> str:
+    """Return `smi` with sequential 1-based atom-map numbers, hydrogens
+    included -- the convention SegmentStore stores smiles under (see GH
+    issue #43)."""
+    mol = Chem.AddHs(Chem.MolFromSmiles(smi))
+    for i, atom in enumerate(mol.GetAtoms()):
+        atom.SetAtomMapNum(i + 1)
+    return Chem.MolToSmiles(mol)
+
+
+class TestComputeAtomRemap:
+    def test_merges_hydrogens_into_their_heavy_neighbor(self) -> None:
+        new_local_index, new_smiles = compute_atom_remap(_atom_mapped("O"))
+        reduced = Chem.MolFromSmiles(new_smiles, _SMILES_PARSER_PARAMS)
+        assert reduced.GetNumAtoms() == 1
+        assert len(set(new_local_index.values())) == 1
+
+    def test_unmapped_input_raises(self) -> None:
+        with pytest.raises(ValueError, match="atom-map"):
+            compute_atom_remap("CCO")
+
+    def test_isotope_tagged_hydrogen_is_not_merged(self) -> None:
+        mol = Chem.AddHs(Chem.MolFromSmiles("O"))
+        for atom in mol.GetAtoms():
+            if atom.GetAtomicNum() == 1:
+                atom.SetIsotope(2)
+                break
+        for i, atom in enumerate(mol.GetAtoms()):
+            atom.SetAtomMapNum(i + 1)
+        deuterated = Chem.MolToSmiles(mol)
+
+        new_local_index, new_smiles = compute_atom_remap(deuterated)
+        reduced = Chem.MolFromSmiles(new_smiles, _SMILES_PARSER_PARAMS)
+        # Oxygen + one surviving (isotope-tagged) hydrogen; the other two
+        # ordinary hydrogens are merged into the oxygen.
+        assert reduced.GetNumAtoms() == 2
+        assert len(set(new_local_index.values())) == 2
+
+
+class TestSegmentStoreCoarseGrain:
+    def test_raises_on_unmapped_store(self, tmp_path: pathlib.Path) -> None:
+        # Since GH issue #43's fix, from_cosmo_files always stamps atom
+        # maps -- so simulate a store that predates that fix (or was
+        # otherwise built with unmapped smiles) by stripping them back out.
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+
+        def _strip_map_numbers(smi: str) -> str:
+            mol = Chem.MolFromSmiles(smi, _SMILES_PARSER_PARAMS)
+            for atom in mol.GetAtoms():
+                atom.SetAtomMapNum(0)
+            return Chem.MolToSmiles(mol)
+
+        s.molecules_df["smiles"] = [
+            _strip_map_numbers(smi) for smi in s.molecules_df["smiles"]
+        ]
+        with pytest.raises(ValueError, match="atom-map"):
+            s.coarse_grain()
+
+    def test_reduces_atom_count_and_compacts_index_space(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        mapped_mapping = {
+            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
+        }
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+        )
+        coarse = s.coarse_grain()
+        coarse_num_atoms = coarse.molecules_df["num_atoms"].sum()
+        assert coarse_num_atoms < s.molecules_df["num_atoms"].sum()
+        atom_indices = np.asarray(coarse.atom_indices, dtype=np.int64)
+        assert max(atom_indices.tolist()) + 1 == coarse_num_atoms
+
+    def test_segments_and_molecule_count_unchanged(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        mapped_mapping = {
+            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
+        }
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+        )
+        coarse = s.coarse_grain()
+        assert len(coarse.molecules_df) == len(s.molecules_df)
+        np.testing.assert_array_equal(
+            coarse.molecules_df["segment_offsets"].values,
+            s.molecules_df["segment_offsets"].values,
+        )
+
+    def test_data_and_metadata_columns_untouched(self, tmp_path: pathlib.Path) -> None:
+        mapped_mapping = {
+            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
+        }
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+        )
+        coarse = s.coarse_grain()
+        np.testing.assert_array_equal(np.asarray(coarse.data), np.asarray(s.data))
+        np.testing.assert_array_equal(
+            coarse.molecules_df["volume"].values, s.molecules_df["volume"].values
+        )
+        np.testing.assert_array_equal(
+            coarse.molecules_df["cluster_id"].values,
+            s.molecules_df["cluster_id"].values,
+        )
 
 
 class TestSegmentStoreSigmas:

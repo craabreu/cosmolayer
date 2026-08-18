@@ -40,6 +40,7 @@ from .averaging import (
     average_sigmas_by_molecule,
 )
 from .clustering import ClusteringSpecs, FingerprintGenerator, butina_cluster
+from .coarse_graining import compute_atom_remap
 from .grid import DEFAULT_SIGMA_GRID, SigmaGrid
 from .profiles import SigmaProfileTable
 from .splitting import greedy_cluster_split
@@ -446,6 +447,84 @@ class SegmentStore:
             )
         selected = np.sort(np.concatenate(chosen_parts))
         return restrict_to_molecules(self, selected)
+
+    def coarse_grain(self) -> "SegmentStore":
+        """Return a new, unsaved united-atom store: every hydrogen
+        ``Chem.RemoveHs`` would actually remove is merged into the heavy
+        atom it's bonded to, and every segment stays attributed to
+        wherever its atom ended up.
+
+        Requires every molecule's ``molecules_df["smiles"]`` to carry
+        atom-map numbers reflecting local (COSMO) atom index (guaranteed
+        for stores built after GH issue #43's fix). No molecule or
+        segment is ever dropped -- only atom attribution shrinks -- so
+        ``segment_offsets``, ``data``, and every ``averaged_sigmas`` array
+        carry through unchanged; only ``atom_indices`` and
+        ``molecules_df``'s ``smiles``/``num_atoms``/``atom_offsets``
+        columns change.
+
+        Returns
+        -------
+        SegmentStore
+            A new store (see ``coarse_graining.compute_atom_remap``) with
+            the same ``storage_dir`` as this one -- pass a real directory
+            to ``save`` to persist it.
+
+        Raises
+        ------
+        ValueError
+            If any molecule's ``smiles`` has no usable atom-map numbers.
+        """
+        molecules_df = self.molecules_df
+        n_mols = len(molecules_df)
+        n_segs_total = len(self.data)
+        old_atom_offsets = molecules_df["atom_offsets"].to_numpy().astype("int64")
+        segment_offsets = molecules_df["segment_offsets"].to_numpy().astype("int64")
+        segment_counts = np.diff(np.append(segment_offsets, n_segs_total))
+        segment_molecule = np.repeat(np.arange(n_mols), segment_counts)
+
+        new_num_atoms = np.empty(n_mols, dtype=np.int64)
+        new_smiles: list[str] = [""] * n_mols
+        remaps: list[dict[int, int]] = [{}] * n_mols
+        for m, smi in enumerate(molecules_df["smiles"]):
+            remap, mapped_smiles = compute_atom_remap(smi)
+            remaps[m] = remap
+            new_num_atoms[m] = len(set(remap.values()))
+            new_smiles[m] = mapped_smiles
+
+        new_atom_offsets = np.zeros(n_mols, dtype=np.int64)
+        new_atom_offsets[1:] = np.cumsum(new_num_atoms)[:-1]
+
+        old_local = np.asarray(self.atom_indices) - old_atom_offsets[segment_molecule]
+        new_atom_indices = np.empty(n_segs_total, dtype=np.int64)
+        for m in range(n_mols):
+            in_molecule = segment_molecule == m
+            lookup = np.array(
+                [remaps[m][j] for j in range(int(molecules_df["num_atoms"].iat[m]))],
+                dtype=np.int64,
+            )
+            new_atom_indices[in_molecule] = (
+                lookup[old_local[in_molecule]] + new_atom_offsets[m]
+            )
+
+        new_molecules_df = molecules_df.copy()
+        new_molecules_df["smiles"] = new_smiles
+        new_molecules_df["num_atoms"] = new_num_atoms
+        new_molecules_df["atom_offsets"] = new_atom_offsets
+
+        metadata = StoreMetadata(
+            num_molecules=n_mols,
+            num_cosmo_parse_failures=self.metadata.num_cosmo_parse_failures,
+            schemes=dict(self.metadata.schemes),
+        )
+        return SegmentStore(
+            self.storage_dir,
+            self.data,
+            new_atom_indices,
+            new_molecules_df,
+            metadata,
+            self.averaged_sigmas,
+        )
 
     def save(self, storage_dir: pathlib.Path | str | None = None) -> None:
         """Write this store's arrays, table, metadata, and averaged
