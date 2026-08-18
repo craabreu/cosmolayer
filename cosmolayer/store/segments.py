@@ -9,7 +9,7 @@ load an existing one with ``SegmentStore.load``. Both use a flat
     <storage_dir>/atom_indices.npy  int64   (n_segs_total,):   global atom index per
                                      segment
     <storage_dir>/molecules.parquet columns: smiles, segment_offsets, atom_offsets,
-                                     num_atoms, volume, cluster_id
+                                     num_atoms, volume, cluster_id, split (optional)
     <storage_dir>/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}
     <storage_dir>/<scheme>.npy      float32 (n_segs_total,): one per averaging scheme
 
@@ -22,7 +22,7 @@ import json
 import os
 import pathlib
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -40,8 +40,11 @@ from .averaging import (
     average_sigmas_by_molecule,
 )
 from .clustering import ClusteringSpecs, FingerprintGenerator, butina_cluster
+from .coarse_graining import compute_atom_remap
 from .grid import DEFAULT_SIGMA_GRID, SigmaGrid
 from .profiles import SigmaProfileTable
+from .splitting import greedy_cluster_split
+from .subsampling import apportion_counts, restrict_to_molecules
 
 DATA_FILE = pathlib.Path("data.npy")
 ATOM_INDICES_FILE = pathlib.Path("atom_indices.npy")
@@ -254,6 +257,16 @@ class SegmentStore:
                 f"{filename} has {len(atom_df)}"
             )
         mol = cls._reorder_molecule(mol)
+        # Stamp 1-based atom-map numbers reflecting local (COSMO) atom
+        # index, overwriting whatever the input SMILES had (or lacked).
+        # _reorder_molecule already guarantees mol's atom order equals
+        # COSMO order at this point -- either by permutation-reorder, or,
+        # for unmapped input, by the existing trust assumption that its
+        # atom order already matched. Without this, an unmapped input's
+        # atom order would not survive Chem.MolToSmiles's default
+        # re-canonicalization once stored (see GH issue #43).
+        for i, atom in enumerate(mol.GetAtoms()):
+            atom.SetAtomMapNum(i + 1)
         fingerprint = fingerprint_generator.generate(mol)
         return mol, atom_df, segment_df, volume, fingerprint
 
@@ -327,6 +340,191 @@ class SegmentStore:
             scheme.name: arr.astype(np.float32)
             for scheme, arr in zip(schemes, averaged, strict=True)
         }
+
+    def assign_splits(self, fractions: Mapping[str, float]) -> NDArray[np.str_]:
+        """Partition this store's molecules into named splits (e.g.
+        train/val/test) that respect ``cluster_id`` boundaries, and record
+        the result as ``molecules_df["split"]``.
+
+        Splitting is independent of ``ClusteringSpecs``: it's a cheap pass
+        over the already-computed ``cluster_id`` column, so it can be
+        called (and re-called, e.g. to try different fractions) on a
+        freshly built or a loaded store, without recomputing fingerprints
+        or clusters. Each call overwrites any previous ``split`` column.
+        Call ``save`` afterward to persist the result.
+
+        Parameters
+        ----------
+        fractions : Mapping[str, float]
+            Target fraction per split name, e.g. ``{"train": 0.8, "val":
+            0.1, "test": 0.1}`` or ``{"train": 0.8, "test": 0.2}``. Values
+            must be positive and sum to 1.0.
+
+        Returns
+        -------
+        np.ndarray, shape (n_molecules,)
+            Split name assigned to each molecule, in ``molecules_df`` row
+            order (the same array written to ``molecules_df["split"]``).
+
+        Raises
+        ------
+        ValueError
+            If ``fractions`` is empty, contains non-positive values, or
+            doesn't sum to 1.0.
+        """
+        cluster_ids = self.molecules_df["cluster_id"].values.astype("int64")
+        labels = greedy_cluster_split(cluster_ids, fractions)
+        self.molecules_df["split"] = labels
+        return labels
+
+    def subsample(
+        self, num_molecules: int, shuffle_seed: int | None = None
+    ) -> "SegmentStore":
+        """Return a new, unsaved store shrunk to ``num_molecules``, without
+        moving any molecule across its existing ``split``.
+
+        Requires ``molecules_df["split"]`` to already exist (see
+        ``assign_splits``) -- split membership must be fixed *before*
+        subsampling, since ``num_molecules`` is apportioned across the
+        existing splits' own sizes and molecules are only ever dropped from
+        within a split, never moved to another one. This is what keeps a
+        test molecule from ending up in train/val just because the store
+        got smaller.
+
+        Parameters
+        ----------
+        num_molecules : int
+            Total number of molecules to keep, summed across all splits.
+            Must be positive and not exceed the current molecule count.
+        shuffle_seed : int | None, optional
+            If given, each split's share is a uniform random sample without
+            replacement, drawn with this seed. ``None`` (default) instead
+            keeps the first molecules in row order within each split, a
+            deterministic choice.
+
+        Returns
+        -------
+        SegmentStore
+            A new store (see ``subsampling.restrict_to_molecules``) with
+            the same ``storage_dir`` as this one -- pass a real directory
+            to ``save`` to persist it.
+
+        Raises
+        ------
+        ValueError
+            If ``molecules_df`` has no ``split`` column, or if
+            ``num_molecules`` is not positive or exceeds the current
+            molecule count.
+        """
+        if "split" not in self.molecules_df.columns:
+            raise ValueError(
+                "molecules_df has no 'split' column; call assign_splits "
+                "before subsample."
+            )
+        n_total = len(self.molecules_df)
+        if num_molecules <= 0 or num_molecules > n_total:
+            raise ValueError(
+                f"num_molecules ({num_molecules}) must be positive and not "
+                f"exceed the current molecule count ({n_total})."
+            )
+
+        split_labels = self.molecules_df["split"].to_numpy()
+        split_names = list(dict.fromkeys(split_labels))
+        members_by_split = [
+            np.flatnonzero(split_labels == name) for name in split_names
+        ]
+        sizes = np.array([len(m) for m in members_by_split])
+        target_counts = apportion_counts(sizes, num_molecules)
+
+        rng = np.random.default_rng(shuffle_seed) if shuffle_seed is not None else None
+        chosen_parts = []
+        for members, raw_target in zip(members_by_split, target_counts, strict=True):
+            target = int(raw_target)
+            chosen_parts.append(
+                members[:target]
+                if rng is None
+                else rng.choice(members, size=target, replace=False)
+            )
+        selected = np.sort(np.concatenate(chosen_parts))
+        return restrict_to_molecules(self, selected)
+
+    def coarse_grain(self) -> "SegmentStore":
+        """Return a new, unsaved united-atom store: every hydrogen
+        ``Chem.RemoveHs`` would actually remove is merged into the heavy
+        atom it's bonded to, and every segment stays attributed to
+        wherever its atom ended up.
+
+        Requires every molecule's ``molecules_df["smiles"]`` to carry
+        atom-map numbers reflecting local (COSMO) atom index (guaranteed
+        for stores built after GH issue #43's fix). No molecule or
+        segment is ever dropped -- only atom attribution shrinks -- so
+        ``segment_offsets``, ``data``, and every ``averaged_sigmas`` array
+        carry through unchanged; only ``atom_indices`` and
+        ``molecules_df``'s ``smiles``/``num_atoms``/``atom_offsets``
+        columns change.
+
+        Returns
+        -------
+        SegmentStore
+            A new store (see ``coarse_graining.compute_atom_remap``) with
+            the same ``storage_dir`` as this one -- pass a real directory
+            to ``save`` to persist it.
+
+        Raises
+        ------
+        ValueError
+            If any molecule's ``smiles`` has no usable atom-map numbers.
+        """
+        molecules_df = self.molecules_df
+        n_mols = len(molecules_df)
+        n_segs_total = len(self.data)
+        old_atom_offsets = molecules_df["atom_offsets"].to_numpy().astype("int64")
+        segment_offsets = molecules_df["segment_offsets"].to_numpy().astype("int64")
+        segment_counts = np.diff(np.append(segment_offsets, n_segs_total))
+        segment_molecule = np.repeat(np.arange(n_mols), segment_counts)
+
+        new_num_atoms = np.empty(n_mols, dtype=np.int64)
+        new_smiles: list[str] = [""] * n_mols
+        remaps: list[dict[int, int]] = [{}] * n_mols
+        for m, smi in enumerate(molecules_df["smiles"]):
+            remap, mapped_smiles = compute_atom_remap(smi)
+            remaps[m] = remap
+            new_num_atoms[m] = len(set(remap.values()))
+            new_smiles[m] = mapped_smiles
+
+        new_atom_offsets = np.zeros(n_mols, dtype=np.int64)
+        new_atom_offsets[1:] = np.cumsum(new_num_atoms)[:-1]
+
+        old_local = np.asarray(self.atom_indices) - old_atom_offsets[segment_molecule]
+        new_atom_indices = np.empty(n_segs_total, dtype=np.int64)
+        for m in range(n_mols):
+            in_molecule = segment_molecule == m
+            lookup = np.array(
+                [remaps[m][j] for j in range(int(molecules_df["num_atoms"].iat[m]))],
+                dtype=np.int64,
+            )
+            new_atom_indices[in_molecule] = (
+                lookup[old_local[in_molecule]] + new_atom_offsets[m]
+            )
+
+        new_molecules_df = molecules_df.copy()
+        new_molecules_df["smiles"] = new_smiles
+        new_molecules_df["num_atoms"] = new_num_atoms
+        new_molecules_df["atom_offsets"] = new_atom_offsets
+
+        metadata = StoreMetadata(
+            num_molecules=n_mols,
+            num_cosmo_parse_failures=self.metadata.num_cosmo_parse_failures,
+            schemes=dict(self.metadata.schemes),
+        )
+        return SegmentStore(
+            self.storage_dir,
+            self.data,
+            new_atom_indices,
+            new_molecules_df,
+            metadata,
+            self.averaged_sigmas,
+        )
 
     def save(self, storage_dir: pathlib.Path | str | None = None) -> None:
         """Write this store's arrays, table, metadata, and averaged
@@ -435,7 +633,7 @@ class SegmentStore:
         )
 
     @classmethod
-    def from_cosmo_files(  # noqa: PLR0913
+    def from_cosmo_files(  # noqa: PLR0913, PLR0917
         cls,
         cosmo_files_dir: pathlib.Path,
         smiles_to_filename: dict[str, str],
@@ -443,6 +641,7 @@ class SegmentStore:
         ignore_errors: bool = False,
         schemes: Sequence[AveragingScheme] | None = None,
         clustering_specs: ClusteringSpecs | None = None,
+        split_fractions: Mapping[str, float] | None = None,
         num_threads: int | None = None,
     ) -> "SegmentStore":
         """Parse COSMO files, build a store, and write it to ``storage_dir``.
@@ -474,6 +673,13 @@ class SegmentStore:
             Fingerprinting and Butina-clustering parameters, used to
             assign each molecule a ``cluster_id``. ``None`` (default)
             uses ``ClusteringSpecs()``.
+        split_fractions : Mapping[str, float] | None, optional
+            Target fraction per named split (e.g. ``{"train": 0.8, "val":
+            0.1, "test": 0.1}``), assigned via ``assign_splits`` and
+            written to ``molecules_df["split"]``. ``None`` (default) skips
+            splitting; the ``split`` column is omitted. Can also be
+            applied later, without rebuilding, via ``assign_splits`` on a
+            loaded store.
         num_threads : int | None, optional
             Thread count for averaging. ``None`` (default) uses every CPU
             core.
@@ -561,6 +767,8 @@ class SegmentStore:
                 schemes=resolved_schemes, num_threads=num_threads
             )
             store.metadata.schemes.update({s.name: s for s in resolved_schemes})
+        if split_fractions is not None:
+            store.assign_splits(split_fractions)
         store.save()
         return store
 

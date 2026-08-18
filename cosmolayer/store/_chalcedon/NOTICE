@@ -1,6 +1,6 @@
-This directory vendors `tanimoto_similarity.py` and `butina_cluster.py`
+This directory vendors `tanimoto_similarity.py`, `butina_cluster.py`
 (with a small, marked modification: an added `progress` parameter gating
-the tqdm bars) from:
+the tqdm bars), and `greedy_cluster_split.py` (unmodified) from:
 
     https://github.com/rowansci/chalcedon
     commit 92da3cc5bd6ffb0d397cb49ea556f168d1d38b7e

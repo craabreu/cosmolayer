@@ -33,6 +33,10 @@ from cosmolayer.store.binning import (
     row_indices_from_offsets,
 )
 from cosmolayer.store.clustering import FingerprintGenerator, butina_cluster
+from cosmolayer.store.coarse_graining import compute_atom_remap
+from cosmolayer.store.segments import _SMILES_PARSER_PARAMS
+from cosmolayer.store.splitting import greedy_cluster_split
+from cosmolayer.store.subsampling import apportion_counts, restrict_to_molecules
 
 COSMO_DATA_DIR = pathlib.Path(str(files("cosmolayer.data")))
 # Each .cosmo fixture's atom table includes explicit hydrogens, so the
@@ -245,6 +249,25 @@ class TestSegmentStoreRoundTrip:
             SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
 
 
+class TestStoredSmilesIsAlwaysAtomMapped:
+    """molecules_df["smiles"] must carry atom-map numbers reflecting local
+    (COSMO) atom index, even when the caller's input SMILES had none --
+    otherwise atom order isn't recoverable from a *stored* string after
+    Chem.MolToSmiles's default re-canonicalization. See GH issue #43."""
+
+    def test_atom_map_numbers_present_for_unmapped_input(
+        self, store: SegmentStore
+    ) -> None:
+        # SMILES_TO_FILENAME (used to build `store`) has no atom-map
+        # numbers on its input SMILES.
+        for smi, num_atoms in zip(
+            store.molecules_df["smiles"], store.molecules_df["num_atoms"], strict=True
+        ):
+            mol = Chem.MolFromSmiles(smi, _SMILES_PARSER_PARAMS)
+            map_nums = {atom.GetAtomMapNum() for atom in mol.GetAtoms()}
+            assert map_nums == set(range(1, num_atoms + 1))
+
+
 class TestReservedSchemeNames:
     """A scheme's averaged sigmas are written to "<name>.npy" (see
     SegmentStore.save), so only a name matching one of the store's own
@@ -359,6 +382,376 @@ class TestSegmentStoreClustering:
         # cutoff=0.0 means only exact fingerprint matches share a cluster;
         # these four molecules are all distinct, so each is its own cluster.
         assert sorted(s.molecules_df["cluster_id"].tolist()) == [0, 1, 2, 3]
+
+
+# --------------------------------------------------------------------- #
+# splitting
+# --------------------------------------------------------------------- #
+
+
+class TestGreedyClusterSplit:
+    def test_empty_input(self) -> None:
+        result = greedy_cluster_split(
+            np.empty(0, dtype=np.int64), {"train": 0.8, "test": 0.2}
+        )
+        assert result.shape == (0,)
+
+    def test_matches_chalcedon_doctest_example(self) -> None:
+        # Mirrors chalcedon.greedy_cluster_split's own doctest: whole
+        # clusters go to whichever split is furthest below target.
+        cluster_ids = np.array([0, 0, 0, 1, 1, 2, 3], dtype=np.int64)
+        result = greedy_cluster_split(cluster_ids, {"train": 0.6, "test": 0.4})
+        expected = ["train", "train", "train", "test", "test", "train", "test"]
+        assert result.tolist() == expected
+
+    def test_clusters_never_split_across_splits(self) -> None:
+        cluster_ids = np.array([0, 0, 0, 1, 1, 2, 3], dtype=np.int64)
+        result = greedy_cluster_split(cluster_ids, {"train": 0.6, "test": 0.4})
+        for cluster_id in np.unique(cluster_ids):
+            assert len(set(result[cluster_ids == cluster_id].tolist())) == 1
+
+    def test_invalid_fractions_raise(self) -> None:
+        cluster_ids = np.array([0, 1], dtype=np.int64)
+        with pytest.raises(ValueError, match="sum to 1.0"):
+            greedy_cluster_split(cluster_ids, {"train": 0.5, "test": 0.6})
+
+    def test_delegates_to_vendored_chalcedon(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression guard: greedy_cluster_split must call the vendored
+        chalcedon implementation, not a re-inlined copy of it."""
+        calls: list[NDArray[np.int64]] = []
+
+        def spy(
+            cluster_ids: NDArray[np.int64], fractions: dict[str, float]
+        ) -> dict[str, NDArray[np.intp]]:
+            calls.append(cluster_ids)
+            return {
+                "train": np.array([0], dtype=np.intp),
+                "test": np.array([1], dtype=np.intp),
+            }
+
+        monkeypatch.setattr(
+            "cosmolayer.store.splitting._chalcedon_greedy_cluster_split", spy
+        )
+        cluster_ids = np.array([0, 1], dtype=np.int64)
+        result = greedy_cluster_split(cluster_ids, {"train": 0.5, "test": 0.5})
+        assert len(calls) == 1
+        assert result.tolist() == ["train", "test"]
+
+
+class TestSegmentStoreSplitting:
+    def test_no_split_column_by_default(self, store: SegmentStore) -> None:
+        assert "split" not in store.molecules_df.columns
+
+    def test_assign_splits_adds_column(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        labels = s.assign_splits({"train": 0.75, "test": 0.25})
+        assert "split" in s.molecules_df.columns
+        np.testing.assert_array_equal(s.molecules_df["split"].values, labels)
+        assert set(labels.tolist()) <= {"train", "test"}
+
+    def test_assign_splits_overwrites_previous_column(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        s.assign_splits({"train": 0.75, "test": 0.25})
+        second = s.assign_splits({"a": 0.5, "b": 0.5})
+        assert set(s.molecules_df["split"].tolist()) <= {"a", "b"}
+        np.testing.assert_array_equal(s.molecules_df["split"].values, second)
+
+    def test_invalid_fractions_raise(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        with pytest.raises(ValueError):
+            s.assign_splits({"train": 0.5})
+
+    def test_split_fractions_at_build_time(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            split_fractions={"train": 0.75, "test": 0.25},
+            schemes=(),
+            num_threads=1,
+        )
+        assert "split" in s.molecules_df.columns
+        assert set(s.molecules_df["split"].tolist()) <= {"train", "test"}
+
+    def test_split_omitted_without_split_fractions(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        assert "split" not in s.molecules_df.columns
+
+    def test_split_column_survives_save_load_round_trip(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            split_fractions={"train": 0.75, "test": 0.25},
+            schemes=(),
+            num_threads=1,
+        )
+        reloaded = SegmentStore.load(tmp_path)
+        np.testing.assert_array_equal(
+            s.molecules_df["split"].values, reloaded.molecules_df["split"].values
+        )
+
+
+# --------------------------------------------------------------------- #
+# subsampling
+# --------------------------------------------------------------------- #
+
+
+class TestApportionCounts:
+    def test_sums_to_total(self) -> None:
+        result = apportion_counts(np.array([10, 20, 30]), 12)
+        assert result.sum() == 12
+
+    def test_proportional_to_sizes(self) -> None:
+        result = apportion_counts(np.array([10, 90]), 10)
+        np.testing.assert_array_equal(result, [1, 9])
+
+    def test_never_exceeds_bucket_size(self) -> None:
+        result = apportion_counts(np.array([1, 100]), 50)
+        assert result[0] <= 1
+
+    def test_zero_total_gives_all_zeros(self) -> None:
+        result = apportion_counts(np.array([10, 20]), 0)
+        np.testing.assert_array_equal(result, [0, 0])
+
+
+class TestRestrictToMolecules:
+    def test_atom_index_space_is_compacted_and_contiguous(
+        self, store: SegmentStore
+    ) -> None:
+        selected = np.array([0, 2], dtype=np.int64)
+        restricted = restrict_to_molecules(store, selected)
+        total_num_atoms = int(restricted.molecules_df["num_atoms"].sum())
+        atom_indices = np.asarray(restricted.atom_indices, dtype=np.int64)
+        assert max(atom_indices.tolist()) + 1 == total_num_atoms
+
+    def test_molecule_count_and_metadata(self, store: SegmentStore) -> None:
+        selected = np.array([1, 3], dtype=np.int64)
+        restricted = restrict_to_molecules(store, selected)
+        assert len(restricted.molecules_df) == 2
+        assert restricted.metadata.num_molecules == 2
+        np.testing.assert_array_equal(
+            restricted.molecules_df["smiles"].values,
+            store.molecules_df["smiles"].values[selected],
+        )
+
+    def test_segment_count_matches_selected_molecules(
+        self, store: SegmentStore
+    ) -> None:
+        selected = np.array([0, 1], dtype=np.int64)
+        restricted = restrict_to_molecules(store, selected)
+        offsets = store.molecules_df["segment_offsets"].values.astype("int64")
+        expected_num_segments = offsets[2] - offsets[0]
+        assert len(restricted.data) == expected_num_segments
+
+    def test_averaged_sigmas_sliced_consistently_with_data(
+        self, store: SegmentStore
+    ) -> None:
+        selected = np.array([0, 2], dtype=np.int64)
+        restricted = restrict_to_molecules(store, selected)
+        for name, arr in restricted.averaged_sigmas.items():
+            assert len(arr) == len(restricted.data)
+            assert name in store.averaged_sigmas
+
+
+class TestSegmentStoreSubsample:
+    def test_requires_existing_split_column(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+        with pytest.raises(ValueError, match="assign_splits"):
+            s.subsample(2)
+
+    def test_result_has_requested_molecule_count(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            split_fractions={"train": 0.75, "test": 0.25},
+            schemes=(),
+            num_threads=1,
+        )
+        subsampled = s.subsample(2)
+        assert len(subsampled.molecules_df) == 2
+
+    def test_kept_molecules_retain_their_original_split(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            split_fractions={"train": 0.75, "test": 0.25},
+            schemes=(),
+            num_threads=1,
+        )
+        subsampled = s.subsample(3)
+        original_by_smiles = dict(
+            zip(s.molecules_df["smiles"], s.molecules_df["split"], strict=True)
+        )
+        subsampled_smiles = subsampled.molecules_df["smiles"]
+        subsampled_splits = subsampled.molecules_df["split"]
+        for smi, split in zip(subsampled_smiles, subsampled_splits, strict=True):
+            assert split == original_by_smiles[smi]
+
+    def test_deterministic_without_seed(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            split_fractions={"train": 0.75, "test": 0.25},
+            schemes=(),
+            num_threads=1,
+        )
+        first = s.subsample(2)
+        second = s.subsample(2)
+        np.testing.assert_array_equal(
+            first.molecules_df["smiles"].values, second.molecules_df["smiles"].values
+        )
+
+    def test_invalid_num_molecules_raises(self, tmp_path: pathlib.Path) -> None:
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            SMILES_TO_FILENAME,
+            tmp_path,
+            split_fractions={"train": 0.75, "test": 0.25},
+            schemes=(),
+            num_threads=1,
+        )
+        with pytest.raises(ValueError):
+            s.subsample(0)
+        with pytest.raises(ValueError):
+            s.subsample(100)
+
+
+# --------------------------------------------------------------------- #
+# coarse-graining
+# --------------------------------------------------------------------- #
+
+
+def _atom_mapped(smi: str) -> str:
+    """Return `smi` with sequential 1-based atom-map numbers, hydrogens
+    included -- the convention SegmentStore stores smiles under (see GH
+    issue #43)."""
+    mol = Chem.AddHs(Chem.MolFromSmiles(smi))
+    for i, atom in enumerate(mol.GetAtoms()):
+        atom.SetAtomMapNum(i + 1)
+    return Chem.MolToSmiles(mol)
+
+
+class TestComputeAtomRemap:
+    def test_merges_hydrogens_into_their_heavy_neighbor(self) -> None:
+        new_local_index, new_smiles = compute_atom_remap(_atom_mapped("O"))
+        reduced = Chem.MolFromSmiles(new_smiles, _SMILES_PARSER_PARAMS)
+        assert reduced.GetNumAtoms() == 1
+        assert len(set(new_local_index.values())) == 1
+
+    def test_unmapped_input_raises(self) -> None:
+        with pytest.raises(ValueError, match="atom-map"):
+            compute_atom_remap("CCO")
+
+    def test_isotope_tagged_hydrogen_is_not_merged(self) -> None:
+        mol = Chem.AddHs(Chem.MolFromSmiles("O"))
+        for atom in mol.GetAtoms():
+            if atom.GetAtomicNum() == 1:
+                atom.SetIsotope(2)
+                break
+        for i, atom in enumerate(mol.GetAtoms()):
+            atom.SetAtomMapNum(i + 1)
+        deuterated = Chem.MolToSmiles(mol)
+
+        new_local_index, new_smiles = compute_atom_remap(deuterated)
+        reduced = Chem.MolFromSmiles(new_smiles, _SMILES_PARSER_PARAMS)
+        # Oxygen + one surviving (isotope-tagged) hydrogen; the other two
+        # ordinary hydrogens are merged into the oxygen.
+        assert reduced.GetNumAtoms() == 2
+        assert len(set(new_local_index.values())) == 2
+
+
+class TestSegmentStoreCoarseGrain:
+    def test_raises_on_unmapped_store(self, tmp_path: pathlib.Path) -> None:
+        # Since GH issue #43's fix, from_cosmo_files always stamps atom
+        # maps -- so simulate a store that predates that fix (or was
+        # otherwise built with unmapped smiles) by stripping them back out.
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+        )
+
+        def _strip_map_numbers(smi: str) -> str:
+            mol = Chem.MolFromSmiles(smi, _SMILES_PARSER_PARAMS)
+            for atom in mol.GetAtoms():
+                atom.SetAtomMapNum(0)
+            return Chem.MolToSmiles(mol)
+
+        s.molecules_df["smiles"] = [
+            _strip_map_numbers(smi) for smi in s.molecules_df["smiles"]
+        ]
+        with pytest.raises(ValueError, match="atom-map"):
+            s.coarse_grain()
+
+    def test_reduces_atom_count_and_compacts_index_space(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        mapped_mapping = {
+            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
+        }
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+        )
+        coarse = s.coarse_grain()
+        coarse_num_atoms = coarse.molecules_df["num_atoms"].sum()
+        assert coarse_num_atoms < s.molecules_df["num_atoms"].sum()
+        atom_indices = np.asarray(coarse.atom_indices, dtype=np.int64)
+        assert max(atom_indices.tolist()) + 1 == coarse_num_atoms
+
+    def test_segments_and_molecule_count_unchanged(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        mapped_mapping = {
+            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
+        }
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+        )
+        coarse = s.coarse_grain()
+        assert len(coarse.molecules_df) == len(s.molecules_df)
+        np.testing.assert_array_equal(
+            coarse.molecules_df["segment_offsets"].values,
+            s.molecules_df["segment_offsets"].values,
+        )
+
+    def test_data_and_metadata_columns_untouched(self, tmp_path: pathlib.Path) -> None:
+        mapped_mapping = {
+            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
+        }
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+        )
+        coarse = s.coarse_grain()
+        np.testing.assert_array_equal(np.asarray(coarse.data), np.asarray(s.data))
+        np.testing.assert_array_equal(
+            coarse.molecules_df["volume"].values, s.molecules_df["volume"].values
+        )
+        np.testing.assert_array_equal(
+            coarse.molecules_df["cluster_id"].values,
+            s.molecules_df["cluster_id"].values,
+        )
 
 
 class TestSegmentStoreSigmas:
