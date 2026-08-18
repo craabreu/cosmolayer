@@ -68,7 +68,8 @@ def restrict_to_molecules(
     no molecule identity of their own, so they're sliced by a segment mask
     derived from ``selected``. ``atom_indices`` does carry atom identity
     (global, dataset-wide), so it's additionally rebased onto a new,
-    compacted index space covering only the kept molecules' atoms.
+    compacted index space covering only the kept molecules' atoms;
+    ``atoms_df`` is sliced by the same atom mask, preserving row order.
 
     Parameters
     ----------
@@ -98,10 +99,12 @@ def restrict_to_molecules(
 
     segment_counts = np.diff(np.append(full_segment_offsets, n_segs_total))
     segment_molecule = np.repeat(np.arange(n_mols_total), segment_counts)
+    atom_molecule = np.repeat(np.arange(n_mols_total), full_num_atoms)
 
     is_selected = np.zeros(n_mols_total, dtype=bool)
     is_selected[selected] = True
     segment_mask = is_selected[segment_molecule]
+    atom_mask = is_selected[atom_molecule]
 
     new_atom_offset_by_molecule = np.zeros(n_mols_total, dtype=np.int64)
     new_atom_offset_by_molecule[selected] = np.concatenate(
@@ -115,6 +118,7 @@ def restrict_to_molecules(
         - full_atom_offsets[kept_molecule]
         + new_atom_offset_by_molecule[kept_molecule]
     )
+    atoms_df = store.atoms_df.iloc[atom_mask].reset_index(drop=True)
     averaged_sigmas = {
         name: np.asarray(arr)[segment_mask]
         for name, arr in store.averaged_sigmas.items()
@@ -137,6 +141,7 @@ def restrict_to_molecules(
         data,
         atom_indices,
         new_molecules_df,
+        atoms_df,
         metadata,
         averaged_sigmas,
     )
