@@ -38,13 +38,23 @@ from cosmolayer.store.segments import _SMILES_PARSER_PARAMS
 from cosmolayer.store.splitting import greedy_cluster_split
 from cosmolayer.store.subsampling import apportion_counts, restrict_to_molecules
 
+
+def _atom_mapped(smi: str) -> str:
+    """Return `smi` with sequential 1-based atom-map numbers, hydrogens
+    included -- the convention SegmentStore requires input smiles under
+    (see GH issue #43), and stores them under too."""
+    mol = Chem.AddHs(Chem.MolFromSmiles(smi))
+    for i, atom in enumerate(mol.GetAtoms()):
+        atom.SetAtomMapNum(i + 1)
+    return Chem.MolToSmiles(mol)
+
+
 COSMO_DATA_DIR = pathlib.Path(str(files("cosmolayer.data")))
-# Each .cosmo fixture's atom table includes explicit hydrogens, so the
-# SMILES used to build a store from it must too (SegmentStore.from_cosmo_files
-# checks the SMILES's atom count against the COSMO file's).
+# Each .cosmo fixture's atom table includes explicit hydrogens, in the
+# same order Chem.AddHs(Chem.MolFromSmiles(smi)) produces them, so
+# _atom_mapped(smi) is correctly ordered for each fixture below.
 SMILES_TO_FILENAME = {
-    Chem.MolToSmiles(Chem.AddHs(Chem.MolFromSmiles(smi))): f"{smi}.cosmo"
-    for smi in ["O", "CF", "NCCO", "C=C(N)O"]
+    _atom_mapped(smi): f"{smi}.cosmo" for smi in ["O", "CF", "NCCO", "C=C(N)O"]
 }
 
 
@@ -251,21 +261,49 @@ class TestSegmentStoreRoundTrip:
 
 class TestStoredSmilesIsAlwaysAtomMapped:
     """molecules_df["smiles"] must carry atom-map numbers reflecting local
-    (COSMO) atom index, even when the caller's input SMILES had none --
-    otherwise atom order isn't recoverable from a *stored* string after
-    Chem.MolToSmiles's default re-canonicalization. See GH issue #43."""
+    (COSMO) atom index -- otherwise atom order isn't recoverable from a
+    *stored* string after Chem.MolToSmiles's default re-canonicalization.
+    See GH issue #43."""
 
-    def test_atom_map_numbers_present_for_unmapped_input(
-        self, store: SegmentStore
-    ) -> None:
-        # SMILES_TO_FILENAME (used to build `store`) has no atom-map
-        # numbers on its input SMILES.
+    def test_atom_map_numbers_present(self, store: SegmentStore) -> None:
         for smi, num_atoms in zip(
             store.molecules_df["smiles"], store.molecules_df["num_atoms"], strict=True
         ):
             mol = Chem.MolFromSmiles(smi, _SMILES_PARSER_PARAMS)
             map_nums = {atom.GetAtomMapNum() for atom in mol.GetAtoms()}
             assert map_nums == set(range(1, num_atoms + 1))
+
+
+class TestElementValidation:
+    """A SMILES's per-atom element sequence (by local/atom-map index) must
+    agree with the COSMO file's atom table at every index, not just in
+    atom count -- catching e.g. two transposed atoms or a substituted
+    element that a count-only check would miss."""
+
+    def test_mismatched_element_at_same_atom_count_raises(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # Hydrogen sulfide, atom-mapped, has 3 atoms [S, H, H] -- same
+        # count as "O.cosmo"'s [O, H, H], so this only fails the new
+        # element-by-index check, not the pre-existing count check.
+        hydrogen_sulfide = _atom_mapped("S")
+        bad_mapping = {hydrogen_sulfide: "O.cosmo"}
+        with pytest.raises(ValueError, match="element"):
+            SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
+
+
+class TestUnmappedMultiAtomSmilesRejected:
+    """RDKit's canonical SMILES output does not preserve input atom order,
+    so an unmapped multi-atom SMILES has no reliable way to line up with a
+    COSMO file's atom order -- from_cosmo_files must reject it rather than
+    silently trust a canonicalization artifact."""
+
+    def test_unmapped_multi_atom_smiles_raises(self, tmp_path: pathlib.Path) -> None:
+        unmapped_water = Chem.MolToSmiles(Chem.AddHs(Chem.MolFromSmiles("O")))
+        with pytest.raises(ValueError, match="atom map"):
+            SegmentStore.from_cosmo_files(
+                COSMO_DATA_DIR, {unmapped_water: "O.cosmo"}, tmp_path
+            )
 
 
 class TestReservedSchemeNames:
@@ -645,16 +683,6 @@ class TestSegmentStoreSubsample:
 # --------------------------------------------------------------------- #
 
 
-def _atom_mapped(smi: str) -> str:
-    """Return `smi` with sequential 1-based atom-map numbers, hydrogens
-    included -- the convention SegmentStore stores smiles under (see GH
-    issue #43)."""
-    mol = Chem.AddHs(Chem.MolFromSmiles(smi))
-    for i, atom in enumerate(mol.GetAtoms()):
-        atom.SetAtomMapNum(i + 1)
-    return Chem.MolToSmiles(mol)
-
-
 class TestComputeAtomRemap:
     def test_merges_hydrogens_into_their_heavy_neighbor(self) -> None:
         new_local_index, new_smiles = compute_atom_remap(_atom_mapped("O"))
@@ -708,11 +736,8 @@ class TestSegmentStoreCoarseGrain:
     def test_reduces_atom_count_and_compacts_index_space(
         self, tmp_path: pathlib.Path
     ) -> None:
-        mapped_mapping = {
-            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
-        }
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
         )
         coarse = s.coarse_grain()
         coarse_num_atoms = coarse.molecules_df["num_atoms"].sum()
@@ -723,11 +748,8 @@ class TestSegmentStoreCoarseGrain:
     def test_segments_and_molecule_count_unchanged(
         self, tmp_path: pathlib.Path
     ) -> None:
-        mapped_mapping = {
-            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
-        }
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
         )
         coarse = s.coarse_grain()
         assert len(coarse.molecules_df) == len(s.molecules_df)
@@ -737,11 +759,8 @@ class TestSegmentStoreCoarseGrain:
         )
 
     def test_data_and_metadata_columns_untouched(self, tmp_path: pathlib.Path) -> None:
-        mapped_mapping = {
-            _atom_mapped(smi): filename for smi, filename in SMILES_TO_FILENAME.items()
-        }
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, mapped_mapping, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
         )
         coarse = s.coarse_grain()
         np.testing.assert_array_equal(np.asarray(coarse.data), np.asarray(s.data))
@@ -978,7 +997,7 @@ class TestCrossValidationAgainstComponent:
         component = Component(cosmo_text, merge_profiles=True)
         assert np.allclose(component.sigma_grid, grid.values)
 
-        mapped_smi = Chem.MolToSmiles(Chem.AddHs(Chem.MolFromSmiles(smi)))
+        mapped_smi = _atom_mapped(smi)
         store = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR, {mapped_smi: f"{smi}.cosmo"}, tmp_path, num_threads=1
         )
@@ -999,10 +1018,15 @@ class TestCrossValidationAgainstComponent:
 
 
 class TestReorderMolecule:
-    def test_all_zero_map_returned_unchanged(self) -> None:
+    def test_unmapped_multi_atom_raises(self) -> None:
         mol = Chem.MolFromSmiles("CCO")
+        with pytest.raises(ValueError, match="atom map"):
+            SegmentStore._reorder_molecule(mol)
+
+    def test_unmapped_single_atom_is_accepted(self) -> None:
+        mol = Chem.MolFromSmiles("[Ar]")
         reordered = SegmentStore._reorder_molecule(mol)
-        assert reordered is mol
+        assert reordered.GetNumAtoms() == 1
 
     def test_zero_based_permutation_reorders(self) -> None:
         mol = Chem.MolFromSmiles("CCO")

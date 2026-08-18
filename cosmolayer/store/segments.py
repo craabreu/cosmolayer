@@ -177,7 +177,10 @@ class SegmentStore:
 
         After reordering, atom ``i`` has ``AtomMapNum == i`` (0-based) or
         ``AtomMapNum == i + 1`` (1-based), matching the COSMO file's
-        0-based atom indices used as global atom indices.
+        0-based atom indices used as global atom indices. Atom-map numbers
+        are required: RDKit's canonical SMILES output doesn't preserve
+        input atom order, so an unmapped SMILES can't be trusted to match
+        the COSMO file's atom order.
 
         Parameters
         ----------
@@ -192,14 +195,12 @@ class SegmentStore:
         Raises
         ------
         ValueError
-            If the atom map numbers are not all 0, or a 0-based or
-            1-based permutation of the atom indices.
+            If the atom map numbers are not a 0-based or 1-based
+            permutation of the atom indices (including the unmapped case,
+            where every map number is 0).
         """
         num_atoms = mol.GetNumAtoms()
         map_nums = {atom.GetAtomMapNum() for atom in mol.GetAtoms()}
-        if map_nums == {0}:
-            return mol
-
         if map_nums in (set(range(num_atoms)), set(range(1, num_atoms + 1))):
             new_order = sorted(
                 range(num_atoms), key=lambda i: mol.GetAtomWithIdx(i).GetAtomMapNum()
@@ -207,8 +208,8 @@ class SegmentStore:
             return Chem.RenumberAtoms(mol, new_order)
 
         raise ValueError(
-            "Bad atom map numbers: must be all 0, or a 0-based or 1-based "
-            "permutation of the atom indices"
+            "Bad atom map numbers: must be a 0-based or 1-based permutation "
+            "of the atom indices"
         )
 
     @classmethod
@@ -257,15 +258,16 @@ class SegmentStore:
                 f"{filename} has {len(atom_df)}"
             )
         mol = cls._reorder_molecule(mol)
-        # Stamp 1-based atom-map numbers reflecting local (COSMO) atom
-        # index, overwriting whatever the input SMILES had (or lacked).
-        # _reorder_molecule already guarantees mol's atom order equals
-        # COSMO order at this point -- either by permutation-reorder, or,
-        # for unmapped input, by the existing trust assumption that its
-        # atom order already matched. Without this, an unmapped input's
-        # atom order would not survive Chem.MolToSmiles's default
-        # re-canonicalization once stored (see GH issue #43).
         for i, atom in enumerate(mol.GetAtoms()):
+            expected_element = atom_df["element"].iat[i]
+            if atom.GetSymbol() != expected_element:
+                raise ValueError(
+                    f"SMILES {smi!r} has element {atom.GetSymbol()!r} at "
+                    f"local atom index {i}, but {filename} has element "
+                    f"{expected_element!r} at that same index."
+                )
+            # Re-stamp 1-based, so mol's map numbers survive
+            # Chem.MolToSmiles's re-canonicalization once stored (GH #43).
             atom.SetAtomMapNum(i + 1)
         fingerprint = fingerprint_generator.generate(mol)
         return mol, atom_df, segment_df, volume, fingerprint
@@ -647,9 +649,10 @@ class SegmentStore:
         """Parse COSMO files, build a store, and write it to ``storage_dir``.
 
         Atoms are numbered in the COSMO file's 0-based order. Each SMILES
-        must have the same atom count as its COSMO file; atom-mapped SMILES
-        are reordered onto that indexing. Averaged sigmas are computed and
-        written unless ``schemes`` is an empty sequence.
+        must be atom-mapped onto that indexing (0-based or 1-based) and
+        have the same atom count and per-atom elements as its COSMO file.
+        Averaged sigmas are computed and written unless ``schemes`` is an
+        empty sequence.
 
         Parameters
         ----------
