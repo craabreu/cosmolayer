@@ -409,6 +409,8 @@
 <span class="sd">                                     segment</span>
 <span class="sd">    &lt;storage_dir&gt;/molecules.parquet columns: smiles, segment_offsets, atom_offsets,</span>
 <span class="sd">                                     num_atoms, volume, cluster_id, split (optional)</span>
+<span class="sd">    &lt;storage_dir&gt;/atoms.parquet     columns: id, element, x, y, z -- one row per atom,</span>
+<span class="sd">                                     in global atom index order</span>
 <span class="sd">    &lt;storage_dir&gt;/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}</span>
 <span class="sd">    &lt;storage_dir&gt;/&lt;scheme&gt;.npy      float32 (n_segs_total,): one per averaging scheme</span>
 
@@ -448,9 +450,10 @@
 <span class="n">DATA_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"data.npy"</span><span class="p">)</span>
 <span class="n">ATOM_INDICES_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"atom_indices.npy"</span><span class="p">)</span>
 <span class="n">MOLECULES_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"molecules.parquet"</span><span class="p">)</span>
+<span class="n">ATOMS_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"atoms.parquet"</span><span class="p">)</span>
 <span class="n">METADATA_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"metadata.json"</span><span class="p">)</span>
 
-<span class="n">_STORE_FILES</span> <span class="o">=</span> <span class="p">(</span><span class="n">DATA_FILE</span><span class="p">,</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="n">MOLECULES_FILE</span><span class="p">,</span> <span class="n">METADATA_FILE</span><span class="p">)</span>
+<span class="n">_STORE_FILES</span> <span class="o">=</span> <span class="p">(</span><span class="n">DATA_FILE</span><span class="p">,</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="n">MOLECULES_FILE</span><span class="p">,</span> <span class="n">ATOMS_FILE</span><span class="p">,</span> <span class="n">METADATA_FILE</span><span class="p">)</span>
 
 <span class="c1"># Averaged sigmas are written to "&lt;name&gt;.npy", so scheme names must not</span>
 <span class="c1"># collide with the store's own .npy stems (data, atom_indices).</span>
@@ -549,6 +552,10 @@
 <span class="sd">    molecules_df : pd.DataFrame</span>
 <span class="sd">        One row per molecule, with columns ``smiles``, ``segment_offsets``,</span>
 <span class="sd">        ``atom_offsets``, ``num_atoms``, and ``volume``.</span>
+<span class="sd">    atoms_df : pd.DataFrame</span>
+<span class="sd">        One row per atom, columns ``id``, ``element``, ``x``, ``y``, ``z``,</span>
+<span class="sd">        in global atom index order (the same index space ``atom_indices``</span>
+<span class="sd">        points into).</span>
 <span class="sd">    metadata : StoreMetadata</span>
 <span class="sd">        Molecule and parse-failure counts, plus averaging schemes already</span>
 <span class="sd">        computed for this store.</span>
@@ -562,12 +569,13 @@
 <span class="sd">        Views into ``data``'s columns.</span>
 <span class="sd">    """</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913, PLR0917</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">storage_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">,</span>
         <span class="n">data</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">],</span>
         <span class="n">atom_indices</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">],</span>
         <span class="n">molecules_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+        <span class="n">atoms_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
         <span class="n">metadata</span><span class="p">:</span> <span class="n">StoreMetadata</span><span class="p">,</span>
         <span class="n">averaged_sigmas</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">]],</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -575,6 +583,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">atom_indices</span> <span class="o">=</span> <span class="n">atom_indices</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span> <span class="o">=</span> <span class="n">molecules_df</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms_df</span> <span class="o">=</span> <span class="n">atoms_df</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span> <span class="o">=</span> <span class="n">metadata</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span> <span class="o">=</span> <span class="n">averaged_sigmas</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">coords</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,</span> <span class="p">:</span><span class="mi">3</span><span class="p">]</span>
@@ -587,7 +596,10 @@
 
 <span class="sd">        After reordering, atom ``i`` has ``AtomMapNum == i`` (0-based) or</span>
 <span class="sd">        ``AtomMapNum == i + 1`` (1-based), matching the COSMO file's</span>
-<span class="sd">        0-based atom indices used as global atom indices.</span>
+<span class="sd">        0-based atom indices used as global atom indices. Atom-map numbers</span>
+<span class="sd">        are required: RDKit's canonical SMILES output doesn't preserve</span>
+<span class="sd">        input atom order, so an unmapped SMILES can't be trusted to match</span>
+<span class="sd">        the COSMO file's atom order.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -602,14 +614,12 @@
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
-<span class="sd">            If the atom map numbers are not all 0, or a 0-based or</span>
-<span class="sd">            1-based permutation of the atom indices.</span>
+<span class="sd">            If the atom map numbers are not a 0-based or 1-based</span>
+<span class="sd">            permutation of the atom indices (including the unmapped case,</span>
+<span class="sd">            where every map number is 0).</span>
 <span class="sd">        """</span>
         <span class="n">num_atoms</span> <span class="o">=</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span>
         <span class="n">map_nums</span> <span class="o">=</span> <span class="p">{</span><span class="n">atom</span><span class="o">.</span><span class="n">GetAtomMapNum</span><span class="p">()</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetAtoms</span><span class="p">()}</span>
-        <span class="k">if</span> <span class="n">map_nums</span> <span class="o">==</span> <span class="p">{</span><span class="mi">0</span><span class="p">}:</span>
-            <span class="k">return</span> <span class="n">mol</span>
-
         <span class="k">if</span> <span class="n">map_nums</span> <span class="ow">in</span> <span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">)),</span> <span class="nb">set</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">num_atoms</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))):</span>
             <span class="n">new_order</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span>
                 <span class="nb">range</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetAtomWithIdx</span><span class="p">(</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">GetAtomMapNum</span><span class="p">()</span>
@@ -617,8 +627,8 @@
             <span class="k">return</span> <span class="n">Chem</span><span class="o">.</span><span class="n">RenumberAtoms</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">new_order</span><span class="p">)</span>
 
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">"Bad atom map numbers: must be all 0, or a 0-based or 1-based "</span>
-            <span class="s2">"permutation of the atom indices"</span>
+            <span class="s2">"Bad atom map numbers: must be a 0-based or 1-based permutation "</span>
+            <span class="s2">"of the atom indices"</span>
         <span class="p">)</span>
 
     <span class="nd">@classmethod</span>
@@ -667,15 +677,16 @@
                 <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2"> has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
             <span class="p">)</span>
         <span class="n">mol</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_reorder_molecule</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span>
-        <span class="c1"># Stamp 1-based atom-map numbers reflecting local (COSMO) atom</span>
-        <span class="c1"># index, overwriting whatever the input SMILES had (or lacked).</span>
-        <span class="c1"># _reorder_molecule already guarantees mol's atom order equals</span>
-        <span class="c1"># COSMO order at this point -- either by permutation-reorder, or,</span>
-        <span class="c1"># for unmapped input, by the existing trust assumption that its</span>
-        <span class="c1"># atom order already matched. Without this, an unmapped input's</span>
-        <span class="c1"># atom order would not survive Chem.MolToSmiles's default</span>
-        <span class="c1"># re-canonicalization once stored (see GH issue #43).</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">atom</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">GetAtoms</span><span class="p">()):</span>
+            <span class="n">expected_element</span> <span class="o">=</span> <span class="n">atom_df</span><span class="p">[</span><span class="s2">"element"</span><span class="p">]</span><span class="o">.</span><span class="n">iat</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">atom</span><span class="o">.</span><span class="n">GetSymbol</span><span class="p">()</span> <span class="o">!=</span> <span class="n">expected_element</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2"> has element </span><span class="si">{</span><span class="n">atom</span><span class="o">.</span><span class="n">GetSymbol</span><span class="p">()</span><span class="si">!r}</span><span class="s2"> at "</span>
+                    <span class="sa">f</span><span class="s2">"local atom index </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">, but </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2"> has element "</span>
+                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">expected_element</span><span class="si">!r}</span><span class="s2"> at that same index."</span>
+                <span class="p">)</span>
+            <span class="c1"># Re-stamp 1-based, so mol's map numbers survive</span>
+            <span class="c1"># Chem.MolToSmiles's re-canonicalization once stored (GH #43).</span>
             <span class="n">atom</span><span class="o">.</span><span class="n">SetAtomMapNum</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
         <span class="n">fingerprint</span> <span class="o">=</span> <span class="n">fingerprint_generator</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">mol</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">fingerprint</span>
@@ -880,9 +891,9 @@
 <span class="sd">        for stores built after GH issue #43's fix). No molecule or</span>
 <span class="sd">        segment is ever dropped -- only atom attribution shrinks -- so</span>
 <span class="sd">        ``segment_offsets``, ``data``, and every ``averaged_sigmas`` array</span>
-<span class="sd">        carry through unchanged; only ``atom_indices`` and</span>
-<span class="sd">        ``molecules_df``'s ``smiles``/``num_atoms``/``atom_offsets``</span>
-<span class="sd">        columns change.</span>
+<span class="sd">        carry through unchanged; ``atom_indices``, ``atoms_df`` (rows for</span>
+<span class="sd">        merged hydrogens dropped), and ``molecules_df``'s</span>
+<span class="sd">        ``smiles``/``num_atoms``/``atom_offsets`` columns change.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -907,11 +918,16 @@
         <span class="n">new_num_atoms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n_mols</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
         <span class="n">new_smiles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">""</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_mols</span>
         <span class="n">remaps</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[{}]</span> <span class="o">*</span> <span class="n">n_mols</span>
+        <span class="n">survivor_masks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">)]</span> <span class="o">*</span> <span class="n">n_mols</span>
         <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">smi</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"smiles"</span><span class="p">]):</span>
-            <span class="n">remap</span><span class="p">,</span> <span class="n">mapped_smiles</span> <span class="o">=</span> <span class="n">compute_atom_remap</span><span class="p">(</span><span class="n">smi</span><span class="p">)</span>
+            <span class="n">remap</span><span class="p">,</span> <span class="n">survivors</span><span class="p">,</span> <span class="n">mapped_smiles</span> <span class="o">=</span> <span class="n">compute_atom_remap</span><span class="p">(</span><span class="n">smi</span><span class="p">)</span>
             <span class="n">remaps</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">remap</span>
             <span class="n">new_num_atoms</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">remap</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
             <span class="n">new_smiles</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">mapped_smiles</span>
+            <span class="n">num_atoms_m</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"num_atoms"</span><span class="p">]</span><span class="o">.</span><span class="n">iat</span><span class="p">[</span><span class="n">m</span><span class="p">])</span>
+            <span class="n">survivor_masks</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">j</span> <span class="ow">in</span> <span class="n">survivors</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_atoms_m</span><span class="p">)],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">bool_</span>
+            <span class="p">)</span>
 
         <span class="n">new_atom_offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_mols</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
         <span class="n">new_atom_offsets</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">new_num_atoms</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
@@ -933,6 +949,9 @@
         <span class="n">new_molecules_df</span><span class="p">[</span><span class="s2">"num_atoms"</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_num_atoms</span>
         <span class="n">new_molecules_df</span><span class="p">[</span><span class="s2">"atom_offsets"</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_atom_offsets</span>
 
+        <span class="n">atom_survives</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">survivor_masks</span><span class="p">)</span>
+        <span class="n">new_atoms_df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms_df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">atom_survives</span><span class="p">]</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
         <span class="n">metadata</span> <span class="o">=</span> <span class="n">StoreMetadata</span><span class="p">(</span>
             <span class="n">num_molecules</span><span class="o">=</span><span class="n">n_mols</span><span class="p">,</span>
             <span class="n">num_cosmo_parse_failures</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">num_cosmo_parse_failures</span><span class="p">,</span>
@@ -943,6 +962,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
             <span class="n">new_atom_indices</span><span class="p">,</span>
             <span class="n">new_molecules_df</span><span class="p">,</span>
+            <span class="n">new_atoms_df</span><span class="p">,</span>
             <span class="n">metadata</span><span class="p">,</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span><span class="p">,</span>
         <span class="p">)</span></div>
@@ -971,6 +991,7 @@
         <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">DATA_FILE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
         <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">atom_indices</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="o">.</span><span class="n">to_parquet</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">MOLECULES_FILE</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms_df</span><span class="o">.</span><span class="n">to_parquet</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">ATOMS_FILE</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.npy"</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">))</span>
 
@@ -1052,6 +1073,7 @@
         <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">DATA_FILE</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
         <span class="n">atom_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
         <span class="n">molecules_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">MOLECULES_FILE</span><span class="p">)</span>
+        <span class="n">atoms_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">ATOMS_FILE</span><span class="p">)</span>
 
         <span class="n">averaged_sigmas</span> <span class="o">=</span> <span class="p">{</span>
             <span class="n">name</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.npy"</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
@@ -1059,7 +1081,13 @@
         <span class="p">}</span>
 
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
-            <span class="n">storage_dir</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">atom_indices</span><span class="p">,</span> <span class="n">molecules_df</span><span class="p">,</span> <span class="n">metadata</span><span class="p">,</span> <span class="n">averaged_sigmas</span>
+            <span class="n">storage_dir</span><span class="p">,</span>
+            <span class="n">data</span><span class="p">,</span>
+            <span class="n">atom_indices</span><span class="p">,</span>
+            <span class="n">molecules_df</span><span class="p">,</span>
+            <span class="n">atoms_df</span><span class="p">,</span>
+            <span class="n">metadata</span><span class="p">,</span>
+            <span class="n">averaged_sigmas</span><span class="p">,</span>
         <span class="p">)</span></div>
 
 
@@ -1080,9 +1108,10 @@
 <span class="w">        </span><span class="sd">"""Parse COSMO files, build a store, and write it to ``storage_dir``.</span>
 
 <span class="sd">        Atoms are numbered in the COSMO file's 0-based order. Each SMILES</span>
-<span class="sd">        must have the same atom count as its COSMO file; atom-mapped SMILES</span>
-<span class="sd">        are reordered onto that indexing. Averaged sigmas are computed and</span>
-<span class="sd">        written unless ``schemes`` is an empty sequence.</span>
+<span class="sd">        must be atom-mapped onto that indexing (0-based or 1-based) and</span>
+<span class="sd">        have the same atom count and per-atom elements as its COSMO file.</span>
+<span class="sd">        Averaged sigmas are computed and written unless ``schemes`` is an</span>
+<span class="sd">        empty sequence.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -1132,7 +1161,7 @@
         <span class="k">if</span> <span class="n">clustering_specs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">clustering_specs</span> <span class="o">=</span> <span class="n">ClusteringSpecs</span><span class="p">()</span>
 
-        <span class="n">data_chunks</span><span class="p">,</span> <span class="n">atoms_chunks</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="n">data_chunks</span><span class="p">,</span> <span class="n">atoms_chunks</span><span class="p">,</span> <span class="n">atom_tables</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
         <span class="n">segment_offsets</span><span class="p">,</span> <span class="n">segment_offset</span> <span class="o">=</span> <span class="p">[],</span> <span class="mi">0</span>
         <span class="n">atom_offsets</span><span class="p">,</span> <span class="n">atom_offset</span> <span class="o">=</span> <span class="p">[],</span> <span class="mi">0</span>
         <span class="n">fingerprints</span> <span class="o">=</span> <span class="p">[]</span>
@@ -1161,6 +1190,7 @@
                 <span class="n">segment_df</span><span class="p">[[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">,</span> <span class="s2">"charge"</span><span class="p">,</span> <span class="s2">"area"</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"float32"</span><span class="p">)</span>
             <span class="p">)</span>
             <span class="n">atoms_chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_df</span><span class="p">[</span><span class="s2">"atom"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">)</span> <span class="o">+</span> <span class="n">atom_offset</span><span class="p">)</span>
+            <span class="n">atom_tables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atom_df</span><span class="p">[[</span><span class="s2">"id"</span><span class="p">,</span> <span class="s2">"element"</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">]])</span>
             <span class="n">fingerprints</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
             <span class="n">segment_offsets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_offset</span><span class="p">)</span>
             <span class="n">segment_offset</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">segment_df</span><span class="p">)</span>
@@ -1178,6 +1208,7 @@
 
         <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">data_chunks</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="n">atom_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">atoms_chunks</span><span class="p">)</span>
+        <span class="n">atoms_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">atom_tables</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">molecules_df</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_build_molecules_df</span><span class="p">(</span>
             <span class="n">successful_molecules</span><span class="p">,</span>
             <span class="n">segment_offsets</span><span class="p">,</span>
@@ -1192,7 +1223,13 @@
         <span class="p">)</span>
 
         <span class="n">store</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">(</span>
-            <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">storage_dir</span><span class="p">),</span> <span class="n">data</span><span class="p">,</span> <span class="n">atom_indices</span><span class="p">,</span> <span class="n">molecules_df</span><span class="p">,</span> <span class="n">metadata</span><span class="p">,</span> <span class="p">{}</span>
+            <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">storage_dir</span><span class="p">),</span>
+            <span class="n">data</span><span class="p">,</span>
+            <span class="n">atom_indices</span><span class="p">,</span>
+            <span class="n">molecules_df</span><span class="p">,</span>
+            <span class="n">atoms_df</span><span class="p">,</span>
+            <span class="n">metadata</span><span class="p">,</span>
+            <span class="p">{},</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="n">schemes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">schemes</span><span class="p">:</span>
             <span class="n">resolved_schemes</span> <span class="o">=</span> <span class="n">AVERAGING_SCHEMES</span> <span class="k">if</span> <span class="n">schemes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">schemes</span>
