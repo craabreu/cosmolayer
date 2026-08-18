@@ -421,7 +421,7 @@ atom- and molecule-level charges, areas, and sigma profiles.</p>
 </p>
 <div class="highlight-default notranslate" id="id0"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">cosmostore</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="o">--</span><span class="n">storage</span><span class="o">-</span><span class="nb">dir</span> <span class="n">STORAGE_DIR</span>
                   <span class="p">[</span><span class="o">--</span><span class="n">cosmo</span><span class="o">-</span><span class="n">files</span><span class="o">-</span><span class="nb">dir</span> <span class="n">COSMO_FILES_DIR</span><span class="p">]</span>
-                  <span class="p">[</span><span class="o">--</span><span class="n">smiles</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">filename</span> <span class="n">SMILES_TO_FILENAME</span><span class="p">]</span>
+                  <span class="p">[</span><span class="o">--</span><span class="n">smiles</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">filenames</span> <span class="n">SMILES_TO_FILENAMES</span><span class="p">]</span>
                   <span class="p">[</span><span class="o">--</span><span class="n">num</span><span class="o">-</span><span class="n">threads</span> <span class="n">NUM_THREADS</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">sigma</span><span class="o">-</span><span class="n">scheme</span> <span class="n">SIGMA_SCHEME</span><span class="p">]</span>
 </pre></div>
 </div>
@@ -432,10 +432,10 @@ atom- and molecule-level charges, areas, and sigma profiles.</p>
 <dd><p>The directory to store (or load) the segment data.</p>
 </dd>
 <dt><kbd>--cosmo-files-dir</kbd></dt>
-<dd><p>Directory containing the .cosmo files referenced by –smiles-to-filename. Required only if –storage-dir doesn’t already hold a built store.</p>
+<dd><p>Directory containing the .cosmo files referenced by –smiles-to-filenames. Required only if –storage-dir doesn’t already hold a built store.</p>
 </dd>
-<dt><kbd>--smiles-to-filename</kbd></dt>
-<dd><p>Path to a JSON file mapping each SMILES string to its .cosmo filename (relative to –cosmo-files-dir). Required only if –storage-dir doesn’t already hold a built store.</p>
+<dt><kbd>--smiles-to-filenames</kbd></dt>
+<dd><p>Path to a JSON file mapping each SMILES string to its .cosmo filename, or a list of filenames for multiple conformers of the same molecule (relative to –cosmo-files-dir). Required only if –storage-dir doesn’t already hold a built store.</p>
 </dd>
 <dt><kbd>--num-threads</kbd></dt>
 <dd><p>Number of threads to use for every threaded step (segment averaging, sigma-profile binning). Defaults to every available CPU core – lower this on a shared machine to leave headroom for other users.</p>
