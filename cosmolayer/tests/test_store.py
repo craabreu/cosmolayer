@@ -33,6 +33,7 @@ from cosmolayer.store.binning import (
     row_indices_from_offsets,
 )
 from cosmolayer.store.clustering import FingerprintGenerator, butina_cluster
+from cosmolayer.store.segments import _SMILES_PARSER_PARAMS
 
 COSMO_DATA_DIR = pathlib.Path(str(files("cosmolayer.data")))
 # Each .cosmo fixture's atom table includes explicit hydrogens, so the
@@ -243,6 +244,25 @@ class TestSegmentStoreRoundTrip:
         bad_mapping = {"CCCC": "O.cosmo"}
         with pytest.raises(ValueError):
             SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
+
+
+class TestStoredSmilesIsAlwaysAtomMapped:
+    """molecules_df["smiles"] must carry atom-map numbers reflecting local
+    (COSMO) atom index, even when the caller's input SMILES had none --
+    otherwise atom order isn't recoverable from a *stored* string after
+    Chem.MolToSmiles's default re-canonicalization. See GH issue #43."""
+
+    def test_atom_map_numbers_present_for_unmapped_input(
+        self, store: SegmentStore
+    ) -> None:
+        # SMILES_TO_FILENAME (used to build `store`) has no atom-map
+        # numbers on its input SMILES.
+        for smi, num_atoms in zip(
+            store.molecules_df["smiles"], store.molecules_df["num_atoms"], strict=True
+        ):
+            mol = Chem.MolFromSmiles(smi, _SMILES_PARSER_PARAMS)
+            map_nums = {atom.GetAtomMapNum() for atom in mol.GetAtoms()}
+            assert map_nums == set(range(1, num_atoms + 1))
 
 
 class TestReservedSchemeNames:
