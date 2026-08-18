@@ -43,6 +43,7 @@ from .clustering import ClusteringSpecs, FingerprintGenerator, butina_cluster
 from .grid import DEFAULT_SIGMA_GRID, SigmaGrid
 from .profiles import SigmaProfileTable
 from .splitting import greedy_cluster_split
+from .subsampling import apportion_counts, restrict_to_molecules
 
 DATA_FILE = pathlib.Path("data.npy")
 ATOM_INDICES_FILE = pathlib.Path("atom_indices.npy")
@@ -364,6 +365,77 @@ class SegmentStore:
         labels = greedy_cluster_split(cluster_ids, fractions)
         self.molecules_df["split"] = labels
         return labels
+
+    def subsample(
+        self, num_molecules: int, shuffle_seed: int | None = None
+    ) -> "SegmentStore":
+        """Return a new, unsaved store shrunk to ``num_molecules``, without
+        moving any molecule across its existing ``split``.
+
+        Requires ``molecules_df["split"]`` to already exist (see
+        ``assign_splits``) -- split membership must be fixed *before*
+        subsampling, since ``num_molecules`` is apportioned across the
+        existing splits' own sizes and molecules are only ever dropped from
+        within a split, never moved to another one. This is what keeps a
+        test molecule from ending up in train/val just because the store
+        got smaller.
+
+        Parameters
+        ----------
+        num_molecules : int
+            Total number of molecules to keep, summed across all splits.
+            Must be positive and not exceed the current molecule count.
+        shuffle_seed : int | None, optional
+            If given, each split's share is a uniform random sample without
+            replacement, drawn with this seed. ``None`` (default) instead
+            keeps the first molecules in row order within each split, a
+            deterministic choice.
+
+        Returns
+        -------
+        SegmentStore
+            A new store (see ``subsampling.restrict_to_molecules``) with
+            the same ``storage_dir`` as this one -- pass a real directory
+            to ``save`` to persist it.
+
+        Raises
+        ------
+        ValueError
+            If ``molecules_df`` has no ``split`` column, or if
+            ``num_molecules`` is not positive or exceeds the current
+            molecule count.
+        """
+        if "split" not in self.molecules_df.columns:
+            raise ValueError(
+                "molecules_df has no 'split' column; call assign_splits "
+                "before subsample."
+            )
+        n_total = len(self.molecules_df)
+        if num_molecules <= 0 or num_molecules > n_total:
+            raise ValueError(
+                f"num_molecules ({num_molecules}) must be positive and not "
+                f"exceed the current molecule count ({n_total})."
+            )
+
+        split_labels = self.molecules_df["split"].to_numpy()
+        split_names = list(dict.fromkeys(split_labels))
+        members_by_split = [
+            np.flatnonzero(split_labels == name) for name in split_names
+        ]
+        sizes = np.array([len(m) for m in members_by_split])
+        target_counts = apportion_counts(sizes, num_molecules)
+
+        rng = np.random.default_rng(shuffle_seed) if shuffle_seed is not None else None
+        chosen_parts = []
+        for members, raw_target in zip(members_by_split, target_counts, strict=True):
+            target = int(raw_target)
+            chosen_parts.append(
+                members[:target]
+                if rng is None
+                else rng.choice(members, size=target, replace=False)
+            )
+        selected = np.sort(np.concatenate(chosen_parts))
+        return restrict_to_molecules(self, selected)
 
     def save(self, storage_dir: pathlib.Path | str | None = None) -> None:
         """Write this store's arrays, table, metadata, and averaged
