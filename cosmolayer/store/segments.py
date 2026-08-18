@@ -256,6 +256,16 @@ class SegmentStore:
                 f"{filename} has {len(atom_df)}"
             )
         mol = cls._reorder_molecule(mol)
+        # Stamp 1-based atom-map numbers reflecting local (COSMO) atom
+        # index, overwriting whatever the input SMILES had (or lacked).
+        # _reorder_molecule already guarantees mol's atom order equals
+        # COSMO order at this point -- either by permutation-reorder, or,
+        # for unmapped input, by the existing trust assumption that its
+        # atom order already matched. Without this, an unmapped input's
+        # atom order would not survive Chem.MolToSmiles's default
+        # re-canonicalization once stored (see GH issue #43).
+        for i, atom in enumerate(mol.GetAtoms()):
+            atom.SetAtomMapNum(i + 1)
         fingerprint = fingerprint_generator.generate(mol)
         return mol, atom_df, segment_df, volume, fingerprint
 
