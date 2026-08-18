@@ -6,7 +6,7 @@ per-atom or per-molecule sigma profiles::
     from cosmolayer.store import SegmentStore
 
     store = SegmentStore.from_cosmo_files(
-        cosmo_files_dir, smiles_to_filename, storage_dir
+        cosmo_files_dir, smiles_to_filenames, storage_dir
     )
     profiles = store.compute_molecule_sigma_profiles()
 """

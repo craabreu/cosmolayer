@@ -660,11 +660,50 @@ class SegmentStore:
             averaged_sigmas,
         )
 
+    @staticmethod
+    def _flatten_smiles_to_filenames(
+        smiles_to_filenames: Mapping[str, str | list[str]],
+    ) -> list[tuple[str, str]]:
+        """Expand a SMILES-to-filename(s) mapping into an ordered list of
+        ``(smiles, filename)`` pairs, one per ``.cosmo`` file.
+
+        Parameters
+        ----------
+        smiles_to_filenames : Mapping[str, str | list[str]]
+            SMILES string to a single ``.cosmo`` filename, or a list of
+            them (e.g. multiple conformers of the same molecule).
+
+        Returns
+        -------
+        list[tuple[str, str]]
+            ``(smiles, filename)`` pairs, in input order; a SMILES mapped
+            to a list of filenames yields one pair per filename, in that
+            list's order.
+
+        Raises
+        ------
+        ValueError
+            If a value is neither a ``str`` nor a non-empty list of
+            ``str``.
+        """
+        pairs: list[tuple[str, str]] = []
+        for smi, filenames in smiles_to_filenames.items():
+            if isinstance(filenames, str):
+                pairs.append((smi, filenames))
+            elif isinstance(filenames, list) and filenames:
+                pairs.extend((smi, filename) for filename in filenames)
+            else:
+                raise ValueError(
+                    f"smiles_to_filenames[{smi!r}] must be a filename (str) "
+                    f"or a non-empty list of filenames, got {filenames!r}."
+                )
+        return pairs
+
     @classmethod
     def from_cosmo_files(  # noqa: PLR0913, PLR0917
         cls,
         cosmo_files_dir: pathlib.Path,
-        smiles_to_filename: dict[str, str],
+        smiles_to_filenames: Mapping[str, str | list[str]],
         storage_dir: pathlib.Path,
         ignore_errors: bool = False,
         schemes: Sequence[AveragingScheme] | None = None,
@@ -684,10 +723,12 @@ class SegmentStore:
         ----------
         cosmo_files_dir : pathlib.Path
             Directory containing the ``.cosmo`` files named by
-            ``smiles_to_filename``'s values.
-        smiles_to_filename : dict[str, str]
-            SMILES string to ``.cosmo`` filename (relative to
-            ``cosmo_files_dir``), one entry per molecule to store.
+            ``smiles_to_filenames``'s values.
+        smiles_to_filenames : Mapping[str, str | list[str]]
+            SMILES string to ``.cosmo`` filename(s) (relative to
+            ``cosmo_files_dir``). A SMILES mapped to a list of filenames
+            (e.g. multiple conformers of the same molecule) yields one
+            ``molecules_df`` row per filename, all sharing that SMILES.
         storage_dir : pathlib.Path
             Destination directory for the output files. Created if
             missing.
@@ -739,7 +780,8 @@ class SegmentStore:
         fingerprint_generator = FingerprintGenerator(clustering_specs)
 
         for smi, filename in tqdm(
-            smiles_to_filename.items(), desc="Processing COSMO files"
+            cls._flatten_smiles_to_filenames(smiles_to_filenames),
+            desc="Processing COSMO files",
         ):
             try:
                 mol, atom_df, segment_df, volume, fingerprint = cls._parse_molecule(

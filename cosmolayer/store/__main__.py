@@ -5,7 +5,7 @@ profiles.
 Run as::
 
     cosmostore --storage-dir DIR \\
-        --cosmo-files-dir DIR --smiles-to-filename FILE.json
+        --cosmo-files-dir DIR --smiles-to-filenames FILE.json
 """
 
 import argparse
@@ -58,18 +58,19 @@ def get_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Directory containing the .cosmo files referenced by "
-            "--smiles-to-filename. Required only if --storage-dir doesn't "
+            "--smiles-to-filenames. Required only if --storage-dir doesn't "
             "already hold a built store."
         ),
     )
     arg_parser.add_argument(
-        "--smiles-to-filename",
+        "--smiles-to-filenames",
         type=str,
         default=None,
         help=(
             "Path to a JSON file mapping each SMILES string to its .cosmo "
-            "filename (relative to --cosmo-files-dir). Required only if "
-            "--storage-dir doesn't already hold a built store."
+            "filename, or a list of filenames for multiple conformers of "
+            "the same molecule (relative to --cosmo-files-dir). Required "
+            "only if --storage-dir doesn't already hold a built store."
         ),
     )
     arg_parser.add_argument(
@@ -105,21 +106,21 @@ def _ensure_store_built(
     if SegmentStore.exists(storage_dir):
         print("Segment data already exists.")
         return
-    if args.cosmo_files_dir is None or args.smiles_to_filename is None:
+    if args.cosmo_files_dir is None or args.smiles_to_filenames is None:
         arg_parser.error(
-            "--cosmo-files-dir and --smiles-to-filename are required "
+            "--cosmo-files-dir and --smiles-to-filenames are required "
             f"when --storage-dir ({storage_dir}) doesn't already hold "
             "a built store."
         )
     print("Storing segment data and averaged sigmas...")
     cosmo_files_dir = pathlib.Path(args.cosmo_files_dir)
-    with open(args.smiles_to_filename) as f:
-        smiles_to_filename = json.load(f)
+    with open(args.smiles_to_filenames) as f:
+        smiles_to_filenames = json.load(f)
     _timed(
         "store segment data and averaged sigmas",
         lambda: SegmentStore.from_cosmo_files(
             cosmo_files_dir,
-            smiles_to_filename,
+            smiles_to_filenames,
             storage_dir,
             num_threads=args.num_threads,
         ),

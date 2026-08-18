@@ -285,6 +285,50 @@ class TestSegmentStoreRoundTrip:
             SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
 
 
+class TestMultipleFilenamesPerSmiles:
+    """A SMILES may map to more than one .cosmo file (e.g. multiple
+    conformers); each file gets its own molecules_df row."""
+
+    def test_list_of_filenames_yields_one_row_per_file(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        water_smi = _atom_mapped("O")
+        mapping: dict[str, str | list[str]] = {
+            water_smi: ["O.cosmo", "O.cosmo"],
+            _atom_mapped("CF"): "CF.cosmo",
+        }
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapping, tmp_path, num_threads=1
+        )
+        assert s.metadata.num_molecules == 3
+        assert len(s.molecules_df) == 3
+        assert list(s.molecules_df["smiles"]).count(water_smi) == 2
+
+    def test_conformer_rows_have_distinct_offsets(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        water_smi = _atom_mapped("O")
+        mapping: dict[str, str | list[str]] = {water_smi: ["O.cosmo", "O.cosmo"]}
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapping, tmp_path, num_threads=1
+        )
+        conformer_rows = s.molecules_df.loc[s.molecules_df["smiles"] == water_smi]
+        assert list(conformer_rows["segment_offsets"]) == sorted(
+            set(conformer_rows["segment_offsets"])
+        )
+        assert list(conformer_rows["atom_offsets"]) == sorted(
+            set(conformer_rows["atom_offsets"])
+        )
+
+    def test_empty_filename_list_raises(self) -> None:
+        with pytest.raises(ValueError, match="C"):
+            SegmentStore._flatten_smiles_to_filenames({"C": []})
+
+    def test_non_str_non_list_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="C"):
+            SegmentStore._flatten_smiles_to_filenames({"C": 123})  # ty: ignore[invalid-argument-type]
+
+
 class TestStoredSmilesIsAlwaysAtomMapped:
     """molecules_df["smiles"] must carry atom-map numbers reflecting local
     (COSMO) atom index -- otherwise atom order isn't recoverable from a
