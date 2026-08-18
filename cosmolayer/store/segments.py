@@ -10,6 +10,8 @@ load an existing one with ``SegmentStore.load``. Both use a flat
                                      segment
     <storage_dir>/molecules.parquet columns: smiles, segment_offsets, atom_offsets,
                                      num_atoms, volume, cluster_id, split (optional)
+    <storage_dir>/atoms.parquet     columns: id, element, x, y, z -- one row per atom,
+                                     in global atom index order
     <storage_dir>/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}
     <storage_dir>/<scheme>.npy      float32 (n_segs_total,): one per averaging scheme
 
@@ -49,9 +51,10 @@ from .subsampling import apportion_counts, restrict_to_molecules
 DATA_FILE = pathlib.Path("data.npy")
 ATOM_INDICES_FILE = pathlib.Path("atom_indices.npy")
 MOLECULES_FILE = pathlib.Path("molecules.parquet")
+ATOMS_FILE = pathlib.Path("atoms.parquet")
 METADATA_FILE = pathlib.Path("metadata.json")
 
-_STORE_FILES = (DATA_FILE, ATOM_INDICES_FILE, MOLECULES_FILE, METADATA_FILE)
+_STORE_FILES = (DATA_FILE, ATOM_INDICES_FILE, MOLECULES_FILE, ATOMS_FILE, METADATA_FILE)
 
 # Averaged sigmas are written to "<name>.npy", so scheme names must not
 # collide with the store's own .npy stems (data, atom_indices).
@@ -139,6 +142,10 @@ class SegmentStore:
     molecules_df : pd.DataFrame
         One row per molecule, with columns ``smiles``, ``segment_offsets``,
         ``atom_offsets``, ``num_atoms``, and ``volume``.
+    atoms_df : pd.DataFrame
+        One row per atom, columns ``id``, ``element``, ``x``, ``y``, ``z``,
+        in global atom index order (the same index space ``atom_indices``
+        points into).
     metadata : StoreMetadata
         Molecule and parse-failure counts, plus averaging schemes already
         computed for this store.
@@ -152,12 +159,13 @@ class SegmentStore:
         Views into ``data``'s columns.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917
         self,
         storage_dir: pathlib.Path,
         data: NDArray[np.float32],
         atom_indices: NDArray[np.int64],
         molecules_df: pd.DataFrame,
+        atoms_df: pd.DataFrame,
         metadata: StoreMetadata,
         averaged_sigmas: dict[str, NDArray[np.float32]],
     ) -> None:
@@ -165,6 +173,7 @@ class SegmentStore:
         self.data = data
         self.atom_indices = atom_indices
         self.molecules_df = molecules_df
+        self.atoms_df = atoms_df
         self.metadata = metadata
         self.averaged_sigmas = averaged_sigmas
         self.coords = data[:, :3]
@@ -461,9 +470,9 @@ class SegmentStore:
         for stores built after GH issue #43's fix). No molecule or
         segment is ever dropped -- only atom attribution shrinks -- so
         ``segment_offsets``, ``data``, and every ``averaged_sigmas`` array
-        carry through unchanged; only ``atom_indices`` and
-        ``molecules_df``'s ``smiles``/``num_atoms``/``atom_offsets``
-        columns change.
+        carry through unchanged; ``atom_indices``, ``atoms_df`` (rows for
+        merged hydrogens dropped), and ``molecules_df``'s
+        ``smiles``/``num_atoms``/``atom_offsets`` columns change.
 
         Returns
         -------
@@ -488,11 +497,16 @@ class SegmentStore:
         new_num_atoms = np.empty(n_mols, dtype=np.int64)
         new_smiles: list[str] = [""] * n_mols
         remaps: list[dict[int, int]] = [{}] * n_mols
+        survivor_masks: list[NDArray[np.bool_]] = [np.empty(0, dtype=np.bool_)] * n_mols
         for m, smi in enumerate(molecules_df["smiles"]):
-            remap, mapped_smiles = compute_atom_remap(smi)
+            remap, survivors, mapped_smiles = compute_atom_remap(smi)
             remaps[m] = remap
             new_num_atoms[m] = len(set(remap.values()))
             new_smiles[m] = mapped_smiles
+            num_atoms_m = int(molecules_df["num_atoms"].iat[m])
+            survivor_masks[m] = np.array(
+                [j in survivors for j in range(num_atoms_m)], dtype=np.bool_
+            )
 
         new_atom_offsets = np.zeros(n_mols, dtype=np.int64)
         new_atom_offsets[1:] = np.cumsum(new_num_atoms)[:-1]
@@ -514,6 +528,9 @@ class SegmentStore:
         new_molecules_df["num_atoms"] = new_num_atoms
         new_molecules_df["atom_offsets"] = new_atom_offsets
 
+        atom_survives = np.concatenate(survivor_masks)
+        new_atoms_df = self.atoms_df.iloc[atom_survives].reset_index(drop=True)
+
         metadata = StoreMetadata(
             num_molecules=n_mols,
             num_cosmo_parse_failures=self.metadata.num_cosmo_parse_failures,
@@ -524,6 +541,7 @@ class SegmentStore:
             self.data,
             new_atom_indices,
             new_molecules_df,
+            new_atoms_df,
             metadata,
             self.averaged_sigmas,
         )
@@ -549,6 +567,7 @@ class SegmentStore:
         np.save(storage_dir / DATA_FILE, self.data)
         np.save(storage_dir / ATOM_INDICES_FILE, self.atom_indices)
         self.molecules_df.to_parquet(storage_dir / MOLECULES_FILE, index=False)
+        self.atoms_df.to_parquet(storage_dir / ATOMS_FILE, index=False)
         for name, arr in self.averaged_sigmas.items():
             np.save(storage_dir / f"{name}.npy", np.asarray(arr, dtype=np.float32))
 
@@ -624,6 +643,7 @@ class SegmentStore:
         data = np.load(storage_dir / DATA_FILE, mmap_mode="r")
         atom_indices = np.load(storage_dir / ATOM_INDICES_FILE, mmap_mode="r")
         molecules_df = pd.read_parquet(storage_dir / MOLECULES_FILE)
+        atoms_df = pd.read_parquet(storage_dir / ATOMS_FILE)
 
         averaged_sigmas = {
             name: np.load(storage_dir / f"{name}.npy", mmap_mode="r")
@@ -631,7 +651,13 @@ class SegmentStore:
         }
 
         return cls(
-            storage_dir, data, atom_indices, molecules_df, metadata, averaged_sigmas
+            storage_dir,
+            data,
+            atom_indices,
+            molecules_df,
+            atoms_df,
+            metadata,
+            averaged_sigmas,
         )
 
     @classmethod
@@ -702,7 +728,7 @@ class SegmentStore:
         if clustering_specs is None:
             clustering_specs = ClusteringSpecs()
 
-        data_chunks, atoms_chunks = [], []
+        data_chunks, atoms_chunks, atom_tables = [], [], []
         segment_offsets, segment_offset = [], 0
         atom_offsets, atom_offset = [], 0
         fingerprints = []
@@ -731,6 +757,7 @@ class SegmentStore:
                 segment_df[["x", "y", "z", "charge", "area"]].values.astype("float32")
             )
             atoms_chunks.append(segment_df["atom"].values.astype("int64") + atom_offset)
+            atom_tables.append(atom_df[["id", "element", "x", "y", "z"]])
             fingerprints.append(fingerprint)
             segment_offsets.append(segment_offset)
             segment_offset += len(segment_df)
@@ -748,6 +775,7 @@ class SegmentStore:
 
         data = np.concatenate(data_chunks, axis=0)
         atom_indices = np.concatenate(atoms_chunks)
+        atoms_df = pd.concat(atom_tables, ignore_index=True)
         molecules_df = cls._build_molecules_df(
             successful_molecules,
             segment_offsets,
@@ -762,7 +790,13 @@ class SegmentStore:
         )
 
         store = cls(
-            pathlib.Path(storage_dir), data, atom_indices, molecules_df, metadata, {}
+            pathlib.Path(storage_dir),
+            data,
+            atom_indices,
+            molecules_df,
+            atoms_df,
+            metadata,
+            {},
         )
         if schemes is None or schemes:
             resolved_schemes = AVERAGING_SCHEMES if schemes is None else schemes

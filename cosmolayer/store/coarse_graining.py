@@ -13,7 +13,9 @@ neighbor.
 from rdkit import Chem
 
 
-def compute_atom_remap(mapped_smiles: str) -> tuple[dict[int, int], str]:
+def compute_atom_remap(
+    mapped_smiles: str,
+) -> tuple[dict[int, int], frozenset[int], str]:
     """Compute one molecule's old-to-new local atom index map and its
     coarse-grained, re-mapped SMILES.
 
@@ -47,6 +49,10 @@ def compute_atom_remap(mapped_smiles: str) -> tuple[dict[int, int], str]:
         local index -- both surviving atoms (mapped to their own new
         index) and merged hydrogens (mapped to their heavy-atom
         neighbor's new index) have an entry.
+    survivors : frozenset[int]
+        Original local atom indices that are still their own atom in the
+        coarse-grained molecule (as opposed to a merged hydrogen) -- one
+        per new, compacted local index.
     new_mapped_smiles : str
         The coarse-grained molecule's SMILES, atom-mapped with contiguous
         map numbers starting at the same base (0 or 1) as the input, in
@@ -81,9 +87,11 @@ def compute_atom_remap(mapped_smiles: str) -> tuple[dict[int, int], str]:
     reduced = Chem.RemoveHs(mol)
 
     new_local_index: dict[int, int] = {}
+    survivors: set[int] = set()
     for new_idx, atom in enumerate(reduced.GetAtoms()):
         old_local = atom.GetAtomMapNum() - base
         new_local_index[old_local] = new_idx
+        survivors.add(old_local)
 
     surviving_map_nums = {a.GetAtomMapNum() for a in reduced.GetAtoms()}
     for atom in mol.GetAtoms():
@@ -104,4 +112,4 @@ def compute_atom_remap(mapped_smiles: str) -> tuple[dict[int, int], str]:
         atom.SetAtomMapNum(atom.GetIdx() + base)
     new_mapped_smiles = Chem.MolToSmiles(reduced)
 
-    return new_local_index, new_mapped_smiles
+    return new_local_index, frozenset(survivors), new_mapped_smiles
