@@ -397,7 +397,7 @@
                 <article class="bd-article">
                   
   <h1>Source code for cosmolayer.store.segments</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;A segment-data store: on-disk arrays of COSMO segment coordinates,</span>
+<span></span><span class="sd">"""A segment-data store: on-disk arrays of COSMO segment coordinates,</span>
 <span class="sd">charges, and areas, plus the per-molecule table describing them.</span>
 
 <span class="sd">Build one from ``.cosmo`` files with ``SegmentStore.from_cosmo_files``, or</span>
@@ -408,20 +408,20 @@
 <span class="sd">    &lt;storage_dir&gt;/atom_indices.npy  int64   (n_segs_total,):   global atom index per</span>
 <span class="sd">                                     segment</span>
 <span class="sd">    &lt;storage_dir&gt;/molecules.parquet columns: smiles, segment_offsets, atom_offsets,</span>
-<span class="sd">                                     num_atoms, volume, cluster_id</span>
+<span class="sd">                                     num_atoms, volume, cluster_id, split (optional)</span>
 <span class="sd">    &lt;storage_dir&gt;/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}</span>
 <span class="sd">    &lt;storage_dir&gt;/&lt;scheme&gt;.npy      float32 (n_segs_total,): one per averaging scheme</span>
 
 <span class="sd">``segment_offsets`` (the ``molecules_df`` column of that name) must describe</span>
 <span class="sd">*exactly* the molecules present in the accompanying segment-level arrays:</span>
-<span class="sd">the last molecule&#39;s segments run to the end of those arrays.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">the last molecule's segments run to the end of those arrays.</span>
+<span class="sd">"""</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pathlib</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">cast</span>
 
@@ -439,23 +439,26 @@
     <span class="n">average_sigmas_by_molecule</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.clustering</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClusteringSpecs</span><span class="p">,</span> <span class="n">FingerprintGenerator</span><span class="p">,</span> <span class="n">butina_cluster</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.coarse_graining</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_atom_remap</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.grid</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_SIGMA_GRID</span><span class="p">,</span> <span class="n">SigmaGrid</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.profiles</span><span class="w"> </span><span class="kn">import</span> <span class="n">SigmaProfileTable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.splitting</span><span class="w"> </span><span class="kn">import</span> <span class="n">greedy_cluster_split</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.subsampling</span><span class="w"> </span><span class="kn">import</span> <span class="n">apportion_counts</span><span class="p">,</span> <span class="n">restrict_to_molecules</span>
 
-<span class="n">DATA_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;data.npy&quot;</span><span class="p">)</span>
-<span class="n">ATOM_INDICES_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;atom_indices.npy&quot;</span><span class="p">)</span>
-<span class="n">MOLECULES_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;molecules.parquet&quot;</span><span class="p">)</span>
-<span class="n">METADATA_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;metadata.json&quot;</span><span class="p">)</span>
+<span class="n">DATA_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"data.npy"</span><span class="p">)</span>
+<span class="n">ATOM_INDICES_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"atom_indices.npy"</span><span class="p">)</span>
+<span class="n">MOLECULES_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"molecules.parquet"</span><span class="p">)</span>
+<span class="n">METADATA_FILE</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="s2">"metadata.json"</span><span class="p">)</span>
 
 <span class="n">_STORE_FILES</span> <span class="o">=</span> <span class="p">(</span><span class="n">DATA_FILE</span><span class="p">,</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="n">MOLECULES_FILE</span><span class="p">,</span> <span class="n">METADATA_FILE</span><span class="p">)</span>
 
-<span class="c1"># Averaged sigmas are written to &quot;&lt;name&gt;.npy&quot;, so scheme names must not</span>
-<span class="c1"># collide with the store&#39;s own .npy stems (data, atom_indices).</span>
+<span class="c1"># Averaged sigmas are written to "&lt;name&gt;.npy", so scheme names must not</span>
+<span class="c1"># collide with the store's own .npy stems (data, atom_indices).</span>
 <span class="n">_RESERVED_SCHEME_NAMES</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span>
     <span class="n">f</span><span class="o">.</span><span class="n">stem</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">_STORE_FILES</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="n">DATA_FILE</span><span class="o">.</span><span class="n">suffix</span>
 <span class="p">)</span>
 
-<span class="c1"># COSMO atom tables include explicit hydrogens; disable RDKit&#39;s default</span>
+<span class="c1"># COSMO atom tables include explicit hydrogens; disable RDKit's default</span>
 <span class="c1"># folding of terminal [H] so SMILES atoms match the COSMO file.</span>
 <span class="n">_SMILES_PARSER_PARAMS</span> <span class="o">=</span> <span class="n">Chem</span><span class="o">.</span><span class="n">SmilesParserParams</span><span class="p">()</span>
 <span class="n">cast</span><span class="p">(</span><span class="n">Any</span><span class="p">,</span> <span class="n">_SMILES_PARSER_PARAMS</span><span class="p">)</span><span class="o">.</span><span class="n">removeHs</span> <span class="o">=</span> <span class="kc">False</span>
@@ -465,7 +468,7 @@
 <a class="viewcode-back" href="../../../api/StoreMetadata.html#cosmolayer.store.StoreMetadata">[docs]</a>
 <span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">StoreMetadata</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Typed view of a ``SegmentStore``&#39;s ``metadata.json``.</span>
+<span class="w">    </span><span class="sd">"""Typed view of a ``SegmentStore``'s ``metadata.json``.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -478,7 +481,7 @@
 <span class="sd">    schemes : dict[str, AveragingScheme]</span>
 <span class="sd">        Averaging schemes this store has computed sigmas for, keyed by</span>
 <span class="sd">        scheme name.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">num_molecules</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">num_cosmo_parse_failures</span><span class="p">:</span> <span class="nb">int</span>
@@ -487,14 +490,14 @@
 <div class="viewcode-block" id="StoreMetadata.to_dict">
 <a class="viewcode-back" href="../../../api/StoreMetadata.html#cosmolayer.store.StoreMetadata.to_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Serialize to the JSON-compatible shape written to ``metadata.json``.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Serialize to the JSON-compatible shape written to ``metadata.json``."""</span>
         <span class="k">return</span> <span class="p">{</span>
-            <span class="s2">&quot;num_molecules&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_molecules</span><span class="p">,</span>
-            <span class="s2">&quot;num_cosmo_parse_failures&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_cosmo_parse_failures</span><span class="p">,</span>
-            <span class="s2">&quot;schemes&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">"num_molecules"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_molecules</span><span class="p">,</span>
+            <span class="s2">"num_cosmo_parse_failures"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_cosmo_parse_failures</span><span class="p">,</span>
+            <span class="s2">"schemes"</span><span class="p">:</span> <span class="p">{</span>
                 <span class="n">name</span><span class="p">:</span> <span class="p">{</span>
-                    <span class="s2">&quot;averaging_radius&quot;</span><span class="p">:</span> <span class="n">scheme</span><span class="o">.</span><span class="n">averaging_radius</span><span class="p">,</span>
-                    <span class="s2">&quot;f_decay&quot;</span><span class="p">:</span> <span class="n">scheme</span><span class="o">.</span><span class="n">f_decay</span><span class="p">,</span>
+                    <span class="s2">"averaging_radius"</span><span class="p">:</span> <span class="n">scheme</span><span class="o">.</span><span class="n">averaging_radius</span><span class="p">,</span>
+                    <span class="s2">"f_decay"</span><span class="p">:</span> <span class="n">scheme</span><span class="o">.</span><span class="n">f_decay</span><span class="p">,</span>
                 <span class="p">}</span>
                 <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">scheme</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schemes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
             <span class="p">},</span>
@@ -504,21 +507,21 @@
 <div class="viewcode-block" id="StoreMetadata.from_dict">
 <a class="viewcode-back" href="../../../api/StoreMetadata.html#cosmolayer.store.StoreMetadata.from_dict">[docs]</a>
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">&quot;StoreMetadata&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reconstruct from the dict produced by ``to_dict``.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">"StoreMetadata"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Reconstruct from the dict produced by ``to_dict``.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        data : dict</span>
 <span class="sd">            As produced by ``to_dict``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">schemes</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="n">name</span><span class="p">:</span> <span class="n">AveragingScheme</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;averaging_radius&quot;</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;f_decay&quot;</span><span class="p">])</span>
-            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;schemes&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="n">name</span><span class="p">:</span> <span class="n">AveragingScheme</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">params</span><span class="p">[</span><span class="s2">"averaging_radius"</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="s2">"f_decay"</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"schemes"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
         <span class="p">}</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
-            <span class="n">num_molecules</span><span class="o">=</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;num_molecules&quot;</span><span class="p">],</span>
-            <span class="n">num_cosmo_parse_failures</span><span class="o">=</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;num_cosmo_parse_failures&quot;</span><span class="p">],</span>
+            <span class="n">num_molecules</span><span class="o">=</span><span class="n">data</span><span class="p">[</span><span class="s2">"num_molecules"</span><span class="p">],</span>
+            <span class="n">num_cosmo_parse_failures</span><span class="o">=</span><span class="n">data</span><span class="p">[</span><span class="s2">"num_cosmo_parse_failures"</span><span class="p">],</span>
             <span class="n">schemes</span><span class="o">=</span><span class="n">schemes</span><span class="p">,</span>
         <span class="p">)</span></div>
 </div>
@@ -528,7 +531,7 @@
 <div class="viewcode-block" id="SegmentStore">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">SegmentStore</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;On-disk COSMO segment arrays, the per-molecule table describing</span>
+<span class="w">    </span><span class="sd">"""On-disk COSMO segment arrays, the per-molecule table describing</span>
 <span class="sd">    them, and any averaged sigmas computed for the store.</span>
 
 <span class="sd">    Prefer ``load`` (read an existing store, memory-mapped) or</span>
@@ -538,7 +541,7 @@
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    storage_dir : pathlib.Path</span>
-<span class="sd">        Directory this store&#39;s files live in (or will be written to).</span>
+<span class="sd">        Directory this store's files live in (or will be written to).</span>
 <span class="sd">    data : np.ndarray</span>
 <span class="sd">        ``(n_segs_total, 5)`` array, columns ``[x, y, z, charge, area]``.</span>
 <span class="sd">    atom_indices : np.ndarray</span>
@@ -556,8 +559,8 @@
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
 <span class="sd">    coords, charges, areas : np.ndarray</span>
-<span class="sd">        Views into ``data``&#39;s columns.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        Views into ``data``'s columns.</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -580,10 +583,10 @@
 
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_reorder_molecule</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Chem</span><span class="o">.</span><span class="n">Mol</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Chem</span><span class="o">.</span><span class="n">Mol</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reorder atoms into ascending AtomMapNum order.</span>
+<span class="w">        </span><span class="sd">"""Reorder atoms into ascending AtomMapNum order.</span>
 
 <span class="sd">        After reordering, atom ``i`` has ``AtomMapNum == i`` (0-based) or</span>
-<span class="sd">        ``AtomMapNum == i + 1`` (1-based), matching the COSMO file&#39;s</span>
+<span class="sd">        ``AtomMapNum == i + 1`` (1-based), matching the COSMO file's</span>
 <span class="sd">        0-based atom indices used as global atom indices.</span>
 
 <span class="sd">        Parameters</span>
@@ -601,7 +604,7 @@
 <span class="sd">        ValueError</span>
 <span class="sd">            If the atom map numbers are not all 0, or a 0-based or</span>
 <span class="sd">            1-based permutation of the atom indices.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">num_atoms</span> <span class="o">=</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span>
         <span class="n">map_nums</span> <span class="o">=</span> <span class="p">{</span><span class="n">atom</span><span class="o">.</span><span class="n">GetAtomMapNum</span><span class="p">()</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetAtoms</span><span class="p">()}</span>
         <span class="k">if</span> <span class="n">map_nums</span> <span class="o">==</span> <span class="p">{</span><span class="mi">0</span><span class="p">}:</span>
@@ -614,8 +617,8 @@
             <span class="k">return</span> <span class="n">Chem</span><span class="o">.</span><span class="n">RenumberAtoms</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">new_order</span><span class="p">)</span>
 
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">&quot;Bad atom map numbers: must be all 0, or a 0-based or 1-based &quot;</span>
-            <span class="s2">&quot;permutation of the atom indices&quot;</span>
+            <span class="s2">"Bad atom map numbers: must be all 0, or a 0-based or 1-based "</span>
+            <span class="s2">"permutation of the atom indices"</span>
         <span class="p">)</span>
 
     <span class="nd">@classmethod</span>
@@ -626,7 +629,7 @@
         <span class="n">smi</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">fingerprint_generator</span><span class="p">:</span> <span class="n">FingerprintGenerator</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Chem</span><span class="o">.</span><span class="n">Mol</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">]]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse one ``.cosmo`` file/SMILES pair and fingerprint the</span>
+<span class="w">        </span><span class="sd">"""Parse one ``.cosmo`` file/SMILES pair and fingerprint the</span>
 <span class="sd">        molecule.</span>
 
 <span class="sd">        Parameters</span>
@@ -649,21 +652,31 @@
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
-<span class="sd">            If the SMILES can&#39;t be parsed, or its atom count doesn&#39;t</span>
-<span class="sd">            match the ``.cosmo`` file&#39;s.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">            If the SMILES can't be parsed, or its atom count doesn't</span>
+<span class="sd">            match the ``.cosmo`` file's.</span>
+<span class="sd">        """</span>
         <span class="n">_</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span> <span class="o">=</span> <span class="n">parse_cosmo_file</span><span class="p">(</span>
-            <span class="p">(</span><span class="n">cosmo_files_dir</span> <span class="o">/</span> <span class="n">filename</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">)</span>
+            <span class="p">(</span><span class="n">cosmo_files_dir</span> <span class="o">/</span> <span class="n">filename</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">"replace"</span><span class="p">)</span>
         <span class="p">)</span>
         <span class="n">mol</span> <span class="o">=</span> <span class="n">Chem</span><span class="o">.</span><span class="n">MolFromSmiles</span><span class="p">(</span><span class="n">smi</span><span class="p">,</span> <span class="n">_SMILES_PARSER_PARAMS</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;RDKit could not parse SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"RDKit could not parse SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2"> has </span><span class="si">{</span><span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span><span class="si">}</span><span class="s2"> atoms, but &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2"> has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="sa">f</span><span class="s2">"SMILES </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2"> has </span><span class="si">{</span><span class="n">mol</span><span class="o">.</span><span class="n">GetNumAtoms</span><span class="p">()</span><span class="si">}</span><span class="s2"> atoms, but "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2"> has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
             <span class="p">)</span>
         <span class="n">mol</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_reorder_molecule</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span>
+        <span class="c1"># Stamp 1-based atom-map numbers reflecting local (COSMO) atom</span>
+        <span class="c1"># index, overwriting whatever the input SMILES had (or lacked).</span>
+        <span class="c1"># _reorder_molecule already guarantees mol's atom order equals</span>
+        <span class="c1"># COSMO order at this point -- either by permutation-reorder, or,</span>
+        <span class="c1"># for unmapped input, by the existing trust assumption that its</span>
+        <span class="c1"># atom order already matched. Without this, an unmapped input's</span>
+        <span class="c1"># atom order would not survive Chem.MolToSmiles's default</span>
+        <span class="c1"># re-canonicalization once stored (see GH issue #43).</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">atom</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">GetAtoms</span><span class="p">()):</span>
+            <span class="n">atom</span><span class="o">.</span><span class="n">SetAtomMapNum</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
         <span class="n">fingerprint</span> <span class="o">=</span> <span class="n">fingerprint_generator</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">mol</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">fingerprint</span>
 
@@ -676,15 +689,15 @@
         <span class="n">volumes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
         <span class="n">cluster_ids</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">],</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Assemble the per-molecule table written to ``molecules.parquet``.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Assemble the per-molecule table written to ``molecules.parquet``."""</span>
         <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
             <span class="p">{</span>
-                <span class="s2">&quot;smiles&quot;</span><span class="p">:</span> <span class="n">successful_molecules</span><span class="p">,</span>
-                <span class="s2">&quot;segment_offsets&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;atom_offsets&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;num_atoms&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;volume&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">volumes</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;cluster_id&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cluster_ids</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
+                <span class="s2">"smiles"</span><span class="p">:</span> <span class="n">successful_molecules</span><span class="p">,</span>
+                <span class="s2">"segment_offsets"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"int64"</span><span class="p">),</span>
+                <span class="s2">"atom_offsets"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"int64"</span><span class="p">),</span>
+                <span class="s2">"num_atoms"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"int64"</span><span class="p">),</span>
+                <span class="s2">"volume"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">volumes</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"float64"</span><span class="p">),</span>
+                <span class="s2">"cluster_id"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cluster_ids</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"int64"</span><span class="p">),</span>
             <span class="p">}</span>
         <span class="p">)</span>
 
@@ -695,7 +708,7 @@
         <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">]]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute averaged charge densities under each scheme, without</span>
+<span class="w">        </span><span class="sd">"""Compute averaged charge densities under each scheme, without</span>
 <span class="sd">        writing to disk or mutating this store.</span>
 
 <span class="sd">        Parameters</span>
@@ -714,18 +727,18 @@
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
-<span class="sd">            If a scheme&#39;s name would overwrite ``data.npy`` or</span>
+<span class="sd">            If a scheme's name would overwrite ``data.npy`` or</span>
 <span class="sd">            ``atom_indices.npy`` on ``save``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="n">schemes</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">schemes</span> <span class="o">=</span> <span class="n">AVERAGING_SCHEMES</span>
         <span class="k">for</span> <span class="n">scheme</span> <span class="ow">in</span> <span class="n">schemes</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">scheme</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">_RESERVED_SCHEME_NAMES</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;Averaging scheme name </span><span class="si">{</span><span class="n">scheme</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> collides with a &quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot;reserved store filename (</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">_RESERVED_SCHEME_NAMES</span><span class="p">)</span><span class="si">}</span><span class="s2">).&quot;</span>
+                    <span class="sa">f</span><span class="s2">"Averaging scheme name </span><span class="si">{</span><span class="n">scheme</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> collides with a "</span>
+                    <span class="sa">f</span><span class="s2">"reserved store filename (</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">_RESERVED_SCHEME_NAMES</span><span class="p">)</span><span class="si">}</span><span class="s2">)."</span>
                 <span class="p">)</span>
-        <span class="n">segment_offsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">&quot;segment_offsets&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span>
+        <span class="n">segment_offsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"segment_offsets"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">)</span>
 
         <span class="n">averaged</span> <span class="o">=</span> <span class="n">average_sigmas_by_molecule</span><span class="p">(</span>
             <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">coords</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
@@ -741,10 +754,204 @@
         <span class="p">}</span></div>
 
 
+<div class="viewcode-block" id="SegmentStore.assign_splits">
+<a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.assign_splits">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">assign_splits</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fractions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">str_</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Partition this store's molecules into named splits (e.g.</span>
+<span class="sd">        train/val/test) that respect ``cluster_id`` boundaries, and record</span>
+<span class="sd">        the result as ``molecules_df["split"]``.</span>
+
+<span class="sd">        Splitting is independent of ``ClusteringSpecs``: it's a cheap pass</span>
+<span class="sd">        over the already-computed ``cluster_id`` column, so it can be</span>
+<span class="sd">        called (and re-called, e.g. to try different fractions) on a</span>
+<span class="sd">        freshly built or a loaded store, without recomputing fingerprints</span>
+<span class="sd">        or clusters. Each call overwrites any previous ``split`` column.</span>
+<span class="sd">        Call ``save`` afterward to persist the result.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        fractions : Mapping[str, float]</span>
+<span class="sd">            Target fraction per split name, e.g. ``{"train": 0.8, "val":</span>
+<span class="sd">            0.1, "test": 0.1}`` or ``{"train": 0.8, "test": 0.2}``. Values</span>
+<span class="sd">            must be positive and sum to 1.0.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray, shape (n_molecules,)</span>
+<span class="sd">            Split name assigned to each molecule, in ``molecules_df`` row</span>
+<span class="sd">            order (the same array written to ``molecules_df["split"]``).</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If ``fractions`` is empty, contains non-positive values, or</span>
+<span class="sd">            doesn't sum to 1.0.</span>
+<span class="sd">        """</span>
+        <span class="n">cluster_ids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"cluster_id"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">)</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">greedy_cluster_split</span><span class="p">(</span><span class="n">cluster_ids</span><span class="p">,</span> <span class="n">fractions</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"split"</span><span class="p">]</span> <span class="o">=</span> <span class="n">labels</span>
+        <span class="k">return</span> <span class="n">labels</span></div>
+
+
+<div class="viewcode-block" id="SegmentStore.subsample">
+<a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.subsample">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">subsample</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">num_molecules</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">shuffle_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SegmentStore"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Return a new, unsaved store shrunk to ``num_molecules``, without</span>
+<span class="sd">        moving any molecule across its existing ``split``.</span>
+
+<span class="sd">        Requires ``molecules_df["split"]`` to already exist (see</span>
+<span class="sd">        ``assign_splits``) -- split membership must be fixed *before*</span>
+<span class="sd">        subsampling, since ``num_molecules`` is apportioned across the</span>
+<span class="sd">        existing splits' own sizes and molecules are only ever dropped from</span>
+<span class="sd">        within a split, never moved to another one. This is what keeps a</span>
+<span class="sd">        test molecule from ending up in train/val just because the store</span>
+<span class="sd">        got smaller.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        num_molecules : int</span>
+<span class="sd">            Total number of molecules to keep, summed across all splits.</span>
+<span class="sd">            Must be positive and not exceed the current molecule count.</span>
+<span class="sd">        shuffle_seed : int | None, optional</span>
+<span class="sd">            If given, each split's share is a uniform random sample without</span>
+<span class="sd">            replacement, drawn with this seed. ``None`` (default) instead</span>
+<span class="sd">            keeps the first molecules in row order within each split, a</span>
+<span class="sd">            deterministic choice.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        SegmentStore</span>
+<span class="sd">            A new store (see ``subsampling.restrict_to_molecules``) with</span>
+<span class="sd">            the same ``storage_dir`` as this one -- pass a real directory</span>
+<span class="sd">            to ``save`` to persist it.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If ``molecules_df`` has no ``split`` column, or if</span>
+<span class="sd">            ``num_molecules`` is not positive or exceeds the current</span>
+<span class="sd">            molecule count.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="s2">"split"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"molecules_df has no 'split' column; call assign_splits "</span>
+                <span class="s2">"before subsample."</span>
+            <span class="p">)</span>
+        <span class="n">n_total</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">num_molecules</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">num_molecules</span> <span class="o">&gt;</span> <span class="n">n_total</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"num_molecules (</span><span class="si">{</span><span class="n">num_molecules</span><span class="si">}</span><span class="s2">) must be positive and not "</span>
+                <span class="sa">f</span><span class="s2">"exceed the current molecule count (</span><span class="si">{</span><span class="n">n_total</span><span class="si">}</span><span class="s2">)."</span>
+            <span class="p">)</span>
+
+        <span class="n">split_labels</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"split"</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="n">split_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">(</span><span class="n">split_labels</span><span class="p">))</span>
+        <span class="n">members_by_split</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">split_labels</span> <span class="o">==</span> <span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">split_names</span>
+        <span class="p">]</span>
+        <span class="n">sizes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">members_by_split</span><span class="p">])</span>
+        <span class="n">target_counts</span> <span class="o">=</span> <span class="n">apportion_counts</span><span class="p">(</span><span class="n">sizes</span><span class="p">,</span> <span class="n">num_molecules</span><span class="p">)</span>
+
+        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">shuffle_seed</span><span class="p">)</span> <span class="k">if</span> <span class="n">shuffle_seed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">chosen_parts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">members</span><span class="p">,</span> <span class="n">raw_target</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">members_by_split</span><span class="p">,</span> <span class="n">target_counts</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">target</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">raw_target</span><span class="p">)</span>
+            <span class="n">chosen_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">members</span><span class="p">[:</span><span class="n">target</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">rng</span> <span class="ow">is</span> <span class="kc">None</span>
+                <span class="k">else</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">members</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">target</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">chosen_parts</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">restrict_to_molecules</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selected</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SegmentStore.coarse_grain">
+<a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.coarse_grain">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">coarse_grain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SegmentStore"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Return a new, unsaved united-atom store: every hydrogen</span>
+<span class="sd">        ``Chem.RemoveHs`` would actually remove is merged into the heavy</span>
+<span class="sd">        atom it's bonded to, and every segment stays attributed to</span>
+<span class="sd">        wherever its atom ended up.</span>
+
+<span class="sd">        Requires every molecule's ``molecules_df["smiles"]`` to carry</span>
+<span class="sd">        atom-map numbers reflecting local (COSMO) atom index (guaranteed</span>
+<span class="sd">        for stores built after GH issue #43's fix). No molecule or</span>
+<span class="sd">        segment is ever dropped -- only atom attribution shrinks -- so</span>
+<span class="sd">        ``segment_offsets``, ``data``, and every ``averaged_sigmas`` array</span>
+<span class="sd">        carry through unchanged; only ``atom_indices`` and</span>
+<span class="sd">        ``molecules_df``'s ``smiles``/``num_atoms``/``atom_offsets``</span>
+<span class="sd">        columns change.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        SegmentStore</span>
+<span class="sd">            A new store (see ``coarse_graining.compute_atom_remap``) with</span>
+<span class="sd">            the same ``storage_dir`` as this one -- pass a real directory</span>
+<span class="sd">            to ``save`` to persist it.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If any molecule's ``smiles`` has no usable atom-map numbers.</span>
+<span class="sd">        """</span>
+        <span class="n">molecules_df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span>
+        <span class="n">n_mols</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">molecules_df</span><span class="p">)</span>
+        <span class="n">n_segs_total</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">old_atom_offsets</span> <span class="o">=</span> <span class="n">molecules_df</span><span class="p">[</span><span class="s2">"atom_offsets"</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">)</span>
+        <span class="n">segment_offsets</span> <span class="o">=</span> <span class="n">molecules_df</span><span class="p">[</span><span class="s2">"segment_offsets"</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">)</span>
+        <span class="n">segment_counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">,</span> <span class="n">n_segs_total</span><span class="p">))</span>
+        <span class="n">segment_molecule</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_mols</span><span class="p">),</span> <span class="n">segment_counts</span><span class="p">)</span>
+
+        <span class="n">new_num_atoms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n_mols</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">new_smiles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">""</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_mols</span>
+        <span class="n">remaps</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[{}]</span> <span class="o">*</span> <span class="n">n_mols</span>
+        <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">smi</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"smiles"</span><span class="p">]):</span>
+            <span class="n">remap</span><span class="p">,</span> <span class="n">mapped_smiles</span> <span class="o">=</span> <span class="n">compute_atom_remap</span><span class="p">(</span><span class="n">smi</span><span class="p">)</span>
+            <span class="n">remaps</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">remap</span>
+            <span class="n">new_num_atoms</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">remap</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+            <span class="n">new_smiles</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">mapped_smiles</span>
+
+        <span class="n">new_atom_offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_mols</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">new_atom_offsets</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">new_num_atoms</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">old_local</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atom_indices</span><span class="p">)</span> <span class="o">-</span> <span class="n">old_atom_offsets</span><span class="p">[</span><span class="n">segment_molecule</span><span class="p">]</span>
+        <span class="n">new_atom_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n_segs_total</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_mols</span><span class="p">):</span>
+            <span class="n">in_molecule</span> <span class="o">=</span> <span class="n">segment_molecule</span> <span class="o">==</span> <span class="n">m</span>
+            <span class="n">lookup</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">remaps</span><span class="p">[</span><span class="n">m</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"num_atoms"</span><span class="p">]</span><span class="o">.</span><span class="n">iat</span><span class="p">[</span><span class="n">m</span><span class="p">]))],</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">new_atom_indices</span><span class="p">[</span><span class="n">in_molecule</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">lookup</span><span class="p">[</span><span class="n">old_local</span><span class="p">[</span><span class="n">in_molecule</span><span class="p">]]</span> <span class="o">+</span> <span class="n">new_atom_offsets</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
+            <span class="p">)</span>
+
+        <span class="n">new_molecules_df</span> <span class="o">=</span> <span class="n">molecules_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">new_molecules_df</span><span class="p">[</span><span class="s2">"smiles"</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_smiles</span>
+        <span class="n">new_molecules_df</span><span class="p">[</span><span class="s2">"num_atoms"</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_num_atoms</span>
+        <span class="n">new_molecules_df</span><span class="p">[</span><span class="s2">"atom_offsets"</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_atom_offsets</span>
+
+        <span class="n">metadata</span> <span class="o">=</span> <span class="n">StoreMetadata</span><span class="p">(</span>
+            <span class="n">num_molecules</span><span class="o">=</span><span class="n">n_mols</span><span class="p">,</span>
+            <span class="n">num_cosmo_parse_failures</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">num_cosmo_parse_failures</span><span class="p">,</span>
+            <span class="n">schemes</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">schemes</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">SegmentStore</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">storage_dir</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
+            <span class="n">new_atom_indices</span><span class="p">,</span>
+            <span class="n">new_molecules_df</span><span class="p">,</span>
+            <span class="n">metadata</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
 <div class="viewcode-block" id="SegmentStore.save">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.save">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">storage_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Write this store&#39;s arrays, table, metadata, and averaged</span>
+<span class="w">        </span><span class="sd">"""Write this store's arrays, table, metadata, and averaged</span>
 <span class="sd">        sigmas to disk.</span>
 
 <span class="sd">        ``metadata.json`` is written atomically (temp file + rename), so an</span>
@@ -755,7 +962,7 @@
 <span class="sd">        storage_dir : pathlib.Path | str | None, optional</span>
 <span class="sd">            Destination directory. ``None`` (default) uses</span>
 <span class="sd">            ``self.storage_dir``. Created if missing.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">storage_dir</span> <span class="o">=</span> <span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">storage_dir</span> <span class="k">if</span> <span class="n">storage_dir</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">storage_dir</span><span class="p">)</span>
         <span class="p">)</span>
@@ -765,13 +972,13 @@
         <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">atom_indices</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="o">.</span><span class="n">to_parquet</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">MOLECULES_FILE</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.npy&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">))</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.npy"</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">))</span>
 
         <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span>
-            <span class="nb">dir</span><span class="o">=</span><span class="n">storage_dir</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;.metadata-&quot;</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.json&quot;</span>
+            <span class="nb">dir</span><span class="o">=</span><span class="n">storage_dir</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">".metadata-"</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".json"</span>
         <span class="p">)</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="k">with</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
                 <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
             <span class="n">os</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">storage_dir</span> <span class="o">/</span> <span class="n">METADATA_FILE</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">BaseException</span><span class="p">:</span>
@@ -783,7 +990,7 @@
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.exists">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">storage_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return whether ``storage_dir`` holds a complete store.</span>
+<span class="w">        </span><span class="sd">"""Return whether ``storage_dir`` holds a complete store.</span>
 
 <span class="sd">        Requires the four fixed files and every scheme ``.npy`` listed in</span>
 <span class="sd">        ``metadata.json``.</span>
@@ -797,7 +1004,7 @@
 <span class="sd">        -------</span>
 <span class="sd">        bool</span>
 <span class="sd">            True if the store is complete.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">storage_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">storage_dir</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">((</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">f</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">_STORE_FILES</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">False</span>
@@ -806,15 +1013,15 @@
                 <span class="n">metadata</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
         <span class="k">except</span> <span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">False</span>
-        <span class="n">scheme_names</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;schemes&quot;</span><span class="p">,</span> <span class="p">{})</span>
-        <span class="k">return</span> <span class="nb">all</span><span class="p">((</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.npy&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">scheme_names</span><span class="p">)</span></div>
+        <span class="n">scheme_names</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"schemes"</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="k">return</span> <span class="nb">all</span><span class="p">((</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.npy"</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">scheme_names</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="SegmentStore.load">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.load">[docs]</a>
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">storage_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;SegmentStore&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load an existing segment-data store from disk, memory-mapped.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">storage_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SegmentStore"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Load an existing segment-data store from disk, memory-mapped.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -826,28 +1033,28 @@
 <span class="sd">        -------</span>
 <span class="sd">        SegmentStore</span>
 <span class="sd">            ``data``, ``atom_indices``, and any ``averaged_sigmas`` arrays</span>
-<span class="sd">            are memory-mapped (``mmap_mode=&quot;r&quot;``).</span>
+<span class="sd">            are memory-mapped (``mmap_mode="r"``).</span>
 
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        FileNotFoundError</span>
-<span class="sd">            If ``storage_dir`` doesn&#39;t hold a complete store.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">            If ``storage_dir`` doesn't hold a complete store.</span>
+<span class="sd">        """</span>
         <span class="n">storage_dir</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">storage_dir</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">cls</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">storage_dir</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;No segment-data store in </span><span class="si">{</span><span class="n">storage_dir</span><span class="si">}</span><span class="s2"> (missing one of &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_STORE_FILES</span><span class="si">}</span><span class="s2">, or a scheme .npy listed in </span><span class="si">{</span><span class="n">METADATA_FILE</span><span class="si">}</span><span class="s2">; &quot;</span>
-                <span class="s2">&quot;see SegmentStore.from_cosmo_files).&quot;</span>
+                <span class="sa">f</span><span class="s2">"No segment-data store in </span><span class="si">{</span><span class="n">storage_dir</span><span class="si">}</span><span class="s2"> (missing one of "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">_STORE_FILES</span><span class="si">}</span><span class="s2">, or a scheme .npy listed in </span><span class="si">{</span><span class="n">METADATA_FILE</span><span class="si">}</span><span class="s2">; "</span>
+                <span class="s2">"see SegmentStore.from_cosmo_files)."</span>
             <span class="p">)</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">METADATA_FILE</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">metadata</span> <span class="o">=</span> <span class="n">StoreMetadata</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">DATA_FILE</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">)</span>
-        <span class="n">atom_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">DATA_FILE</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
+        <span class="n">atom_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">ATOM_INDICES_FILE</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
         <span class="n">molecules_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="n">MOLECULES_FILE</span><span class="p">)</span>
 
         <span class="n">averaged_sigmas</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="n">name</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.npy&quot;</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">)</span>
+            <span class="n">name</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">storage_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.npy"</span><span class="p">,</span> <span class="n">mmap_mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
             <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">metadata</span><span class="o">.</span><span class="n">schemes</span><span class="p">)</span>
         <span class="p">}</span>
 
@@ -859,7 +1066,7 @@
 <div class="viewcode-block" id="SegmentStore.from_cosmo_files">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.from_cosmo_files">[docs]</a>
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">from_cosmo_files</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_cosmo_files</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913, PLR0917</span>
         <span class="bp">cls</span><span class="p">,</span>
         <span class="n">cosmo_files_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">,</span>
         <span class="n">smiles_to_filename</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
@@ -867,11 +1074,12 @@
         <span class="n">ignore_errors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
         <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">clustering_specs</span><span class="p">:</span> <span class="n">ClusteringSpecs</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">split_fractions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;SegmentStore&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse COSMO files, build a store, and write it to ``storage_dir``.</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SegmentStore"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Parse COSMO files, build a store, and write it to ``storage_dir``.</span>
 
-<span class="sd">        Atoms are numbered in the COSMO file&#39;s 0-based order. Each SMILES</span>
+<span class="sd">        Atoms are numbered in the COSMO file's 0-based order. Each SMILES</span>
 <span class="sd">        must have the same atom count as its COSMO file; atom-mapped SMILES</span>
 <span class="sd">        are reordered onto that indexing. Averaged sigmas are computed and</span>
 <span class="sd">        written unless ``schemes`` is an empty sequence.</span>
@@ -880,7 +1088,7 @@
 <span class="sd">        ----------</span>
 <span class="sd">        cosmo_files_dir : pathlib.Path</span>
 <span class="sd">            Directory containing the ``.cosmo`` files named by</span>
-<span class="sd">            ``smiles_to_filename``&#39;s values.</span>
+<span class="sd">            ``smiles_to_filename``'s values.</span>
 <span class="sd">        smiles_to_filename : dict[str, str]</span>
 <span class="sd">            SMILES string to ``.cosmo`` filename (relative to</span>
 <span class="sd">            ``cosmo_files_dir``), one entry per molecule to store.</span>
@@ -898,6 +1106,13 @@
 <span class="sd">            Fingerprinting and Butina-clustering parameters, used to</span>
 <span class="sd">            assign each molecule a ``cluster_id``. ``None`` (default)</span>
 <span class="sd">            uses ``ClusteringSpecs()``.</span>
+<span class="sd">        split_fractions : Mapping[str, float] | None, optional</span>
+<span class="sd">            Target fraction per named split (e.g. ``{"train": 0.8, "val":</span>
+<span class="sd">            0.1, "test": 0.1}``), assigned via ``assign_splits`` and</span>
+<span class="sd">            written to ``molecules_df["split"]``. ``None`` (default) skips</span>
+<span class="sd">            splitting; the ``split`` column is omitted. Can also be</span>
+<span class="sd">            applied later, without rebuilding, via ``assign_splits`` on a</span>
+<span class="sd">            loaded store.</span>
 <span class="sd">        num_threads : int | None, optional</span>
 <span class="sd">            Thread count for averaging. ``None`` (default) uses every CPU</span>
 <span class="sd">            core.</span>
@@ -913,7 +1128,7 @@
 <span class="sd">            If a molecule cannot be parsed and ``ignore_errors`` is False,</span>
 <span class="sd">            if no molecule could be stored, or if a scheme name collides</span>
 <span class="sd">            with a reserved store filename.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="n">clustering_specs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">clustering_specs</span> <span class="o">=</span> <span class="n">ClusteringSpecs</span><span class="p">()</span>
 
@@ -928,7 +1143,7 @@
         <span class="n">fingerprint_generator</span> <span class="o">=</span> <span class="n">FingerprintGenerator</span><span class="p">(</span><span class="n">clustering_specs</span><span class="p">)</span>
 
         <span class="k">for</span> <span class="n">smi</span><span class="p">,</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
-            <span class="n">smiles_to_filename</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Processing COSMO files&quot;</span>
+            <span class="n">smiles_to_filename</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">"Processing COSMO files"</span>
         <span class="p">):</span>
             <span class="k">try</span><span class="p">:</span>
                 <span class="n">mol</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">fingerprint</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_parse_molecule</span><span class="p">(</span>
@@ -936,16 +1151,16 @@
                 <span class="p">)</span>
             <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">AssertionError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">ignore_errors</span><span class="p">:</span>
-                    <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error parsing </span><span class="si">{</span><span class="n">smi</span><span class="si">}</span><span class="s2">-&gt;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Error parsing </span><span class="si">{</span><span class="n">smi</span><span class="si">}</span><span class="s2">-&gt;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
                     <span class="n">num_cosmo_parse_failures</span> <span class="o">+=</span> <span class="mi">1</span>
                     <span class="k">continue</span>
                 <span class="k">else</span><span class="p">:</span>
                     <span class="k">raise</span> <span class="n">e</span>
 
             <span class="n">data_chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                <span class="n">segment_df</span><span class="p">[[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">,</span> <span class="s2">&quot;charge&quot;</span><span class="p">,</span> <span class="s2">&quot;area&quot;</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;float32&quot;</span><span class="p">)</span>
+                <span class="n">segment_df</span><span class="p">[[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">,</span> <span class="s2">"charge"</span><span class="p">,</span> <span class="s2">"area"</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"float32"</span><span class="p">)</span>
             <span class="p">)</span>
-            <span class="n">atoms_chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_df</span><span class="p">[</span><span class="s2">&quot;atom&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="n">atom_offset</span><span class="p">)</span>
+            <span class="n">atoms_chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_df</span><span class="p">[</span><span class="s2">"atom"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">)</span> <span class="o">+</span> <span class="n">atom_offset</span><span class="p">)</span>
             <span class="n">fingerprints</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fingerprint</span><span class="p">)</span>
             <span class="n">segment_offsets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_offset</span><span class="p">)</span>
             <span class="n">segment_offset</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">segment_df</span><span class="p">)</span>
@@ -956,7 +1171,7 @@
             <span class="n">successful_molecules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Chem</span><span class="o">.</span><span class="n">MolToSmiles</span><span class="p">(</span><span class="n">mol</span><span class="p">))</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="n">successful_molecules</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No COSMO files could be parsed successfully.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"No COSMO files could be parsed successfully."</span><span class="p">)</span>
 
         <span class="n">fingerprint_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="n">cluster_ids</span> <span class="o">=</span> <span class="n">butina_cluster</span><span class="p">(</span><span class="n">fingerprint_array</span><span class="p">,</span> <span class="n">clustering_specs</span><span class="o">.</span><span class="n">cutoff</span><span class="p">)</span>
@@ -985,6 +1200,8 @@
                 <span class="n">schemes</span><span class="o">=</span><span class="n">resolved_schemes</span><span class="p">,</span> <span class="n">num_threads</span><span class="o">=</span><span class="n">num_threads</span>
             <span class="p">)</span>
             <span class="n">store</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">schemes</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">s</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">resolved_schemes</span><span class="p">})</span>
+        <span class="k">if</span> <span class="n">split_fractions</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">store</span><span class="o">.</span><span class="n">assign_splits</span><span class="p">(</span><span class="n">split_fractions</span><span class="p">)</span>
         <span class="n">store</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">store</span></div>
 
@@ -992,7 +1209,7 @@
 <div class="viewcode-block" id="SegmentStore.sigmas">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.sigmas">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">sigmas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scheme</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve this store&#39;s segment charge density for a given</span>
+<span class="w">        </span><span class="sd">"""Resolve this store's segment charge density for a given</span>
 <span class="sd">        scheme.</span>
 
 <span class="sd">        Parameters</span>
@@ -1012,15 +1229,15 @@
 <span class="sd">        ------</span>
 <span class="sd">        KeyError</span>
 <span class="sd">            If ``scheme`` is given but not in ``self.averaged_sigmas``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="n">scheme</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">charges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">charges</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
             <span class="n">areas</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">areas</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">charges</span> <span class="o">/</span> <span class="n">areas</span>
         <span class="k">if</span> <span class="n">scheme</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;No averaged sigmas for scheme </span><span class="si">{</span><span class="n">scheme</span><span class="si">!r}</span><span class="s2"> in this store. &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;Known schemes: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="sa">f</span><span class="s2">"No averaged sigmas for scheme </span><span class="si">{</span><span class="n">scheme</span><span class="si">!r}</span><span class="s2"> in this store. "</span>
+                <span class="sa">f</span><span class="s2">"Known schemes: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span><span class="p">)</span><span class="si">}</span><span class="s2">."</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">averaged_sigmas</span><span class="p">[</span><span class="n">scheme</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span></div>
 
@@ -1034,7 +1251,7 @@
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">centered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SigmaProfileTable</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute per-atom sigma profiles for this store.</span>
+<span class="w">        </span><span class="sd">"""Compute per-atom sigma profiles for this store.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -1046,7 +1263,7 @@
 <span class="sd">        num_threads : int | None, optional</span>
 <span class="sd">            Thread count. ``None`` (default) uses every CPU core.</span>
 <span class="sd">        centered : bool, optional</span>
-<span class="sd">            If True, center each atom&#39;s profile on its mean charge density.</span>
+<span class="sd">            If True, center each atom's profile on its mean charge density.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1057,10 +1274,10 @@
 <span class="sd">        ------</span>
 <span class="sd">        KeyError</span>
 <span class="sd">            If ``scheme`` is given but not in ``averaged_sigmas``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">sigmas</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigmas</span><span class="p">(</span><span class="n">scheme</span><span class="p">)</span>
-        <span class="n">segment_offsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">&quot;segment_offsets&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span>
-        <span class="n">total_num_atoms</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">&quot;num_atoms&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="n">segment_offsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"segment_offsets"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">)</span>
+        <span class="n">total_num_atoms</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"num_atoms"</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
         <span class="k">return</span> <span class="n">SigmaProfileTable</span><span class="o">.</span><span class="n">from_segments</span><span class="p">(</span>
             <span class="n">sigmas</span><span class="p">,</span>
             <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">areas</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
@@ -1082,7 +1299,7 @@
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">centered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SigmaProfileTable</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute per-molecule sigma profiles from segment-level data.</span>
+<span class="w">        </span><span class="sd">"""Compute per-molecule sigma profiles from segment-level data.</span>
 
 <span class="sd">        Bins segments directly to molecules, without an atom-level</span>
 <span class="sd">        intermediate.</span>
@@ -1097,16 +1314,16 @@
 <span class="sd">        num_threads : int | None, optional</span>
 <span class="sd">            Thread count. ``None`` (default) uses every CPU core.</span>
 <span class="sd">        centered : bool, optional</span>
-<span class="sd">            If True, center each molecule&#39;s profile on its mean charge</span>
+<span class="sd">            If True, center each molecule's profile on its mean charge</span>
 <span class="sd">            density.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        SigmaProfileTable</span>
 <span class="sd">            One row per molecule.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">sigmas</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigmas</span><span class="p">(</span><span class="n">scheme</span><span class="p">)</span>
-        <span class="n">segment_offsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">&quot;segment_offsets&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span>
+        <span class="n">segment_offsets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"segment_offsets"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">SigmaProfileTable</span><span class="o">.</span><span class="n">from_segments</span><span class="p">(</span>
             <span class="n">sigmas</span><span class="p">,</span>
             <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">areas</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
@@ -1121,12 +1338,12 @@
 
 
 <span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s2">&quot;DATA_FILE&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;ATOM_INDICES_FILE&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;MOLECULES_FILE&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;METADATA_FILE&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;StoreMetadata&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;SegmentStore&quot;</span><span class="p">,</span>
+    <span class="s2">"DATA_FILE"</span><span class="p">,</span>
+    <span class="s2">"ATOM_INDICES_FILE"</span><span class="p">,</span>
+    <span class="s2">"MOLECULES_FILE"</span><span class="p">,</span>
+    <span class="s2">"METADATA_FILE"</span><span class="p">,</span>
+    <span class="s2">"StoreMetadata"</span><span class="p">,</span>
+    <span class="s2">"SegmentStore"</span><span class="p">,</span>
 <span class="p">]</span>
 </pre></div>
 

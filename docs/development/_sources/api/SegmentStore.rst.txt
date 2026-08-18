@@ -7,6 +7,10 @@ SegmentStore
 
     .. rubric:: Methods
 
+    .. automethod:: assign_splits
+        :no-index-entry:
+    .. automethod:: coarse_grain
+        :no-index-entry:
     .. automethod:: compute_atom_sigma_profiles
         :no-index-entry:
     .. automethod:: compute_averaged_sigmas
@@ -22,4 +26,6 @@ SegmentStore
     .. automethod:: save
         :no-index-entry:
     .. automethod:: sigmas
+        :no-index-entry:
+    .. automethod:: subsample
         :no-index-entry:

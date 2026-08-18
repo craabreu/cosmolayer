@@ -397,12 +397,12 @@
                 <article class="bd-article">
                   
   <h1>Source code for cosmolayer.cosmolayer.cosmodata</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""</span>
 <span class="sd">.. module:: cosmolayer.cosmolayer.cosmodata</span>
 <span class="sd">   :synopsis: Data tensors for COSMO-SAC calculations.</span>
 
 <span class="sd">.. moduleauthor:: Charlles Abreu &lt;craabreu@gmail.com&gt;</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
@@ -421,10 +421,10 @@
 <span class="n">InputsType</span><span class="p">:</span> <span class="n">TypeAlias</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Tensor0D</span><span class="p">,</span> <span class="n">Tensor1D</span><span class="p">,</span> <span class="n">Tensor1D</span><span class="p">,</span> <span class="n">Tensor1D</span><span class="p">,</span> <span class="n">Tensor2D</span><span class="p">]</span>
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
-    <span class="n">_DatasetItemT</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;_DatasetItemT&quot;</span><span class="p">)</span>
+    <span class="n">_DatasetItemT</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">"_DatasetItemT"</span><span class="p">)</span>
 
     <span class="k">class</span><span class="w"> </span><span class="nc">_DatasetBase</span><span class="p">(</span><span class="n">Generic</span><span class="p">[</span><span class="n">_DatasetItemT</span><span class="p">]):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Mypy-only base to avoid torch stub variability in CI.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Mypy-only base to avoid torch stub variability in CI."""</span>
 
 <span class="k">else</span><span class="p">:</span>
     <span class="n">_DatasetBase</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">Dataset</span>
@@ -434,7 +434,7 @@
 <a class="viewcode-back" href="../../../api/MixtureDatapoint.html#cosmolayer.MixtureDatapoint">[docs]</a>
 <span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">MixtureDatapoint</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base dataclass for a mixture datapoint.</span>
+<span class="w">    </span><span class="sd">"""Base dataclass for a mixture datapoint.</span>
 
 <span class="sd">    Stores physical inputs (temperature, mole fractions, areas, volumes, and</span>
 <span class="sd">    segment-type probabilities) and optional training targets. Shape metadata</span>
@@ -473,7 +473,7 @@
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If array shapes are inconsistent.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">temperature</span><span class="p">:</span> <span class="nb">float</span>
     <span class="n">mole_fractions</span><span class="p">:</span> <span class="n">NumpyArray1D</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="nb">repr</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
@@ -486,13 +486,13 @@
     <span class="n">num_targets</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">init</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate array shapes and freeze stored numpy arrays.</span>
+<span class="w">        </span><span class="sd">"""Validate array shapes and freeze stored numpy arrays.</span>
 
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
 <span class="sd">            If any stored array has an incompatible shape.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span>  <span class="c1"># noqa: PLR2004</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">num_components</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_segment_types</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">probabilities</span><span class="o">.</span><span class="n">shape</span>
@@ -501,7 +501,7 @@
             <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">volumes</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_components</span><span class="p">,)</span>
             <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">targets</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span>
         <span class="k">except</span> <span class="ne">AssertionError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid array shapes&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Invalid array shapes"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">num_targets</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">targets</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">array</span> <span class="ow">in</span> <span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">mole_fractions</span><span class="p">,</span>
@@ -514,14 +514,14 @@
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the structural shape metadata for the datapoint.</span>
+<span class="w">        </span><span class="sd">"""Return the structural shape metadata for the datapoint.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        tuple[int, int, int]</span>
 <span class="sd">            Tuple containing the number of components, segment types,</span>
 <span class="sd">            and number of training targets.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">num_components</span><span class="p">,</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">num_segment_types</span><span class="p">,</span>
@@ -531,7 +531,7 @@
 <div class="viewcode-block" id="MixtureDatapoint.get_inputs">
 <a class="viewcode-back" href="../../../api/MixtureDatapoint.html#cosmolayer.MixtureDatapoint.get_inputs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_inputs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">InputsType</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert physical inputs to torch tensors.</span>
+<span class="w">        </span><span class="sd">"""Convert physical inputs to torch tensors.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -543,7 +543,7 @@
 <span class="sd">        InputsType</span>
 <span class="sd">            Temperature, mole fractions, areas, volumes, and probabilities</span>
 <span class="sd">            as torch tensors.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="p">(</span>
             <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">temperature</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">),</span>
             <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mole_fractions</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">),</span>
@@ -556,7 +556,7 @@
 <div class="viewcode-block" id="MixtureDatapoint.get_targets">
 <a class="viewcode-back" href="../../../api/MixtureDatapoint.html#cosmolayer.MixtureDatapoint.get_targets">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_targets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor1D</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert target arrays to torch tensors.</span>
+<span class="w">        </span><span class="sd">"""Convert target arrays to torch tensors.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -567,7 +567,7 @@
 <span class="sd">        -------</span>
 <span class="sd">        Tensor1D</span>
 <span class="sd">            Training targets as torch tensors.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">targets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span></div>
 </div>
 
@@ -576,7 +576,7 @@
 <div class="viewcode-block" id="MixtureInferenceDataset">
 <a class="viewcode-back" href="../../../api/MixtureInferenceDataset.html#cosmolayer.MixtureInferenceDataset">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">MixtureInferenceDataset</span><span class="p">(</span><span class="n">_DatasetBase</span><span class="p">[</span><span class="n">InputsType</span><span class="p">]):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Torch dataset wrapper for shape-compatible mixture datapoints in inference.</span>
+<span class="w">    </span><span class="sd">"""Torch dataset wrapper for shape-compatible mixture datapoints in inference.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -606,7 +606,7 @@
 <span class="sd">    &gt;&gt;&gt; inputs = dataset[0]</span>
 <span class="sd">    &gt;&gt;&gt; len(inputs)</span>
 <span class="sd">    5</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -615,20 +615,20 @@
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mixtures</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">&quot;MixtureInferenceDataset must contain at least one mixture&quot;</span>
+                <span class="s2">"MixtureInferenceDataset must contain at least one mixture"</span>
             <span class="p">)</span>
         <span class="n">input_shape</span> <span class="o">=</span> <span class="n">mixtures</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
         <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">mixture</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="o">!=</span> <span class="n">input_shape</span> <span class="k">for</span> <span class="n">mixture</span> <span class="ow">in</span> <span class="n">mixtures</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;All mixtures must have the same input shape&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"All mixtures must have the same input shape"</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_mixtures</span> <span class="o">=</span> <span class="n">mixtures</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span> <span class="o">=</span> <span class="n">dtype</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of datapoints in the dataset.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of datapoints in the dataset."""</span>
         <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mixtures</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">InputsType</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return one datapoint as input tensors.</span>
+<span class="w">        </span><span class="sd">"""Return one datapoint as input tensors.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -639,7 +639,7 @@
 <span class="sd">        -------</span>
 <span class="sd">        InputsType</span>
 <span class="sd">            Input tensors for the selected datapoint.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mixtures</span><span class="p">[</span><span class="n">index</span><span class="p">]</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span><span class="p">)</span></div>
 
 
@@ -647,7 +647,7 @@
 <div class="viewcode-block" id="MixtureTrainingDataset">
 <a class="viewcode-back" href="../../../api/MixtureTrainingDataset.html#cosmolayer.MixtureTrainingDataset">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">MixtureTrainingDataset</span><span class="p">(</span><span class="n">_DatasetBase</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">InputsType</span><span class="p">,</span> <span class="n">Tensor1D</span><span class="p">]]):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Torch dataset wrapper for shape-compatible mixture datapoints.</span>
+<span class="w">    </span><span class="sd">"""Torch dataset wrapper for shape-compatible mixture datapoints.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -669,8 +669,8 @@
 <span class="sd">    &gt;&gt;&gt; from cosmolayer.cosmosac import CosmoSac2002Model</span>
 <span class="sd">    &gt;&gt;&gt; from cosmolayer.cosmosac.datapoint import CosmoSacMixtureDatapoint</span>
 <span class="sd">    &gt;&gt;&gt; from importlib.resources import files</span>
-<span class="sd">    &gt;&gt;&gt; data = files(&quot;cosmolayer.data&quot;)</span>
-<span class="sd">    &gt;&gt;&gt; cosmo_files = [data / &quot;C=C(N)O.cosmo&quot;, data / &quot;NCCO.cosmo&quot;]</span>
+<span class="sd">    &gt;&gt;&gt; data = files("cosmolayer.data")</span>
+<span class="sd">    &gt;&gt;&gt; cosmo_files = [data / "C=C(N)O.cosmo", data / "NCCO.cosmo"]</span>
 <span class="sd">    &gt;&gt;&gt; mole_fractions = [0.5, 0.5]</span>
 <span class="sd">    &gt;&gt;&gt; temperature = 298.15</span>
 <span class="sd">    &gt;&gt;&gt; targets = [1.2]</span>
@@ -689,7 +689,7 @@
 <span class="sd">    5</span>
 <span class="sd">    &gt;&gt;&gt; len(targets)</span>
 <span class="sd">    1</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -697,19 +697,19 @@
         <span class="n">dtype</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mixtures</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;MixtureTrainingDataset must contain at least one mixture&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"MixtureTrainingDataset must contain at least one mixture"</span><span class="p">)</span>
         <span class="n">shape</span> <span class="o">=</span> <span class="n">mixtures</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
         <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">mixture</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">shape</span> <span class="k">for</span> <span class="n">mixture</span> <span class="ow">in</span> <span class="n">mixtures</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;All mixtures must have the same shape&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"All mixtures must have the same shape"</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_mixtures</span> <span class="o">=</span> <span class="n">mixtures</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span> <span class="o">=</span> <span class="n">dtype</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of datapoints in the dataset.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of datapoints in the dataset."""</span>
         <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mixtures</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">InputsType</span><span class="p">,</span> <span class="n">Tensor1D</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return one datapoint as input and target tensor tuples.</span>
+<span class="w">        </span><span class="sd">"""Return one datapoint as input and target tensor tuples.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -720,20 +720,20 @@
 <span class="sd">        -------</span>
 <span class="sd">        tuple[InputsType, Tensor1D]</span>
 <span class="sd">            Input tensors and target tensors for the selected datapoint.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">mixture</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mixtures</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
         <span class="k">return</span> <span class="n">mixture</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span><span class="p">),</span> <span class="n">mixture</span><span class="o">.</span><span class="n">get_targets</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span><span class="p">)</span>
 
 <div class="viewcode-block" id="MixtureTrainingDataset.to_inference_dataset">
 <a class="viewcode-back" href="../../../api/MixtureTrainingDataset.html#cosmolayer.MixtureTrainingDataset.to_inference_dataset">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_inference_dataset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MixtureInferenceDataset</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the training dataset to an inference dataset.</span>
+<span class="w">        </span><span class="sd">"""Convert the training dataset to an inference dataset.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        MixtureInferenceDataset</span>
 <span class="sd">            An inference dataset with the same mixtures and dtype.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">MixtureInferenceDataset</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mixtures</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dtype</span><span class="p">)</span></div>
 </div>
 

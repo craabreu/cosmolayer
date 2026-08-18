@@ -397,10 +397,10 @@
                 <article class="bd-article">
                   
   <h1>Source code for cosmolayer.cosmolayer.layer</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""</span>
 <span class="sd">.. module:: cosmolayer.cosmolayer.layer</span>
 <span class="sd">   :synopsis: Differentiable COSMO-type activity coefficient layer.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
@@ -419,7 +419,7 @@
 <div class="viewcode-block" id="CosmoLayer">
 <a class="viewcode-back" href="../../../api/CosmoLayer.html#cosmolayer.CosmoLayer">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">CosmoLayer</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Differentiable COSMO-type activity coefficient layer.</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">"""Differentiable COSMO-type activity coefficient layer.</span>
 
 <span class="sd">    This class assumes that the interaction energy matrix :math:`\mathbf{U}` can depend</span>
 <span class="sd">    on the temperature :math:`T` through the following relationship:</span>
@@ -477,10 +477,10 @@
 <span class="sd">    &gt;&gt;&gt; from cosmolayer.cosmosac import CosmoSac2002Model</span>
 <span class="sd">    &gt;&gt;&gt; import torch</span>
 <span class="sd">    &gt;&gt;&gt; T_ref = 298.15  # K</span>
-<span class="sd">    &gt;&gt;&gt; source = files(&quot;cosmolayer.data&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; source = files("cosmolayer.data")</span>
 <span class="sd">    &gt;&gt;&gt; components = {</span>
-<span class="sd">    ...     &quot;fluoromethane&quot;: (source / &quot;CF.cosmo&quot;).read_text(),</span>
-<span class="sd">    ...     &quot;water&quot;: (source / &quot;O.cosmo&quot;).read_text(),</span>
+<span class="sd">    ...     "fluoromethane": (source / "CF.cosmo").read_text(),</span>
+<span class="sd">    ...     "water": (source / "O.cosmo").read_text(),</span>
 <span class="sd">    ... }</span>
 <span class="sd">    &gt;&gt;&gt; mixture = CosmoSac2002Model.create_mixture(components)</span>
 <span class="sd">    &gt;&gt;&gt; interaction_matrices = mixture.interaction_matrices(T_ref)</span>
@@ -508,7 +508,7 @@
 <span class="sd">    &gt;&gt;&gt; gE_RT.backward()</span>
 <span class="sd">    &gt;&gt;&gt; x.grad.tolist()</span>
 <span class="sd">    [0.805809..., 0.648071...]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -530,24 +530,24 @@
         <span class="n">num_matrices</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">interaction_matrices</span><span class="p">)</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">exponents</span><span class="p">)</span> <span class="o">!=</span> <span class="n">num_matrices</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Number of exponents (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">exponents</span><span class="p">)</span><span class="si">}</span><span class="s2">) must match &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;number of interaction matrices (</span><span class="si">{</span><span class="n">num_matrices</span><span class="si">}</span><span class="s2">)&quot;</span>
+                <span class="sa">f</span><span class="s2">"Number of exponents (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">exponents</span><span class="p">)</span><span class="si">}</span><span class="s2">) must match "</span>
+                <span class="sa">f</span><span class="s2">"number of interaction matrices (</span><span class="si">{</span><span class="n">num_matrices</span><span class="si">}</span><span class="s2">)"</span>
             <span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_num_matrices</span> <span class="o">=</span> <span class="n">num_matrices</span>
 
         <span class="n">shapes</span> <span class="o">=</span> <span class="p">{</span><span class="n">matrix</span><span class="o">.</span><span class="n">shape</span> <span class="k">for</span> <span class="n">matrix</span> <span class="ow">in</span> <span class="n">interaction_matrices</span><span class="p">}</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">shapes</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;All interaction matrices must have the same shape&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"All interaction matrices must have the same shape"</span><span class="p">)</span>
         <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">shapes</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">rows</span> <span class="o">!=</span> <span class="n">cols</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Interaction matrices must be square&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Interaction matrices must be square"</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_n_types</span> <span class="o">=</span> <span class="n">rows</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_matrix_names_and_exponents</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">input_matrix</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">interaction_matrices</span><span class="p">):</span>
             <span class="n">matrix</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">as_tensor</span><span class="p">(</span><span class="n">input_matrix</span><span class="p">)</span>
-            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;interaction_matrix_</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"interaction_matrix_</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">"</span>
             <span class="k">if</span> <span class="n">learn_matrices</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">matrix</span><span class="p">))</span>
             <span class="k">else</span><span class="p">:</span>
@@ -563,7 +563,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">_check_convergence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">converged</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">bool</span><span class="p">(</span><span class="n">converged</span><span class="o">.</span><span class="n">all</span><span class="p">()):</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;COSMO solver did not converge in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_max_iter</span><span class="si">}</span><span class="s2"> iterations&quot;</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">"COSMO solver did not converge in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_max_iter</span><span class="si">}</span><span class="s2"> iterations"</span><span class="p">,</span>
                 <span class="ne">RuntimeWarning</span><span class="p">,</span>
                 <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
             <span class="p">)</span>
@@ -571,12 +571,12 @@
 <div class="viewcode-block" id="CosmoLayer.extra_repr">
 <a class="viewcode-back" href="../../../api/CosmoLayer.html#cosmolayer.CosmoLayer.extra_repr">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">extra_repr</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a string representation of the CosmoLayer.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return a string representation of the CosmoLayer."""</span>
         <span class="k">return</span> <span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;reference_temperature=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_ref_temp</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;area_per_segment=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_area_per_segment</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;exponents=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_exponents</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;num_segment_types=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_n_types</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="sa">f</span><span class="s2">"reference_temperature=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_ref_temp</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="se">\n</span><span class="s2">"</span>
+            <span class="sa">f</span><span class="s2">"area_per_segment=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_area_per_segment</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="se">\n</span><span class="s2">"</span>
+            <span class="sa">f</span><span class="s2">"exponents=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_exponents</span><span class="si">}</span><span class="se">\n</span><span class="s2">"</span>
+            <span class="sa">f</span><span class="s2">"num_segment_types=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_n_types</span><span class="si">}</span><span class="s2">"</span>
         <span class="p">)</span></div>
 
 
@@ -588,7 +588,7 @@
         <span class="n">areas</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">volumes</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Compute the logarithms of the combinatorial activity coefficients.</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">"""Compute the logarithms of the combinatorial activity coefficients.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -607,7 +607,7 @@
 <span class="sd">        torch.Tensor</span>
 <span class="sd">            Logarithms of the combinatorial activity coefficients.</span>
 <span class="sd">            Shape: (..., num_components).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">v_hat</span> <span class="o">=</span> <span class="n">volumes</span> <span class="o">/</span> <span class="p">(</span><span class="n">fracs</span> <span class="o">*</span> <span class="n">volumes</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">a_hat</span> <span class="o">=</span> <span class="n">areas</span> <span class="o">/</span> <span class="p">(</span><span class="n">fracs</span> <span class="o">*</span> <span class="n">areas</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">w_hat</span> <span class="o">=</span> <span class="n">v_hat</span> <span class="o">/</span> <span class="n">a_hat</span>
@@ -625,7 +625,7 @@
         <span class="n">areas</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">probs</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the probabilities of segment types in the mixture.</span>
+<span class="w">        </span><span class="sd">"""Compute the probabilities of segment types in the mixture.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -645,7 +645,7 @@
 <span class="sd">        torch.Tensor</span>
 <span class="sd">            Probabilities of segment types in the mixture.</span>
 <span class="sd">            Shape: (..., num_segment_types).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">xa</span> <span class="o">=</span> <span class="n">fracs</span> <span class="o">*</span> <span class="n">areas</span>
         <span class="n">theta</span> <span class="o">=</span> <span class="n">xa</span> <span class="o">/</span> <span class="n">xa</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">theta</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">probs</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">2</span><span class="p">)</span></div>
@@ -654,7 +654,7 @@
 <div class="viewcode-block" id="CosmoLayer.scaled_interactions">
 <a class="viewcode-back" href="../../../api/CosmoLayer.html#cosmolayer.CosmoLayer.scaled_interactions">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scaled_interactions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temp</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the scaled interactions at a given temperature.</span>
+<span class="w">        </span><span class="sd">"""Compute the scaled interactions at a given temperature.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -667,7 +667,7 @@
 <span class="sd">        torch.Tensor</span>
 <span class="sd">            The scaled interactions at the given temperature.</span>
 <span class="sd">            Shape: (..., num_segment_types, num_segment_types).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">beta</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ref_temp</span> <span class="o">/</span> <span class="n">temp</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
         <span class="n">matrices</span> <span class="o">=</span> <span class="p">[</span>
             <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="o">*</span> <span class="n">beta</span><span class="o">**</span><span class="n">exponent</span>
@@ -683,7 +683,7 @@
         <span class="n">scaled_interactions</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">probs</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the log-activity coefficients of segment types in pure compounds.</span>
+<span class="w">        </span><span class="sd">"""Compute the log-activity coefficients of segment types in pure compounds.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -707,7 +707,7 @@
 <span class="sd">            ``implicit_diff`` is True, or backpropagates directly through the Newton</span>
 <span class="sd">            iterations of :meth:`CosmoSolver.logspace_newton_solver</span>
 <span class="sd">            &lt;cosmolayer.cosmosolver.CosmoSolver.logspace_newton_solver&gt;` otherwise.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">args</span> <span class="o">=</span> <span class="p">(</span><span class="n">probs</span><span class="p">,</span> <span class="n">scaled_interactions</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_iter</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_implicit_diff</span><span class="p">:</span>
             <span class="n">log_gamma_pure</span><span class="p">,</span> <span class="n">converged</span> <span class="o">=</span> <span class="n">CosmoSolver</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
@@ -727,7 +727,7 @@
         <span class="n">areas</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">probs</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the log-activity coefficients of segment types in the mixture.</span>
+<span class="w">        </span><span class="sd">"""Compute the log-activity coefficients of segment types in the mixture.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -757,7 +757,7 @@
 <span class="sd">            ``implicit_diff`` is True, or backpropagates directly through the Newton</span>
 <span class="sd">            iterations of :meth:`CosmoSolver.logspace_newton_solver</span>
 <span class="sd">            &lt;cosmolayer.cosmosolver.CosmoSolver.logspace_newton_solver&gt;` otherwise.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">args</span> <span class="o">=</span> <span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">mixture_probabilities</span><span class="p">(</span><span class="n">fracs</span><span class="p">,</span> <span class="n">areas</span><span class="p">,</span> <span class="n">probs</span><span class="p">),</span>
             <span class="n">scaled_interactions</span><span class="p">,</span>
@@ -781,7 +781,7 @@
         <span class="n">areas</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">probs</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the logarithms of the residual activity coefficients.</span>
+<span class="w">        </span><span class="sd">"""Compute the logarithms of the residual activity coefficients.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -804,7 +804,7 @@
 <span class="sd">        torch.Tensor</span>
 <span class="sd">            Logarithms of the residual activity coefficients.</span>
 <span class="sd">            Shape: (..., num_components).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">scaled_interactions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scaled_interactions</span><span class="p">(</span><span class="n">temperature</span><span class="p">)</span>
         <span class="n">log_gamma_pure</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_pure_segment_activity_coefficients</span><span class="p">(</span>
             <span class="n">scaled_interactions</span><span class="p">,</span> <span class="n">probs</span>
@@ -829,7 +829,7 @@
         <span class="n">volumes</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">probs</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the logarithms of the activity coefficients.</span>
+<span class="w">        </span><span class="sd">"""Compute the logarithms of the activity coefficients.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -855,7 +855,7 @@
 <span class="sd">        torch.Tensor</span>
 <span class="sd">            Logarithms of the activity coefficients.</span>
 <span class="sd">            Shape: (..., num_components).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">log_gamma_c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_combinatorial_activity_coefficients</span><span class="p">(</span>
             <span class="n">fracs</span><span class="p">,</span> <span class="n">areas</span><span class="p">,</span> <span class="n">volumes</span>
         <span class="p">)</span>
@@ -875,7 +875,7 @@
         <span class="n">volumes</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
         <span class="n">probs</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Forward pass of the CosmoLayer.</span>
+<span class="w">        </span><span class="sd">"""Forward pass of the CosmoLayer.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -901,7 +901,7 @@
 <span class="sd">        torch.Tensor</span>
 <span class="sd">            Logarithms of the activity coefficients.</span>
 <span class="sd">            Shape: (..., num_components).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_activity_coefficients</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">fracs</span><span class="p">,</span> <span class="n">areas</span><span class="p">,</span> <span class="n">volumes</span><span class="p">,</span> <span class="n">probs</span><span class="p">)</span></div>
 </div>
 

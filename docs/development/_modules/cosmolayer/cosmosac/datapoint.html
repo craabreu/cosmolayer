@@ -397,12 +397,12 @@
                 <article class="bd-article">
                   
   <h1>Source code for cosmolayer.cosmosac.datapoint</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""</span>
 <span class="sd">.. module:: cosmolayer.cosmosac.datapoint</span>
 <span class="sd">   :synopsis: Single datapoint for a COSMO-SAC mixture.</span>
 
 <span class="sd">.. moduleauthor:: Charlles Abreu &lt;craabreu@gmail.com&gt;</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -422,7 +422,7 @@
     <span class="n">cosmo_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">NumpyArray1D</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load area, volume, and sigma-profile probabilities for one component.</span>
+<span class="w">    </span><span class="sd">"""Load area, volume, and sigma-profile probabilities for one component.</span>
 
 <span class="sd">    Results are cached by (path, model) so repeated loads of the same file</span>
 <span class="sd">    with the same model are cheap.</span>
@@ -438,7 +438,7 @@
 <span class="sd">    -------</span>
 <span class="sd">    tuple[float, float, NumpyArray1D]</span>
 <span class="sd">        (area, volume, probabilities) for the component.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">cosmo_file_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="n">component</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">create_component</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
     <span class="n">probabilities</span> <span class="o">=</span> <span class="n">component</span><span class="o">.</span><span class="n">probabilities</span>
@@ -449,7 +449,7 @@
 <div class="viewcode-block" id="CosmoSacMixtureDatapoint">
 <a class="viewcode-back" href="../../../api/CosmoSacMixtureDatapoint.html#cosmolayer.cosmosac.CosmoSacMixtureDatapoint">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">CosmoSacMixtureDatapoint</span><span class="p">(</span><span class="n">MixtureDatapoint</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Subclass of :class:`MixtureDatapoint` for COSMO-SAC mixtures.</span>
+<span class="w">    </span><span class="sd">"""Subclass of :class:`MixtureDatapoint` for COSMO-SAC mixtures.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -480,8 +480,8 @@
 <span class="sd">    &gt;&gt;&gt; from importlib.resources import files</span>
 <span class="sd">    &gt;&gt;&gt; from cosmolayer.cosmosac import CosmoSac2002Model</span>
 <span class="sd">    &gt;&gt;&gt; from cosmolayer.cosmosac.datapoint import CosmoSacMixtureDatapoint</span>
-<span class="sd">    &gt;&gt;&gt; data = files(&quot;cosmolayer.data&quot;)</span>
-<span class="sd">    &gt;&gt;&gt; cosmo_files = [data / &quot;C=C(N)O.cosmo&quot;, data / &quot;NCCO.cosmo&quot;]</span>
+<span class="sd">    &gt;&gt;&gt; data = files("cosmolayer.data")</span>
+<span class="sd">    &gt;&gt;&gt; cosmo_files = [data / "C=C(N)O.cosmo", data / "NCCO.cosmo"]</span>
 <span class="sd">    &gt;&gt;&gt; mole_fractions = [0.5, 0.5]</span>
 <span class="sd">    &gt;&gt;&gt; temperature = 298.15</span>
 <span class="sd">    &gt;&gt;&gt; targets = [1.2]</span>
@@ -503,7 +503,7 @@
 <span class="sd">    (2, 51)</span>
 <span class="sd">    &gt;&gt;&gt; dp.num_targets</span>
 <span class="sd">    1</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -513,7 +513,7 @@
         <span class="n">targets</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">model</span><span class="p">:</span> <span class="n">Model</span> <span class="o">=</span> <span class="n">CosmoSac2010Model</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build a mixture datapoint from COSMO files and optional targets.</span>
+<span class="w">        </span><span class="sd">"""Build a mixture datapoint from COSMO files and optional targets.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -528,7 +528,7 @@
 <span class="sd">        model : Model, optional</span>
 <span class="sd">            COSMO-SAC model used to parse component data. Default is</span>
 <span class="sd">            :data:`CosmoSac2010Model`.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="n">targets</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">targets</span> <span class="o">=</span> <span class="p">[]</span>
 
@@ -558,7 +558,7 @@
         <span class="n">targets</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="nb">float</span><span class="p">],</span>
         <span class="n">model</span><span class="p">:</span> <span class="n">Model</span> <span class="o">=</span> <span class="n">CosmoSac2010Model</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CosmoSacMixtureDatapoint</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build a mixture datapoint from one row of a DataFrame (as a Series).</span>
+<span class="w">        </span><span class="sd">"""Build a mixture datapoint from one row of a DataFrame (as a Series).</span>
 
 <span class="sd">        This method is useful for building</span>
 <span class="sd">        :class:`~cosmolayer.MixtureTrainingDataset`</span>
@@ -574,19 +574,19 @@
 <span class="sd">        --------</span>
 <span class="sd">        &gt;&gt;&gt; from importlib.resources import files</span>
 <span class="sd">        &gt;&gt;&gt; from pathlib import Path</span>
-<span class="sd">        &gt;&gt;&gt; data = Path(str(files(&quot;cosmolayer&quot;) / &quot;data&quot;))</span>
+<span class="sd">        &gt;&gt;&gt; data = Path(str(files("cosmolayer") / "data"))</span>
 <span class="sd">        &gt;&gt;&gt; row = pd.Series(</span>
 <span class="sd">        ...     {</span>
-<span class="sd">        ...         &quot;file_a&quot;: data / &quot;C=C(N)O.cosmo&quot;,</span>
-<span class="sd">        ...         &quot;target_1&quot;: 1.2,</span>
+<span class="sd">        ...         "file_a": data / "C=C(N)O.cosmo",</span>
+<span class="sd">        ...         "target_1": 1.2,</span>
 <span class="sd">        ...     }</span>
 <span class="sd">        ... )</span>
 <span class="sd">        &gt;&gt;&gt; point = CosmoSacMixtureDatapoint.from_series(</span>
 <span class="sd">        ...     series=row,</span>
-<span class="sd">        ...     cosmo_files=[&quot;file_a&quot;, data / &quot;NCCO.cosmo&quot;],</span>
+<span class="sd">        ...     cosmo_files=["file_a", data / "NCCO.cosmo"],</span>
 <span class="sd">        ...     mole_fractions=[0.25, 0.75],</span>
 <span class="sd">        ...     temperature=298.15,</span>
-<span class="sd">        ...     targets=[&quot;target_1&quot;],</span>
+<span class="sd">        ...     targets=["target_1"],</span>
 <span class="sd">        ... )</span>
 <span class="sd">        &gt;&gt;&gt; point.num_components, point.num_targets</span>
 <span class="sd">        (2, 1)</span>
@@ -615,7 +615,7 @@
 <span class="sd">        -------</span>
 <span class="sd">        CosmoSacMixtureDatapoint</span>
 <span class="sd">            A datapoint built from the series values.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
 
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
             <span class="n">cosmo_files</span><span class="o">=</span><span class="p">[</span>

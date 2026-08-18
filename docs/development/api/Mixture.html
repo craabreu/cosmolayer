@@ -505,20 +505,20 @@ Default is (1, 3).</p></li>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">cosmolayer.cosmosac</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mixture</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">source</span> <span class="o">=</span> <span class="n">files</span><span class="p">(</span><span class="s2">&quot;cosmolayer.data&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">source</span> <span class="o">=</span> <span class="n">files</span><span class="p">(</span><span class="s2">"cosmolayer.data"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">components</span> <span class="o">=</span> <span class="p">{</span>
-<span class="gp">... </span>    <span class="s2">&quot;1-aminoethenol&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">source</span> <span class="o">/</span> <span class="s2">&quot;C=C(N)O.cosmo&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(),</span>
-<span class="gp">... </span>    <span class="s2">&quot;2-aminoethanol&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">source</span> <span class="o">/</span> <span class="s2">&quot;NCCO.cosmo&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(),</span>
+<span class="gp">... </span>    <span class="s2">"1-aminoethenol"</span><span class="p">:</span> <span class="p">(</span><span class="n">source</span> <span class="o">/</span> <span class="s2">"C=C(N)O.cosmo"</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(),</span>
+<span class="gp">... </span>    <span class="s2">"2-aminoethanol"</span><span class="p">:</span> <span class="p">(</span><span class="n">source</span> <span class="o">/</span> <span class="s2">"NCCO.cosmo"</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(),</span>
 <span class="gp">... </span><span class="p">}</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">mixture</span> <span class="o">=</span> <span class="n">Mixture</span><span class="p">(</span><span class="n">components</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">mixture</span><span class="p">)</span>
 <span class="go">2</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">mixture</span><span class="p">[</span><span class="s2">&quot;1-aminoethenol&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">area</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mixture</span><span class="p">[</span><span class="s2">"1-aminoethenol"</span><span class="p">]</span><span class="o">.</span><span class="n">area</span>
 <span class="go">97.34554...</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">mixture</span><span class="p">[</span><span class="s2">&quot;2-aminoethanol&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">area</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mixture</span><span class="p">[</span><span class="s2">"2-aminoethanol"</span><span class="p">]</span><span class="o">.</span><span class="n">area</span>
 <span class="go">103.51765...</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">mixture</span><span class="o">.</span><span class="n">component_names</span>
-<span class="go">(&#39;1-aminoethenol&#39;, &#39;2-aminoethanol&#39;)</span>
+<span class="go">('1-aminoethenol', '2-aminoethanol')</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">areas</span> <span class="o">=</span> <span class="n">mixture</span><span class="o">.</span><span class="n">areas</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">areas</span><span class="o">.</span><span class="n">shape</span>
 <span class="go">(2,)</span>

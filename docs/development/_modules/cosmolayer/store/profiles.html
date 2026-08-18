@@ -397,7 +397,7 @@
                 <article class="bd-article">
                   
   <h1>Source code for cosmolayer.store.profiles</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Area-weighted sigma profiles, at atom or molecule level.&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""Area-weighted sigma profiles, at atom or molecule level."""</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">replace</span>
@@ -422,7 +422,7 @@
 <a class="viewcode-back" href="../../../api/SigmaProfileTable.html#cosmolayer.store.SigmaProfileTable">[docs]</a>
 <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">SigmaProfileTable</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Area-weighted sigma profiles, at atom or molecule level.</span>
+<span class="w">    </span><span class="sd">"""Area-weighted sigma profiles, at atom or molecule level.</span>
 
 <span class="sd">    Build with ``from_segments`` (bin segment-level data) or ``aggregate``</span>
 <span class="sd">    (atom-level table to molecule-level). Direct construction wraps</span>
@@ -442,10 +442,10 @@
 <span class="sd">        Whether each row was centered on its mean charge density before</span>
 <span class="sd">        binning (zero first moment). A property of the data, not the grid.</span>
 <span class="sd">    atom_offsets : np.ndarray | None, optional</span>
-<span class="sd">        Global index of each molecule&#39;s first atom. ``None`` (default)</span>
+<span class="sd">        Global index of each molecule's first atom. ``None`` (default)</span>
 <span class="sd">        means molecule-level; when set, the table is atom-level and</span>
 <span class="sd">        ``aggregate`` can reassemble it.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">areas</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">]</span>
     <span class="n">charges</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">]</span>
@@ -455,26 +455,26 @@
     <span class="n">atom_offsets</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="nd">@property</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">level</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;atom&quot;</span><span class="p">,</span> <span class="s2">&quot;molecule&quot;</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Whether each row of this table describes one atom or one</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">level</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"atom"</span><span class="p">,</span> <span class="s2">"molecule"</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Whether each row of this table describes one atom or one</span>
 <span class="sd">        molecule.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        Literal[&quot;atom&quot;, &quot;molecule&quot;]</span>
-<span class="sd">            ``&quot;atom&quot;`` if ``atom_offsets`` is set, else ``&quot;molecule&quot;``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="s2">&quot;molecule&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">atom_offsets</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;atom&quot;</span>
+<span class="sd">        Literal["atom", "molecule"]</span>
+<span class="sd">            ``"atom"`` if ``atom_offsets`` is set, else ``"molecule"``.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="s2">"molecule"</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">atom_offsets</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">"atom"</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">sigma_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Sigma value at every profile column, in e/Å².</span>
+<span class="w">        </span><span class="sd">"""Sigma value at every profile column, in e/Å².</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        np.ndarray, shape (len(grid),)</span>
 <span class="sd">            ``grid.values``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">values</span>
 
 <div class="viewcode-block" id="SigmaProfileTable.from_segments">
@@ -491,11 +491,11 @@
         <span class="n">grid</span><span class="p">:</span> <span class="n">SigmaGrid</span> <span class="o">=</span> <span class="n">DEFAULT_SIGMA_GRID</span><span class="p">,</span>
         <span class="n">centered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;SigmaProfileTable&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Bin segment-level data into per-atom or per-molecule sigma</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SigmaProfileTable"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Bin segment-level data into per-atom or per-molecule sigma</span>
 <span class="sd">        profiles.</span>
 
-<span class="sd">        ``sigmas`` is each segment&#39;s charge density: pass raw</span>
+<span class="sd">        ``sigmas`` is each segment's charge density: pass raw</span>
 <span class="sd">        ``charges / areas``, or an averaged density from</span>
 <span class="sd">        ``average_sigmas_by_molecule``.</span>
 
@@ -506,13 +506,13 @@
 <span class="sd">        areas : np.ndarray</span>
 <span class="sd">            Segment areas.</span>
 <span class="sd">        segment_offsets : np.ndarray</span>
-<span class="sd">            Start index of each molecule&#39;s segments. Must describe</span>
+<span class="sd">            Start index of each molecule's segments. Must describe</span>
 <span class="sd">            *exactly* the molecules present in the segment-level arrays;</span>
 <span class="sd">            slice offsets and arrays together.</span>
 <span class="sd">        atom_indices : np.ndarray | None, optional</span>
 <span class="sd">            Global atom index of each segment. ``None`` (default) builds</span>
 <span class="sd">            one profile per molecule. When given, builds one profile per</span>
-<span class="sd">            atom; the result&#39;s ``atom_offsets`` is</span>
+<span class="sd">            atom; the result's ``atom_offsets`` is</span>
 <span class="sd">            ``atom_indices[segment_offsets]``.</span>
 <span class="sd">        num_rows : int | None, optional</span>
 <span class="sd">            Number of profile rows. ``None`` (default) uses</span>
@@ -531,7 +531,7 @@
 <span class="sd">        -------</span>
 <span class="sd">        SigmaProfileTable</span>
 <span class="sd">            Atom-level if ``atom_indices`` is given, else molecule-level.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">sigmas</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sigmas</span><span class="p">)</span>
         <span class="n">areas</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">areas</span><span class="p">)</span>
         <span class="n">segment_offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">)</span>
@@ -549,9 +549,9 @@
         <span class="n">charges_out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">num_rows</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
         <span class="n">profiles_out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_rows</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">grid</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
         <span class="k">assert</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">row_indices</span><span class="p">,</span> <span class="n">initial</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span> <span class="o">&lt;</span> <span class="n">num_rows</span><span class="p">,</span> <span class="p">(</span>
-            <span class="s2">&quot;atom_indices/segment_offsets reference a row index &gt;= num_rows; &quot;</span>
-            <span class="s2">&quot;segment_offsets must describe exactly the molecules present in &quot;</span>
-            <span class="s2">&quot;the segment-level arrays&quot;</span>
+            <span class="s2">"atom_indices/segment_offsets reference a row index &gt;= num_rows; "</span>
+            <span class="s2">"segment_offsets must describe exactly the molecules present in "</span>
+            <span class="s2">"the segment-level arrays"</span>
         <span class="p">)</span>
 
         <span class="n">num_segs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sigmas</span><span class="p">)</span>
@@ -590,8 +590,8 @@
         <span class="n">grid</span><span class="p">:</span> <span class="n">SigmaGrid</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">normalize</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;SigmaProfileTable&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reassemble per-molecule profiles from these per-atom ones.</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SigmaProfileTable"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Reassemble per-molecule profiles from these per-atom ones.</span>
 
 <span class="sd">        Area-weighted sum of atom profiles onto a shared molecule axis.</span>
 <span class="sd">        If this table is centered, each atom is translated back by its</span>
@@ -601,10 +601,10 @@
 <span class="sd">        ----------</span>
 <span class="sd">        grid : SigmaGrid | None, optional</span>
 <span class="sd">            Grid for the molecule profiles. ``None`` (default) uses</span>
-<span class="sd">            ``self.grid``. A different grid must share this table&#39;s</span>
+<span class="sd">            ``self.grid``. A different grid must share this table's</span>
 <span class="sd">            ``bin_width``.</span>
 <span class="sd">        normalize : bool, optional</span>
-<span class="sd">            If True, divide each molecule&#39;s profile by its total area so</span>
+<span class="sd">            If True, divide each molecule's profile by its total area so</span>
 <span class="sd">            it sums to 1.</span>
 <span class="sd">        num_threads : int | None, optional</span>
 <span class="sd">            Thread count. ``None`` (default) uses every CPU core.</span>
@@ -618,21 +618,21 @@
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
 <span class="sd">            If this table is already molecule-level, or if ``grid`` does</span>
-<span class="sd">            not share this table&#39;s ``bin_width``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">            not share this table's ``bin_width``.</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">atom_offsets</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">&quot;This SigmaProfileTable has no atom_offsets -- it is &quot;</span>
-                <span class="s2">&quot;already at molecule level, so there is nothing to &quot;</span>
-                <span class="s2">&quot;aggregate.&quot;</span>
+                <span class="s2">"This SigmaProfileTable has no atom_offsets -- it is "</span>
+                <span class="s2">"already at molecule level, so there is nothing to "</span>
+                <span class="s2">"aggregate."</span>
             <span class="p">)</span>
         <span class="n">output_grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid</span> <span class="k">if</span> <span class="n">grid</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">grid</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">output_grid</span><span class="o">.</span><span class="n">bin_width</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">bin_width</span><span class="p">,</span> <span class="n">rel_tol</span><span class="o">=</span><span class="mf">1e-9</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Output grid bin width </span><span class="si">{</span><span class="n">output_grid</span><span class="o">.</span><span class="n">bin_width</span><span class="si">!r}</span><span class="s2"> does not &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;match this table&#39;s </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">bin_width</span><span class="si">!r}</span><span class="s2">. Aggregation &quot;</span>
-                <span class="s2">&quot;aligns columns by point-count difference alone, which is &quot;</span>
-                <span class="s2">&quot;only valid between symmetric grids of equal bin width.&quot;</span>
+                <span class="sa">f</span><span class="s2">"Output grid bin width </span><span class="si">{</span><span class="n">output_grid</span><span class="o">.</span><span class="n">bin_width</span><span class="si">!r}</span><span class="s2"> does not "</span>
+                <span class="sa">f</span><span class="s2">"match this table's </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">bin_width</span><span class="si">!r}</span><span class="s2">. Aggregation "</span>
+                <span class="s2">"aligns columns by point-count difference alone, which is "</span>
+                <span class="s2">"only valid between symmetric grids of equal bin width."</span>
             <span class="p">)</span>
 
         <span class="n">num_atoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">areas</span><span class="p">)</span>

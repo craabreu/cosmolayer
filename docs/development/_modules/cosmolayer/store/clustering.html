@@ -397,14 +397,14 @@
                 <article class="bd-article">
                   
   <h1>Source code for cosmolayer.store.clustering</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Butina clustering of molecules by Morgan-fingerprint Tanimoto</span>
+<span></span><span class="sd">"""Butina clustering of molecules by Morgan-fingerprint Tanimoto</span>
 <span class="sd">similarity.</span>
 
 <span class="sd">Used by ``SegmentStore.from_cosmo_files`` to assign each stored molecule a</span>
 <span class="sd">``cluster_id`` (see the ``molecules.parquet`` column of that name), so</span>
-<span class="sd">callers can build train/test splits or diversity subsets that don&#39;t leak</span>
+<span class="sd">callers can build train/test splits or diversity subsets that don't leak</span>
 <span class="sd">near-duplicate structures across a split.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">cast</span>
@@ -423,7 +423,7 @@
 <a class="viewcode-back" href="../../../api/ClusteringSpecs.html#cosmolayer.store.ClusteringSpecs">[docs]</a>
 <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">ClusteringSpecs</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parameters for fingerprinting and Butina-clustering molecules.</span>
+<span class="w">    </span><span class="sd">"""Parameters for fingerprinting and Butina-clustering molecules.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -436,7 +436,7 @@
 <span class="sd">        Morgan fingerprint bit-vector length. Default 2048.</span>
 <span class="sd">    include_chirality : bool</span>
 <span class="sd">        Whether the fingerprint distinguishes stereoisomers. Default True.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">cutoff</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
     <span class="n">radius</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span>
@@ -446,14 +446,14 @@
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">FingerprintGenerator</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generates Morgan fingerprints for molecules under a fixed</span>
+<span class="w">    </span><span class="sd">"""Generates Morgan fingerprints for molecules under a fixed</span>
 <span class="sd">    ``ClusteringSpecs``.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    specs : ClusteringSpecs</span>
 <span class="sd">        Fingerprint parameters (radius, size, chirality).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">specs</span><span class="p">:</span> <span class="n">ClusteringSpecs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">specs</span> <span class="o">=</span> <span class="n">specs</span>
@@ -464,7 +464,7 @@
         <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mol</span><span class="p">:</span> <span class="n">Chem</span><span class="o">.</span><span class="n">Mol</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate a molecule&#39;s fingerprint as a dense bit array.</span>
+<span class="w">        </span><span class="sd">"""Generate a molecule's fingerprint as a dense bit array.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -475,18 +475,18 @@
 <span class="sd">        -------</span>
 <span class="sd">        np.ndarray, shape (fp_size,)</span>
 <span class="sd">            Dense 0/1 bit array.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">with</span> <span class="n">rdBase</span><span class="o">.</span><span class="n">BlockLogs</span><span class="p">():</span>
             <span class="n">fp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generator</span><span class="o">.</span><span class="n">GetFingerprintAsNumPy</span><span class="p">(</span><span class="n">mol</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">],</span> <span class="n">fp</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">butina_cluster</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">],</span> <span class="n">cutoff</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Butina-cluster molecules by fingerprint Tanimoto distance.</span>
+<span class="w">    </span><span class="sd">"""Butina-cluster molecules by fingerprint Tanimoto distance.</span>
 
-<span class="sd">    Delegates to chalcedon&#39;s count-sort-assign Butina implementation</span>
+<span class="sd">    Delegates to chalcedon's count-sort-assign Butina implementation</span>
 <span class="sd">    (vendored in ``cosmolayer.store._chalcedon``), which produces</span>
-<span class="sd">    the same partition as RDKit&#39;s reference implementation at typical</span>
+<span class="sd">    the same partition as RDKit's reference implementation at typical</span>
 <span class="sd">    cheminformatics cutoffs but scales substantially better with ``n``.</span>
 <span class="sd">    Pairwise work is still effectively ``O(n**2)``, so this is intended</span>
 <span class="sd">    for dataset-scale molecule counts rather than unbounded streaming.</span>
@@ -505,8 +505,8 @@
 <span class="sd">    np.ndarray, shape (n,)</span>
 <span class="sd">        Cluster id per molecule, in ``[0, num_clusters)``. Cluster ids are</span>
 <span class="sd">        ordered by cluster formation order (largest neighbor lists first,</span>
-<span class="sd">        per Butina&#39;s algorithm), not by input order.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        per Butina's algorithm), not by input order.</span>
+<span class="sd">    """</span>
     <span class="n">n</span> <span class="o">=</span> <span class="n">fingerprints</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>

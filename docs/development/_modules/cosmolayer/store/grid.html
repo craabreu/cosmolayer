@@ -397,21 +397,21 @@
                 <article class="bd-article">
                   
   <h1>Source code for cosmolayer.store.grid</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;The symmetric, evenly spaced grid a sigma profile is binned onto.</span>
+<span></span><span class="sd">"""The symmetric, evenly spaced grid a sigma profile is binned onto.</span>
 
 <span class="sd">A sigma profile is a histogram of surface area over charge density</span>
 <span class="sd">(sigma, in e/Å²). Profiles are always binned onto the ``SigmaGrid``</span>
 <span class="sd">passed in.</span>
 
 <span class="sd">Two operations are named separately because both are sometimes called</span>
-<span class="sd">&quot;shifting&quot;:</span>
+<span class="sd">"shifting":</span>
 
-<span class="sd">- *centering* subtracts a row&#39;s mean charge density from its segments</span>
+<span class="sd">- *centering* subtracts a row's mean charge density from its segments</span>
 <span class="sd">  **before** binning, so the profile has zero first moment. It changes</span>
 <span class="sd">  the data, not the grid (``SigmaProfileTable.centered``).</span>
 <span class="sd">- *translating* moves an already-binned row along a grid, used when</span>
 <span class="sd">  un-centering atom profiles while summing them to molecule level.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
@@ -427,7 +427,7 @@
 <a class="viewcode-back" href="../../../api/SigmaGrid.html#cosmolayer.store.SigmaGrid">[docs]</a>
 <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">SigmaGrid</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A symmetric, evenly spaced grid of sigma-profile points.</span>
+<span class="w">    </span><span class="sd">"""A symmetric, evenly spaced grid of sigma-profile points.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -447,42 +447,42 @@
 <span class="sd">    51</span>
 <span class="sd">    &gt;&gt;&gt; grid.values[0], grid.values[-1]</span>
 <span class="sd">    (np.float64(-0.025), np.float64(0.025))</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">max_abs_sigma</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">DEFAULT_MAX_ABS_SIGMA</span>
     <span class="n">num_points</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_NUM_POINTS</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">bin_width</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Width of one bin, in e/Å².</span>
+<span class="w">        </span><span class="sd">"""Width of one bin, in e/Å².</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        float</span>
 <span class="sd">            ``2 * max_abs_sigma / (num_points - 1)``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_abs_sigma</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_points</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
 
 <div class="viewcode-block" id="SigmaGrid.values">
 <a class="viewcode-back" href="../../../api/SigmaGrid.html#cosmolayer.store.SigmaGrid.values">[docs]</a>
     <span class="nd">@cached_property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Sigma value at every grid point, in e/Å².</span>
+<span class="w">        </span><span class="sd">"""Sigma value at every grid point, in e/Å².</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        np.ndarray, shape (num_points,)</span>
 <span class="sd">            Evenly spaced values from ``-max_abs_sigma`` to</span>
 <span class="sd">            ``max_abs_sigma``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">max_abs_sigma</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_abs_sigma</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_points</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="SigmaGrid.from_values">
 <a class="viewcode-back" href="../../../api/SigmaGrid.html#cosmolayer.store.SigmaGrid.from_values">[docs]</a>
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">from_values</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">&quot;SigmaGrid&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reconstruct a :class:`SigmaGrid` from an existing array of grid</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_values</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">"SigmaGrid"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Reconstruct a :class:`SigmaGrid` from an existing array of grid</span>
 <span class="sd">        values.</span>
 
 <span class="sd">        Parameters</span>
@@ -501,7 +501,7 @@
 <span class="sd">        &gt;&gt;&gt; grid = SigmaGrid(0.025, 51)</span>
 <span class="sd">        &gt;&gt;&gt; SigmaGrid.from_values(grid.values) == grid</span>
 <span class="sd">        True</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]),</span> <span class="nb">len</span><span class="p">(</span><span class="n">values</span><span class="p">))</span></div>
 
 
@@ -511,7 +511,7 @@
 
 
 <span class="n">DEFAULT_SIGMA_GRID</span> <span class="o">=</span> <span class="n">SigmaGrid</span><span class="p">()</span>
-<span class="sd">&quot;&quot;&quot;Default 51-point grid from -0.025 to 0.025 e/Å².&quot;&quot;&quot;</span>
+<span class="sd">"""Default 51-point grid from -0.025 to 0.025 e/Å²."""</span>
 </pre></div>
 
                 </article>

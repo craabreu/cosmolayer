@@ -397,16 +397,16 @@
                 <article class="bd-article">
                   
   <h1>Source code for cosmolayer.store.averaging</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;COSMO-SAC-style distance-weighted averaging of segment charge density.</span>
+<span></span><span class="sd">"""COSMO-SAC-style distance-weighted averaging of segment charge density.</span>
 
-<span class="sd">In COSMO-RS and COSMO-SAC, &quot;sigma&quot; is this averaged charge density, not</span>
+<span class="sd">In COSMO-RS and COSMO-SAC, "sigma" is this averaged charge density, not</span>
 <span class="sd">the raw per-segment ``charge / area``.</span>
 
 <span class="sd">``segment_offsets`` must describe *exactly* the molecules present in the</span>
-<span class="sd">accompanying segment-level arrays: the last molecule&#39;s segments run to</span>
+<span class="sd">accompanying segment-level arrays: the last molecule's segments run to</span>
 <span class="sd">the end of those arrays. Slice ``segment_offsets`` and the arrays</span>
 <span class="sd">together, or leftover segments are attributed to the wrong molecule.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
@@ -428,7 +428,7 @@
 <a class="viewcode-back" href="../../../api/AveragingScheme.html#cosmolayer.store.AveragingScheme">[docs]</a>
 <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">AveragingScheme</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Named averaging scheme (radius and decay) for segment charge</span>
+<span class="w">    </span><span class="sd">"""Named averaging scheme (radius and decay) for segment charge</span>
 <span class="sd">    densities.</span>
 
 <span class="sd">    Parameters</span>
@@ -441,7 +441,7 @@
 <span class="sd">        Effective averaging radius ``r_av``, in Å.</span>
 <span class="sd">    f_decay : float</span>
 <span class="sd">        Exponential decay factor.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">averaging_radius</span><span class="p">:</span> <span class="nb">float</span>
@@ -449,14 +449,14 @@
 
 
 
-<span class="n">COSMO_RS</span> <span class="o">=</span> <span class="n">AveragingScheme</span><span class="p">(</span><span class="s2">&quot;cosmo-rs&quot;</span><span class="p">,</span> <span class="n">averaging_radius</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">f_decay</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<span class="n">COSMO_RS</span> <span class="o">=</span> <span class="n">AveragingScheme</span><span class="p">(</span><span class="s2">"cosmo-rs"</span><span class="p">,</span> <span class="n">averaging_radius</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">f_decay</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
 <span class="n">COSMO_SAC_2002</span> <span class="o">=</span> <span class="n">AveragingScheme</span><span class="p">(</span>
-    <span class="s2">&quot;cosmo-sac-2002&quot;</span><span class="p">,</span>
+    <span class="s2">"cosmo-sac-2002"</span><span class="p">,</span>
     <span class="n">averaging_radius</span><span class="o">=</span><span class="n">COSMO_SAC_2002_AVERAGING_RADIUS</span><span class="p">,</span>
     <span class="n">f_decay</span><span class="o">=</span><span class="n">COSMO_SAC_2002_F_DECAY</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">COSMO_SAC_2010</span> <span class="o">=</span> <span class="n">AveragingScheme</span><span class="p">(</span>
-    <span class="s2">&quot;cosmo-sac-2010&quot;</span><span class="p">,</span>
+    <span class="s2">"cosmo-sac-2010"</span><span class="p">,</span>
     <span class="n">averaging_radius</span><span class="o">=</span><span class="n">COSMO_SAC_2010_AVERAGING_RADIUS</span><span class="p">,</span>
     <span class="n">f_decay</span><span class="o">=</span><span class="n">COSMO_SAC_2010_F_DECAY</span><span class="p">,</span>
 <span class="p">)</span>
@@ -466,7 +466,7 @@
     <span class="n">COSMO_SAC_2002</span><span class="p">,</span>
     <span class="n">COSMO_SAC_2010</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="sd">&quot;&quot;&quot;Built-in schemes: COSMO-RS, COSMO-SAC 2002, and COSMO-SAC 2010.&quot;&quot;&quot;</span>
+<span class="sd">"""Built-in schemes: COSMO-RS, COSMO-SAC 2002, and COSMO-SAC 2010."""</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">average_sigmas</span><span class="p">(</span>
@@ -475,7 +475,7 @@
     <span class="n">areas</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">],</span>
     <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">],</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Distance-weighted average of one molecule&#39;s segment charge</span>
+<span class="w">    </span><span class="sd">"""Distance-weighted average of one molecule's segment charge</span>
 <span class="sd">    densities, under one or more averaging schemes.</span>
 
 <span class="sd">    For every segment ``m``, replaces its raw charge density</span>
@@ -486,7 +486,7 @@
 <span class="sd">        w[m, n] = (r_n^2 * r_av^2 / (r_n^2 + r_av^2))</span>
 <span class="sd">                  * exp(-f_decay * d_mn^2 / (r_n^2 + r_av^2))</span>
 
-<span class="sd">    where ``r_n = sqrt(A_n / pi)`` is the *neighbor* segment&#39;s effective</span>
+<span class="sd">    where ``r_n = sqrt(A_n / pi)`` is the *neighbor* segment's effective</span>
 <span class="sd">    radius and ``d_mn`` is the distance between centroids, so ``w`` is</span>
 <span class="sd">    asymmetric even though ``d_mn`` is not. Pass segments of a single</span>
 <span class="sd">    molecule only; use ``average_sigmas_by_molecule`` for a dataset.</span>
@@ -508,7 +508,7 @@
 <span class="sd">    np.ndarray, shape (len(schemes), n_segs)</span>
 <span class="sd">        Averaged charge density for each segment under each scheme, in</span>
 <span class="sd">        e/Å², row ``i`` matching ``schemes[i]``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># float64: the Gram-matrix distance expansion loses precision in float32.</span>
     <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="n">charges</span> <span class="o">=</span> <span class="n">charges</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
@@ -541,7 +541,7 @@
     <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">],</span>
     <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply one or more averaging schemes to every molecule in a dataset.</span>
+<span class="w">    </span><span class="sd">"""Apply one or more averaging schemes to every molecule in a dataset.</span>
 
 <span class="sd">    Each thread handles a disjoint range of whole molecules. Row ``i`` of</span>
 <span class="sd">    the result matches ``schemes[i]`` and can be passed as ``sigmas`` to</span>
@@ -556,7 +556,7 @@
 <span class="sd">    areas : np.ndarray</span>
 <span class="sd">        Segment areas, shape ``(n_segs_total,)``.</span>
 <span class="sd">    segment_offsets : np.ndarray</span>
-<span class="sd">        Start index of each molecule&#39;s segments. Must describe exactly</span>
+<span class="sd">        Start index of each molecule's segments. Must describe exactly</span>
 <span class="sd">        the molecules present in the segment-level arrays.</span>
 <span class="sd">    schemes : Sequence[AveragingScheme]</span>
 <span class="sd">        Schemes to apply, in the order of the result rows.</span>
@@ -568,7 +568,7 @@
 <span class="sd">    np.ndarray, shape (len(schemes), n_segs_total)</span>
 <span class="sd">        Averaged charge density for every segment under every scheme, in</span>
 <span class="sd">        e/Å², row ``i`` matching ``schemes[i]``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">num_segs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">charges</span><span class="p">)</span>
     <span class="n">num_mols</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">)</span>
     <span class="n">averaged_sigmas</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">schemes</span><span class="p">),</span> <span class="n">num_segs</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
