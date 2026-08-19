@@ -28,7 +28,7 @@ class ClusteringSpecs:
     ----------
     cutoff : float
         Tanimoto distance threshold: molecules within ``cutoff`` of a
-        cluster centroid join that cluster. Default 0.5.
+        cluster centroid join that cluster. Default 0.65.
     radius : int
         Morgan fingerprint radius. Default 2.
     fp_size : int
@@ -37,7 +37,7 @@ class ClusteringSpecs:
         Whether the fingerprint distinguishes stereoisomers. Default True.
     """
 
-    cutoff: float = 0.5
+    cutoff: float = 0.65
     radius: int = 2
     fp_size: int = 2048
     include_chirality: bool = True

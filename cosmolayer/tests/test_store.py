@@ -405,6 +405,11 @@ class TestReservedSchemeNames:
 # --------------------------------------------------------------------- #
 
 
+class TestClusteringSpecs:
+    def test_default_cutoff_matches_chalcedon(self) -> None:
+        assert ClusteringSpecs().cutoff == 0.65
+
+
 class TestFingerprintGenerator:
     def test_generate_returns_dense_bit_array(self) -> None:
         generator = FingerprintGenerator(ClusteringSpecs(fp_size=512))
