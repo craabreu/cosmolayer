@@ -417,6 +417,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">cosmolayer.store._chalcedon.butina_cluster</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">butina_cluster</span> <span class="k">as</span> <span class="n">_chalcedon_butina_cluster</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cosmolayer.store._chalcedon.tanimoto_similarity</span><span class="w"> </span><span class="kn">import</span> <span class="n">TanimotoSimilarity</span>
 
 
 <div class="viewcode-block" id="ClusteringSpecs">
@@ -429,7 +430,7 @@
 <span class="sd">    ----------</span>
 <span class="sd">    cutoff : float</span>
 <span class="sd">        Tanimoto distance threshold: molecules within ``cutoff`` of a</span>
-<span class="sd">        cluster centroid join that cluster. Default 0.5.</span>
+<span class="sd">        cluster centroid join that cluster. Default 0.65.</span>
 <span class="sd">    radius : int</span>
 <span class="sd">        Morgan fingerprint radius. Default 2.</span>
 <span class="sd">    fp_size : int</span>
@@ -438,7 +439,7 @@
 <span class="sd">        Whether the fingerprint distinguishes stereoisomers. Default True.</span>
 <span class="sd">    """</span>
 
-    <span class="n">cutoff</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
+    <span class="n">cutoff</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.65</span>
     <span class="n">radius</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span>
     <span class="n">fp_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2048</span>
     <span class="n">include_chirality</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span></div>
@@ -515,6 +516,74 @@
 
     <span class="n">cluster_ids</span> <span class="o">=</span> <span class="n">_chalcedon_butina_cluster</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="n">cutoff</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">cluster_ids</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+
+<span class="c1"># Bound (batch, k) Tanimoto workspace so large clusters never allocate k×k.</span>
+<span class="n">_MEDOID_SCORE_MAX_CELLS</span> <span class="o">=</span> <span class="mi">4_000_000</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">cluster_medoid_distances</span><span class="p">(</span>
+    <span class="n">fingerprints</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">],</span>
+    <span class="n">cluster_ids</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Tanimoto distance of each molecule to its cluster's Tanimoto medoid.</span>
+
+<span class="sd">    The medoid of a cluster is the member that maximizes the sum of</span>
+<span class="sd">    Tanimoto similarities to the other members (equivalently, minimizes</span>
+<span class="sd">    the sum of Tanimoto distances). Ties break to the lowest row index.</span>
+<span class="sd">    The medoid's own distance is exactly 0.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    fingerprints : np.ndarray, shape (n, fp_size)</span>
+<span class="sd">        One fingerprint per molecule, as produced by</span>
+<span class="sd">        ``FingerprintGenerator.generate``.</span>
+<span class="sd">    cluster_ids : np.ndarray, shape (n,)</span>
+<span class="sd">        Cluster id per molecule, as produced by ``butina_cluster``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray, shape (n,)</span>
+<span class="sd">        Tanimoto distance to that molecule's cluster medoid, ``float64``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``fingerprints`` and ``cluster_ids`` have different lengths.</span>
+<span class="sd">    """</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">fingerprints</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">cluster_ids</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">n</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"fingerprints and cluster_ids must have the same length, "</span>
+            <span class="sa">f</span><span class="s2">"got </span><span class="si">{</span><span class="n">fingerprints</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> and </span><span class="si">{</span><span class="n">cluster_ids</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="n">distances</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">distances</span>
+
+    <span class="n">fps_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">cluster_id</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">cluster_ids</span><span class="p">):</span>
+        <span class="n">members</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">cluster_ids</span> <span class="o">==</span> <span class="n">cluster_id</span><span class="p">)</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">members</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">cluster_fps</span> <span class="o">=</span> <span class="n">fps_all</span><span class="p">[</span><span class="n">members</span><span class="p">]</span>
+        <span class="n">similarity</span> <span class="o">=</span> <span class="n">TanimotoSimilarity</span><span class="p">(</span><span class="n">cluster_fps</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"float64"</span><span class="p">)</span>
+        <span class="n">batch</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">_MEDOID_SCORE_MAX_CELLS</span> <span class="o">//</span> <span class="n">k</span><span class="p">))</span>
+        <span class="n">scores</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">batch</span><span class="p">):</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">batch</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+            <span class="n">scores</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">end</span><span class="p">]</span> <span class="o">=</span> <span class="n">similarity</span><span class="o">.</span><span class="n">chunk</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">local_medoid</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">scores</span><span class="p">))</span>
+        <span class="n">medoid_fp</span> <span class="o">=</span> <span class="n">cluster_fps</span><span class="p">[</span><span class="n">local_medoid</span><span class="p">]</span>
+        <span class="n">norms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s2">"ij,ij-&gt;i"</span><span class="p">,</span> <span class="n">cluster_fps</span><span class="p">,</span> <span class="n">cluster_fps</span><span class="p">)</span>
+        <span class="n">dots</span> <span class="o">=</span> <span class="n">cluster_fps</span> <span class="o">@</span> <span class="n">medoid_fp</span>
+        <span class="n">unions</span> <span class="o">=</span> <span class="n">norms</span> <span class="o">+</span> <span class="n">norms</span><span class="p">[</span><span class="n">local_medoid</span><span class="p">]</span> <span class="o">-</span> <span class="n">dots</span>
+        <span class="n">sims</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">divide</span><span class="p">(</span><span class="n">dots</span><span class="p">,</span> <span class="n">unions</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">dots</span><span class="p">),</span> <span class="n">where</span><span class="o">=</span><span class="n">unions</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">dists</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">sims</span>
+        <span class="n">dists</span><span class="p">[</span><span class="n">local_medoid</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="n">distances</span><span class="p">[</span><span class="n">members</span><span class="p">]</span> <span class="o">=</span> <span class="n">dists</span>
+    <span class="k">return</span> <span class="n">distances</span>
 </pre></div>
 
                 </article>
