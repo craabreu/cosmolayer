@@ -115,3 +115,6 @@ ENV/
 
 # Testing notebook
 test.ipynb
+
+# Superpowers SDD scratch workspace
+.superpowers/
