@@ -232,7 +232,13 @@ class TestSegmentStoreRoundTrip:
             "num_atoms",
             "volume",
             "cluster_id",
+            "cluster_distance",
         ]
+        pd.testing.assert_series_equal(
+            reloaded.molecules_df["cluster_distance"],
+            store.molecules_df["cluster_distance"],
+            check_names=True,
+        )
         assert list(reloaded.atoms_df.columns) == ["id", "element", "x", "y", "z"]
         pd.testing.assert_frame_equal(
             reloaded.atoms_df.reset_index(drop=True),
@@ -571,6 +577,16 @@ class TestSegmentStoreClustering:
         assert len(cluster_ids) == len(store.molecules_df)
         assert cluster_ids.min() >= 0
 
+    def test_cluster_distance_column_present_and_typed(self, store: SegmentStore) -> None:
+        assert "cluster_distance" in store.molecules_df.columns
+        distances = store.molecules_df["cluster_distance"]
+        assert distances.dtype == np.float64
+        assert len(distances) == len(store.molecules_df)
+        assert (distances >= 0.0).all()
+        # Each cluster has a medoid at exactly 0.
+        for cluster_id, group in store.molecules_df.groupby("cluster_id"):
+            assert (group["cluster_distance"] == 0.0).any(), cluster_id
+
     def test_custom_clustering_specs_accepted(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
@@ -769,6 +785,14 @@ class TestRestrictToMolecules:
         for name, arr in restricted.averaged_sigmas.items():
             assert len(arr) == len(restricted.data)
             assert name in store.averaged_sigmas
+
+    def test_cluster_distance_preserved_for_kept_rows(self, store: SegmentStore) -> None:
+        selected = np.array([1, 3], dtype=np.int64)
+        restricted = restrict_to_molecules(store, selected)
+        np.testing.assert_array_equal(
+            restricted.molecules_df["cluster_distance"].values,
+            store.molecules_df["cluster_distance"].values[selected],
+        )
 
 
 class TestSegmentStoreSubsample:
