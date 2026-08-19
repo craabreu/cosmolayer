@@ -34,7 +34,11 @@ from cosmolayer.store.binning import (
     compute_per_molecule_properties,
     row_indices_from_offsets,
 )
-from cosmolayer.store.clustering import FingerprintGenerator, butina_cluster
+from cosmolayer.store.clustering import (
+    FingerprintGenerator,
+    butina_cluster,
+    cluster_medoid_distances,
+)
 from cosmolayer.store.coarse_graining import compute_atom_remap
 from cosmolayer.store.segments import _SMILES_PARSER_PARAMS
 from cosmolayer.store.splitting import greedy_cluster_split
@@ -228,7 +232,13 @@ class TestSegmentStoreRoundTrip:
             "num_atoms",
             "volume",
             "cluster_id",
+            "cluster_distance",
         ]
+        pd.testing.assert_series_equal(
+            reloaded.molecules_df["cluster_distance"],
+            store.molecules_df["cluster_distance"],
+            check_names=True,
+        )
         assert list(reloaded.atoms_df.columns) == ["id", "element", "x", "y", "z"]
         pd.testing.assert_frame_equal(
             reloaded.atoms_df.reset_index(drop=True),
@@ -405,6 +415,11 @@ class TestReservedSchemeNames:
 # --------------------------------------------------------------------- #
 
 
+class TestClusteringSpecs:
+    def test_default_cutoff_matches_chalcedon(self) -> None:
+        assert ClusteringSpecs().cutoff == 0.65
+
+
 class TestFingerprintGenerator:
     def test_generate_returns_dense_bit_array(self) -> None:
         generator = FingerprintGenerator(ClusteringSpecs(fp_size=512))
@@ -470,6 +485,90 @@ class TestButinaCluster:
         assert call_sizes == [2]
 
 
+def _tanimoto_distance(a: NDArray[np.int8], b: NDArray[np.int8]) -> float:
+    """Tanimoto distance including self-similarity (empty-vs-empty → 1)."""
+    a64 = np.asarray(a, dtype=np.float64)
+    b64 = np.asarray(b, dtype=np.float64)
+    dot = float(a64 @ b64)
+    union = float(a64 @ a64 + b64 @ b64 - dot)
+    if union == 0.0:
+        return 1.0
+    return 1.0 - dot / union
+
+
+class TestClusterMedoidDistances:
+    def test_empty_input(self) -> None:
+        fps = np.empty((0, 16), dtype=np.int8)
+        ids = np.empty(0, dtype=np.int64)
+        result = cluster_medoid_distances(fps, ids)
+        assert result.shape == (0,)
+        assert result.dtype == np.float64
+
+    def test_singleton_is_zero(self) -> None:
+        fps = np.array([[1, 0, 1, 0]], dtype=np.int8)
+        ids = np.array([0], dtype=np.int64)
+        result = cluster_medoid_distances(fps, ids)
+        np.testing.assert_array_equal(result, [0.0])
+        assert result.dtype == np.float64
+
+    def test_identical_fingerprints_are_all_zero(self) -> None:
+        fps = np.tile(np.array([1, 0, 1, 0, 1], dtype=np.int8), (3, 1))
+        ids = np.zeros(3, dtype=np.int64)
+        result = cluster_medoid_distances(fps, ids)
+        np.testing.assert_array_equal(result, [0.0, 0.0, 0.0])
+
+    def test_unique_medoid_matches_tanimoto_to_that_member(self) -> None:
+        # A=[1,1,1,0,0], B=[1,1,1,1,0], C=[0,0,0,1,1]
+        # s(A,B)=0.75, s(A,C)=0, s(B,C)=0.2 → B is the unique medoid.
+        fps = np.array(
+            [[1, 1, 1, 0, 0], [1, 1, 1, 1, 0], [0, 0, 0, 1, 1]],
+            dtype=np.int8,
+        )
+        ids = np.zeros(3, dtype=np.int64)
+        result = cluster_medoid_distances(fps, ids)
+        assert result[1] == 0.0
+        np.testing.assert_allclose(
+            result,
+            [
+                _tanimoto_distance(fps[0], fps[1]),
+                0.0,
+                _tanimoto_distance(fps[2], fps[1]),
+            ],
+        )
+
+    def test_clusters_are_independent(self) -> None:
+        fps = np.array(
+            [[1, 1, 1, 0, 0], [1, 1, 1, 1, 0], [0, 0, 0, 1, 1], [1, 0, 0, 0, 0]],
+            dtype=np.int8,
+        )
+        ids = np.array([0, 0, 0, 1], dtype=np.int64)
+        result = cluster_medoid_distances(fps, ids)
+        np.testing.assert_allclose(
+            result[:3],
+            [
+                _tanimoto_distance(fps[0], fps[1]),
+                0.0,
+                _tanimoto_distance(fps[2], fps[1]),
+            ],
+        )
+        assert result[3] == 0.0
+
+    def test_tie_breaks_to_lowest_index(self) -> None:
+        # Equilateral: every pairwise Tanimoto similarity is 1/3.
+        fps = np.array([[1, 1, 0], [1, 0, 1], [0, 1, 1]], dtype=np.int8)
+        ids = np.zeros(3, dtype=np.int64)
+        result = cluster_medoid_distances(fps, ids)
+        assert result[0] == 0.0
+        expected = _tanimoto_distance(fps[1], fps[0])
+        np.testing.assert_allclose(result[1:], [expected, expected])
+
+    def test_length_mismatch_raises(self) -> None:
+        fps = np.array([[1, 0], [0, 1]], dtype=np.int8)
+        ids = np.array([0], dtype=np.int64)
+        with pytest.raises(ValueError, match="same length"):
+            cluster_medoid_distances(fps, ids)
+
+
 class TestSegmentStoreClustering:
     def test_cluster_id_column_present_and_typed(self, store: SegmentStore) -> None:
         assert "cluster_id" in store.molecules_df.columns
@@ -477,6 +576,16 @@ class TestSegmentStoreClustering:
         assert cluster_ids.dtype == np.int64
         assert len(cluster_ids) == len(store.molecules_df)
         assert cluster_ids.min() >= 0
+
+    def test_cluster_distance_column_present_and_typed(self, store: SegmentStore) -> None:
+        assert "cluster_distance" in store.molecules_df.columns
+        distances = store.molecules_df["cluster_distance"]
+        assert distances.dtype == np.float64
+        assert len(distances) == len(store.molecules_df)
+        assert (distances >= 0.0).all()
+        # Each cluster has a medoid at exactly 0.
+        for cluster_id, group in store.molecules_df.groupby("cluster_id"):
+            assert (group["cluster_distance"] == 0.0).any(), cluster_id
 
     def test_custom_clustering_specs_accepted(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
@@ -676,6 +785,14 @@ class TestRestrictToMolecules:
         for name, arr in restricted.averaged_sigmas.items():
             assert len(arr) == len(restricted.data)
             assert name in store.averaged_sigmas
+
+    def test_cluster_distance_preserved_for_kept_rows(self, store: SegmentStore) -> None:
+        selected = np.array([1, 3], dtype=np.int64)
+        restricted = restrict_to_molecules(store, selected)
+        np.testing.assert_array_equal(
+            restricted.molecules_df["cluster_distance"].values,
+            store.molecules_df["cluster_distance"].values[selected],
+        )
 
 
 class TestSegmentStoreSubsample:

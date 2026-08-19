@@ -9,7 +9,8 @@ load an existing one with ``SegmentStore.load``. Both use a flat
     <storage_dir>/atom_indices.npy  int64   (n_segs_total,):   global atom index per
                                      segment
     <storage_dir>/molecules.parquet columns: smiles, segment_offsets, atom_offsets,
-                                     num_atoms, volume, cluster_id, split (optional)
+                                     num_atoms, volume, cluster_id, cluster_distance,
+                                     split (optional)
     <storage_dir>/atoms.parquet     columns: id, element, x, y, z -- one row per atom,
                                      in global atom index order
     <storage_dir>/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}
@@ -41,7 +42,12 @@ from .averaging import (
     AveragingScheme,
     average_sigmas_by_molecule,
 )
-from .clustering import ClusteringSpecs, FingerprintGenerator, butina_cluster
+from .clustering import (
+    ClusteringSpecs,
+    FingerprintGenerator,
+    butina_cluster,
+    cluster_medoid_distances,
+)
 from .coarse_graining import compute_atom_remap
 from .grid import DEFAULT_SIGMA_GRID, SigmaGrid
 from .profiles import SigmaProfileTable
@@ -141,7 +147,8 @@ class SegmentStore:
         ``(n_segs_total,)`` global atom index of each segment.
     molecules_df : pd.DataFrame
         One row per molecule, with columns ``smiles``, ``segment_offsets``,
-        ``atom_offsets``, ``num_atoms``, and ``volume``.
+        ``atom_offsets``, ``num_atoms``, ``volume``, ``cluster_id``, and
+        ``cluster_distance``.
     atoms_df : pd.DataFrame
         One row per atom, columns ``id``, ``element``, ``x``, ``y``, ``z``,
         in global atom index order (the same index space ``atom_indices``
@@ -289,6 +296,7 @@ class SegmentStore:
         num_atoms: list[int],
         volumes: list[float],
         cluster_ids: NDArray[np.int64],
+        cluster_distance: NDArray[np.float64],
     ) -> pd.DataFrame:
         """Assemble the per-molecule table written to ``molecules.parquet``."""
         return pd.DataFrame(
@@ -299,6 +307,7 @@ class SegmentStore:
                 "num_atoms": np.array(num_atoms, dtype="int64"),
                 "volume": np.array(volumes, dtype="float64"),
                 "cluster_id": np.array(cluster_ids, dtype="int64"),
+                "cluster_distance": np.array(cluster_distance, dtype="float64"),
             }
         )
 
@@ -741,8 +750,9 @@ class SegmentStore:
             ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging.
         clustering_specs : ClusteringSpecs | None, optional
             Fingerprinting and Butina-clustering parameters, used to
-            assign each molecule a ``cluster_id``. ``None`` (default)
-            uses ``ClusteringSpecs()``.
+            assign each molecule a ``cluster_id`` and
+            ``cluster_distance``. ``None`` (default) uses
+            ``ClusteringSpecs()``.
         split_fractions : Mapping[str, float] | None, optional
             Target fraction per named split (e.g. ``{"train": 0.8, "val":
             0.1, "test": 0.1}``), assigned via ``assign_splits`` and
@@ -814,6 +824,7 @@ class SegmentStore:
 
         fingerprint_array = np.stack(fingerprints, axis=0)
         cluster_ids = butina_cluster(fingerprint_array, clustering_specs.cutoff)
+        cluster_distance = cluster_medoid_distances(fingerprint_array, cluster_ids)
 
         data = np.concatenate(data_chunks, axis=0)
         atom_indices = np.concatenate(atoms_chunks)
@@ -825,6 +836,7 @@ class SegmentStore:
             num_atoms,
             volumes,
             cluster_ids,
+            cluster_distance,
         )
         metadata = StoreMetadata(
             num_molecules=len(successful_molecules),

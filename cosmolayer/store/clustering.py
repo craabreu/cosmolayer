@@ -18,6 +18,7 @@ from rdkit.Chem import rdFingerprintGenerator
 from cosmolayer.store._chalcedon.butina_cluster import (
     butina_cluster as _chalcedon_butina_cluster,
 )
+from cosmolayer.store._chalcedon.tanimoto_similarity import TanimotoSimilarity
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,7 @@ class ClusteringSpecs:
     ----------
     cutoff : float
         Tanimoto distance threshold: molecules within ``cutoff`` of a
-        cluster centroid join that cluster. Default 0.5.
+        cluster centroid join that cluster. Default 0.65.
     radius : int
         Morgan fingerprint radius. Default 2.
     fp_size : int
@@ -37,7 +38,7 @@ class ClusteringSpecs:
         Whether the fingerprint distinguishes stereoisomers. Default True.
     """
 
-    cutoff: float = 0.5
+    cutoff: float = 0.65
     radius: int = 2
     fp_size: int = 2048
     include_chirality: bool = True
@@ -113,3 +114,71 @@ def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.
 
     cluster_ids = _chalcedon_butina_cluster(fingerprints, cutoff=cutoff)
     return cluster_ids.astype(np.int64)
+
+
+# Bound (batch, k) Tanimoto workspace so large clusters never allocate k×k.
+_MEDOID_SCORE_MAX_CELLS = 4_000_000
+
+
+def cluster_medoid_distances(
+    fingerprints: NDArray[np.int8],
+    cluster_ids: NDArray[np.int64],
+) -> NDArray[np.float64]:
+    """Tanimoto distance of each molecule to its cluster's Tanimoto medoid.
+
+    The medoid of a cluster is the member that maximizes the sum of
+    Tanimoto similarities to the other members (equivalently, minimizes
+    the sum of Tanimoto distances). Ties break to the lowest row index.
+    The medoid's own distance is exactly 0.
+
+    Parameters
+    ----------
+    fingerprints : np.ndarray, shape (n, fp_size)
+        One fingerprint per molecule, as produced by
+        ``FingerprintGenerator.generate``.
+    cluster_ids : np.ndarray, shape (n,)
+        Cluster id per molecule, as produced by ``butina_cluster``.
+
+    Returns
+    -------
+    np.ndarray, shape (n,)
+        Tanimoto distance to that molecule's cluster medoid, ``float64``.
+
+    Raises
+    ------
+    ValueError
+        If ``fingerprints`` and ``cluster_ids`` have different lengths.
+    """
+    n = fingerprints.shape[0]
+    if cluster_ids.shape[0] != n:
+        raise ValueError(
+            "fingerprints and cluster_ids must have the same length, "
+            f"got {fingerprints.shape[0]} and {cluster_ids.shape[0]}."
+        )
+    distances = np.zeros(n, dtype=np.float64)
+    if n == 0:
+        return distances
+
+    fps_all = np.asarray(fingerprints, dtype=np.float64)
+    for cluster_id in np.unique(cluster_ids):
+        members = np.flatnonzero(cluster_ids == cluster_id)
+        k = int(members.shape[0])
+        if k == 1:
+            continue
+        cluster_fps = fps_all[members]
+        similarity = TanimotoSimilarity(cluster_fps, dtype="float64")
+        batch = max(1, min(k, _MEDOID_SCORE_MAX_CELLS // k))
+        scores = np.empty(k, dtype=np.float64)
+        for start in range(0, k, batch):
+            end = min(start + batch, k)
+            scores[start:end] = similarity.chunk(start, end).sum(axis=1)
+        local_medoid = int(np.argmax(scores))
+        medoid_fp = cluster_fps[local_medoid]
+        norms = np.einsum("ij,ij->i", cluster_fps, cluster_fps)
+        dots = cluster_fps @ medoid_fp
+        unions = norms + norms[local_medoid] - dots
+        sims = np.divide(dots, unions, out=np.zeros_like(dots), where=unions > 0)
+        dists = 1.0 - sims
+        dists[local_medoid] = 0.0
+        distances[members] = dists
+    return distances
