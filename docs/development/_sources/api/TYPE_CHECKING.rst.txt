@@ -1,0 +1,9 @@
+TYPE_CHECKING
+=============
+
+.. currentmodule:: cosmolayer.cosmosac
+.. py:data:: TYPE_CHECKING
+
+**Type:** bool
+
+**Value:** ``False``

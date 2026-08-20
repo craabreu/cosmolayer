@@ -362,21 +362,15 @@
   <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
   <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
 <li class="toctree-l1 has-children"><a class="reference internal" href="core.html">Core API</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="CosmoLayer.html">CosmoLayer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="CosmoSolver.html">CosmoSolver</a></li>
-<li class="toctree-l2"><a class="reference internal" href="LogGammaLightningModule.html">LogGammaLightningModule</a></li>
-<li class="toctree-l2"><a class="reference internal" href="MixtureDatapoint.html">MixtureDatapoint</a></li>
-<li class="toctree-l2"><a class="reference internal" href="MixtureInferenceDataset.html">MixtureInferenceDataset</a></li>
-<li class="toctree-l2"><a class="reference internal" href="MixtureTrainingDataset.html">MixtureTrainingDataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="__dir__.html">__dir__</a></li>
+<li class="toctree-l2"><a class="reference internal" href="__getattr__.html">__getattr__</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TYPE_CHECKING.html">TYPE_CHECKING</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="cosmosac.html">COSMO-SAC</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="Component.html">Component</a></li>
-<li class="toctree-l2"><a class="reference internal" href="CosmoSacMixtureDatapoint.html">CosmoSacMixtureDatapoint</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Mixture.html">Mixture</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Model.html">Model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="CosmoSac2002Model.html">CosmoSac2002Model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="CosmoSac2010Model.html">CosmoSac2010Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="__dir__.html">__dir__</a></li>
+<li class="toctree-l2"><a class="reference internal" href="__getattr__.html">__getattr__</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TYPE_CHECKING.html">TYPE_CHECKING</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="store.html">Segment Data Store</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
@@ -511,7 +505,7 @@ must be positive and sum to 1.0.</p>
 order (the same array written to <code class="docutils literal notranslate"><span class="pre">molecules_df[&quot;split&quot;]</span></code>).</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>np.ndarray, <a class="reference internal" href="MixtureDatapoint.html#cosmolayer.MixtureDatapoint.shape" title="cosmolayer.MixtureDatapoint.shape">shape</a> (n_molecules,)</p>
+<dd class="field-odd"><p>np.ndarray, shape (n_molecules,)</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">fractions</span></code> is empty, contains non-positive values, or
@@ -753,7 +747,7 @@ scheme.</p>
 <dd class="field-even"><p>Segment charge density, in e/Å².</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>np.ndarray, <a class="reference internal" href="MixtureDatapoint.html#cosmolayer.MixtureDatapoint.shape" title="cosmolayer.MixtureDatapoint.shape">shape</a> (n_segs_total,)</p>
+<dd class="field-odd"><p>np.ndarray, shape (n_segs_total,)</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.14)"><strong>KeyError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">scheme</span></code> is given but not in <code class="docutils literal notranslate"><span class="pre">self.averaged_sigmas</span></code>.</p>

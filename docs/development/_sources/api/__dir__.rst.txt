@@ -1,0 +1,5 @@
+__dir__
+=======
+
+.. currentmodule:: cosmolayer.cosmosac
+.. autofunction:: __dir__

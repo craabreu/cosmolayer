@@ -1,18 +1,22 @@
 Core API
 ========
 
-Classes
--------
+Functions
+---------
 
 .. toctree::
     :titlesonly:
 
-    CosmoLayer
-    CosmoSolver
-    LogGammaLightningModule
-    MixtureDatapoint
-    MixtureInferenceDataset
-    MixtureTrainingDataset
+    __dir__
+    __getattr__
+
+Constants
+---------
+
+.. toctree::
+    :titlesonly:
+
+    TYPE_CHECKING
 
 .. testsetup::
 

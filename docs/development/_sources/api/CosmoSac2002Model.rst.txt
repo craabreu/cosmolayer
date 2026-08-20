@@ -1,9 +1,0 @@
-CosmoSac2002Model
-=================
-
-.. currentmodule:: cosmolayer.cosmosac
-.. py:data:: CosmoSac2002Model
-
-**Type:** Model
-
-**Value:** ``Model(min_sigma=-0.025, max_sigma=0.025, num_points=51, area_per_segment=7.5, averaging_radius=0.8176300195, f_decay=1.0, sigma_0=None, merge_profiles=True, temperature_exponents=(1,))``

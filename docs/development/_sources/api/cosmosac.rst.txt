@@ -1,16 +1,14 @@
 COSMO-SAC
 =========
 
-Classes
--------
+Functions
+---------
 
 .. toctree::
     :titlesonly:
 
-    Component
-    CosmoSacMixtureDatapoint
-    Mixture
-    Model
+    __dir__
+    __getattr__
 
 Constants
 ---------
@@ -18,8 +16,7 @@ Constants
 .. toctree::
     :titlesonly:
 
-    CosmoSac2002Model
-    CosmoSac2010Model
+    TYPE_CHECKING
 
 .. testsetup::
 
