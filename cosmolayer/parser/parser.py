@@ -180,7 +180,7 @@ def parse_cosmo_file(
 
     Parse a CHAOS dataset JSON record:
 
-    >>> path = files("cosmolayer.data") / "chaos_sample.json"
+    >>> path = files("cosmolayer.data") / "Cc1ccccc1F.json"
     >>> contents = path.read_text(encoding="utf-8", errors="replace")
     >>> fmt, atoms, segments, volume = parse_cosmo_file(contents)
     >>> print(fmt)

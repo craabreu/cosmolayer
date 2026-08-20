@@ -11,7 +11,7 @@ from cosmolayer.parser import chaos, parse_cosmo_file
 
 @pytest.fixture
 def chaos_json() -> str:
-    path = files("cosmolayer.data") / "chaos_sample.json"
+    path = files("cosmolayer.data") / "Cc1ccccc1F.json"
     return path.read_text(encoding="utf-8")
 
 

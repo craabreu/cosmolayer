@@ -1315,7 +1315,7 @@ class TestCliDiscoversCosmoFiles:
     def test_json_extension_discovers_chaos_files(self, tmp_path: pathlib.Path) -> None:
         json_dir = tmp_path / "json_files"
         json_dir.mkdir()
-        chaos_text = (COSMO_DATA_DIR / "chaos_sample.json").read_text()
+        chaos_text = (COSMO_DATA_DIR / "Cc1ccccc1F.json").read_text()
         (json_dir / "sample.json").write_text(chaos_text)
         storage_dir = tmp_path / "store"
 

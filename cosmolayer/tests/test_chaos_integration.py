@@ -29,7 +29,7 @@ BOHR_TO_ANGSTROM = 0.52917721067
 
 @pytest.fixture
 def chaos_json() -> str:
-    path = files("cosmolayer.data") / "chaos_sample.json"
+    path = files("cosmolayer.data") / "Cc1ccccc1F.json"
     return path.read_text(encoding="utf-8")
 
 

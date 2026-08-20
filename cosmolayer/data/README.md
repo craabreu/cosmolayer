@@ -18,7 +18,7 @@ Raw COSMO output from quantum mechanical calculations:
 A sample record from the CHAOS dataset (arXiv:2511.19002), used as test data
 for `cosmolayer.parser.chaos`:
 
-- **`chaos_sample.json`** – 2-Fluorotoluene (`Cc1ccccc1F`), ωB97X-D/def2-TZVP
+- **`Cc1ccccc1F.json`** – 2-Fluorotoluene (`Cc1ccccc1F`), ωB97X-D/def2-TZVP
   gas-phase geometry with a single-point C-PCM solvation calculation. Unlike
   the `.cosmo` files above, the `CavVolume` scalar and segment positions in
   this format are reported in atomic units (Bohr / Bohr³);
