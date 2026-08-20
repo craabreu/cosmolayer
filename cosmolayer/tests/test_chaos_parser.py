@@ -32,17 +32,15 @@ def test_is_chaos_json_false_for_unrelated_json() -> None:
     assert chaos.is_chaos_json('{"foo": "bar"}') is False
 
 
-def test_get_atom_dataframe_shape_and_columns(chaos_json: str) -> None:
-    df = chaos.get_atom_dataframe(chaos_json)
+def test_get_atom_dataframe_shape_and_columns(chaos_dict: dict) -> None:
+    df = chaos.get_atom_dataframe(chaos_dict)
     assert isinstance(df, pd.DataFrame)
     assert list(df.columns) == ["id", "x", "y", "z", "element"]
     assert len(df) == 15
 
 
-def test_get_atom_dataframe_element_order_matches_atom_list(
-    chaos_json: str, chaos_dict: dict
-) -> None:
-    df = chaos.get_atom_dataframe(chaos_json)
+def test_get_atom_dataframe_element_order_matches_atom_list(chaos_dict: dict) -> None:
+    df = chaos.get_atom_dataframe(chaos_dict)
     expected_elements = [a["element"] for a in chaos_dict["general"]["AtomList"]]
     assert list(df["element"]) == expected_elements
     assert expected_elements[:8] == ["C", "C", "C", "C", "C", "C", "C", "F"]
@@ -50,31 +48,29 @@ def test_get_atom_dataframe_element_order_matches_atom_list(
 
 
 def test_get_atom_dataframe_coordinates_match_structural_block(
-    chaos_json: str, chaos_dict: dict
+    chaos_dict: dict,
 ) -> None:
-    df = chaos.get_atom_dataframe(chaos_json)
+    df = chaos.get_atom_dataframe(chaos_dict)
     expected_first = chaos_dict["structural"]["Coordinates"][0]
     expected_last = chaos_dict["structural"]["Coordinates"][-1]
     assert df.iloc[0][["x", "y", "z"]].tolist() == pytest.approx(expected_first)
     assert df.iloc[-1][["x", "y", "z"]].tolist() == pytest.approx(expected_last)
 
 
-def test_get_atom_dataframe_ids_are_unique_strings(chaos_json: str) -> None:
-    df = chaos.get_atom_dataframe(chaos_json)
+def test_get_atom_dataframe_ids_are_unique_strings(chaos_dict: dict) -> None:
+    df = chaos.get_atom_dataframe(chaos_dict)
     assert df["id"].map(type).eq(str).all()
     assert df["id"].is_unique
 
 
-def test_get_segment_dataframe_shape_and_columns(chaos_json: str) -> None:
-    df = chaos.get_segment_dataframe(chaos_json)
+def test_get_segment_dataframe_shape_and_columns(chaos_dict: dict) -> None:
+    df = chaos.get_segment_dataframe(chaos_dict)
     assert list(df.columns) == ["atom", "x", "y", "z", "charge", "area"]
     assert len(df) == 1226
 
 
-def test_get_segment_dataframe_atom_index_is_zero_based(
-    chaos_json: str, chaos_dict: dict
-) -> None:
-    df = chaos.get_segment_dataframe(chaos_json)
+def test_get_segment_dataframe_atom_index_is_zero_based(chaos_dict: dict) -> None:
+    df = chaos.get_segment_dataframe(chaos_dict)
     n_atoms = len(chaos_dict["general"]["AtomList"])
     assert df["atom"].min() >= 0
     assert df["atom"].max() <= n_atoms - 1
@@ -84,10 +80,8 @@ def test_get_segment_dataframe_atom_index_is_zero_based(
     assert df["atom"].iloc[-1] == 14
 
 
-def test_get_segment_dataframe_positions_converted_from_bohr(
-    chaos_json: str,
-) -> None:
-    df = chaos.get_segment_dataframe(chaos_json)
+def test_get_segment_dataframe_positions_converted_from_bohr(chaos_dict: dict) -> None:
+    df = chaos.get_segment_dataframe(chaos_dict)
     # raw SegmentList[0] = [1, 1, -3.158137715, -1.863936184, 3.195421904, ...]
     expected_x_angstrom = -3.158137715 * 0.52917721067
     expected_y_angstrom = -1.863936184 * 0.52917721067
@@ -98,10 +92,8 @@ def test_get_segment_dataframe_positions_converted_from_bohr(
     assert row["z"] == pytest.approx(expected_z_angstrom)
 
 
-def test_get_segment_dataframe_charge_and_area_unconverted(
-    chaos_json: str,
-) -> None:
-    df = chaos.get_segment_dataframe(chaos_json)
+def test_get_segment_dataframe_charge_and_area_unconverted(chaos_dict: dict) -> None:
+    df = chaos.get_segment_dataframe(chaos_dict)
     # raw SegmentList[0] charge=-1.0343e-05, area=0.042547346 (already e / Å²)
     row = df.iloc[0]
     assert row["charge"] == pytest.approx(-1.0343e-05)
@@ -109,17 +101,17 @@ def test_get_segment_dataframe_charge_and_area_unconverted(
 
 
 def test_get_segment_dataframe_area_sum_matches_atom_cosmo_charge(
-    chaos_json: str, chaos_dict: dict
+    chaos_dict: dict,
 ) -> None:
-    df = chaos.get_segment_dataframe(chaos_json)
+    df = chaos.get_segment_dataframe(chaos_dict)
     per_atom_area = df.groupby("atom")["area"].sum()
     atom_cosmo = chaos_dict["solvation"]["AtomCOSMOCharge"]
     for atom_idx, expected in enumerate(atom_cosmo):
         assert per_atom_area.loc[atom_idx] == pytest.approx(expected["area"], abs=1e-4)
 
 
-def test_get_volume_converts_bohr_cubed_to_angstrom_cubed(chaos_json: str) -> None:
-    volume = chaos.get_volume(chaos_json)
+def test_get_volume_converts_bohr_cubed_to_angstrom_cubed(chaos_dict: dict) -> None:
+    volume = chaos.get_volume(chaos_dict)
     # raw solvation.CavVolume = 916.9 (Bohr^3)
     expected = 916.9 * 0.52917721067**3
     assert volume == pytest.approx(expected)
@@ -135,10 +127,7 @@ def test_parse_cosmo_file_detects_chaos_format(chaos_json: str) -> None:
 
 
 def test_is_chaos_json_false_for_top_level_keys_missing_nested_fields() -> None:
-    assert (
-        chaos.is_chaos_json('{"general":{},"structural":{},"solvation":{}}')
-        is False
-    )
+    assert chaos.is_chaos_json('{"general":{},"structural":{},"solvation":{}}') is False
 
 
 def test_parse_cosmo_file_raises_value_error_for_incomplete_chaos_record() -> None:

@@ -35,30 +35,18 @@ SEGMENT_POSITION_CONVERSION_FACTOR = BOHR_TO_ANGSTROM
 VOLUME_CONVERSION_FACTOR = BOHR_TO_ANGSTROM**3
 
 
-def is_chaos_json(contents: str) -> bool:
-    """Detect whether ``contents`` is a CHAOS dataset JSON record.
+def _has_required_fields(data: object) -> bool:
+    """Check that a parsed JSON value has the shape a CHAOS record needs.
 
-    Parameters
-    ----------
-    contents : str
-        Candidate file contents.
-
-    Returns
-    -------
-    bool
-        True if ``contents`` parses as JSON, has ``general``,
-        ``structural``, and ``solvation`` top-level keys, and also has the
-        nested fields (``general.AtomList``, ``structural.Coordinates``,
-        ``solvation.SegmentList``, ``solvation.CavVolume``) that
-        :func:`get_atom_dataframe`, :func:`get_segment_dataframe`, and
-        :func:`get_volume` require. A record missing any of these is not
-        recognized as CHAOS JSON, so callers fall through to raising
-        ``ValueError`` instead of a raw ``KeyError``/``TypeError``.
+    Validates both the top-level keys (``general``, ``structural``,
+    ``solvation``) and the nested fields (``general.AtomList``,
+    ``structural.Coordinates``, ``solvation.SegmentList``,
+    ``solvation.CavVolume``) that :func:`get_atom_dataframe`,
+    :func:`get_segment_dataframe`, and :func:`get_volume` require. A value
+    missing any of these is not recognized as CHAOS JSON, so callers fall
+    through to raising ``ValueError`` instead of a raw
+    ``KeyError``/``TypeError``.
     """
-    try:
-        data = json.loads(contents)
-    except json.JSONDecodeError:
-        return False
     if not (isinstance(data, dict) and REQUIRED_TOP_LEVEL_KEYS <= data.keys()):
         return False
     try:
@@ -71,7 +59,54 @@ def is_chaos_json(contents: str) -> bool:
     return True
 
 
-def get_atom_dataframe(contents: str) -> pd.DataFrame:
+def is_chaos_json(contents: str) -> bool:
+    """Detect whether ``contents`` is a CHAOS dataset JSON record.
+
+    Parameters
+    ----------
+    contents : str
+        Candidate file contents.
+
+    Returns
+    -------
+    bool
+        True if ``contents`` parses as JSON and has the top-level and
+        nested fields a CHAOS record needs (see :func:`_has_required_fields`).
+    """
+    try:
+        data = json.loads(contents)
+    except json.JSONDecodeError:
+        return False
+    return _has_required_fields(data)
+
+
+def parse_record(contents: str) -> dict | None:
+    """Parse ``contents`` as a CHAOS JSON record, if it looks like one.
+
+    Parses ``contents`` exactly once and validates its shape in the same
+    pass, so callers that need both the format-detection answer and the
+    parsed record (e.g. :func:`cosmolayer.parser.parser.parse_cosmo_file`)
+    avoid re-parsing the same JSON text once per field they read.
+
+    Parameters
+    ----------
+    contents : str
+        Candidate file contents.
+
+    Returns
+    -------
+    dict or None
+        The parsed record if ``contents`` is valid CHAOS JSON (see
+        :func:`_has_required_fields`), else ``None``.
+    """
+    try:
+        data = json.loads(contents)
+    except json.JSONDecodeError:
+        return None
+    return data if _has_required_fields(data) else None
+
+
+def get_atom_dataframe(data: dict) -> pd.DataFrame:
     """Parse per-atom data from a CHAOS JSON record.
 
     Combines ``general.AtomList`` (element symbols) with
@@ -82,7 +117,7 @@ def get_atom_dataframe(contents: str) -> pd.DataFrame:
 
     Parameters
     ----------
-    contents : str
+    data : dict
         Contents of a CHAOS JSON file.
 
     Returns
@@ -91,7 +126,6 @@ def get_atom_dataframe(contents: str) -> pd.DataFrame:
         Columns: ``id`` (synthesized as ``f"{element}{index}"``), ``x``,
         ``y``, ``z`` (Å), ``element``.
     """
-    data = json.loads(contents)
     atom_list = data["general"]["AtomList"]
     coordinates = data["structural"]["Coordinates"]
     rows = [
@@ -107,7 +141,7 @@ def get_atom_dataframe(contents: str) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["id", "x", "y", "z", "element"])
 
 
-def get_segment_dataframe(contents: str) -> pd.DataFrame:
+def get_segment_dataframe(data: dict) -> pd.DataFrame:
     """Parse per-segment cavity data from a CHAOS JSON record.
 
     Each entry of ``solvation.SegmentList`` is
@@ -119,7 +153,7 @@ def get_segment_dataframe(contents: str) -> pd.DataFrame:
 
     Parameters
     ----------
-    contents : str
+    data : dict
         Contents of a CHAOS JSON file.
 
     Returns
@@ -129,7 +163,6 @@ def get_segment_dataframe(contents: str) -> pd.DataFrame:
         :func:`get_atom_dataframe`), ``x``, ``y``, ``z`` (Å), ``charge``
         (e), ``area`` (Å²).
     """
-    data = json.loads(contents)
     segment_list = data["solvation"]["SegmentList"]
     rows = [
         {
@@ -155,7 +188,7 @@ def get_segment_dataframe(contents: str) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["atom", "x", "y", "z", "charge", "area"])
 
 
-def get_volume(contents: str) -> float:
+def get_volume(data: dict) -> float:
     """Parse the cavity volume from a CHAOS JSON record.
 
     ``solvation.CavVolume`` is reported in Bohr³ and is converted to Å³
@@ -163,7 +196,7 @@ def get_volume(contents: str) -> float:
 
     Parameters
     ----------
-    contents : str
+    data : dict
         Contents of a CHAOS JSON file.
 
     Returns
@@ -171,5 +204,4 @@ def get_volume(contents: str) -> float:
     float
         Cavity volume in Å³.
     """
-    data = json.loads(contents)
     return float(data["solvation"]["CavVolume"]) * VOLUME_CONVERSION_FACTOR

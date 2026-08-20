@@ -14,8 +14,6 @@ from .utils import parse_table, parse_value
 
 
 def get_atom_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
-    if module is chaos:
-        return chaos.get_atom_dataframe(file_contents)
     df = parse_table(
         file_contents,
         module.ATOM_ROW_REGEX,
@@ -28,8 +26,6 @@ def get_atom_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
 
 
 def get_segment_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
-    if module is chaos:
-        return chaos.get_segment_dataframe(file_contents)
     df = parse_table(
         file_contents,
         module.SEGMENT_ROW_REGEX,
@@ -43,8 +39,6 @@ def get_segment_dataframe(module: ModuleType, file_contents: str) -> pd.DataFram
 
 
 def get_volume(module: ModuleType, file_contents: str) -> float:
-    if module is chaos:
-        return chaos.get_volume(file_contents)
     return float(
         parse_value(file_contents, module.VOLUME_REGEX)
         * module.VOLUME_CONVERSION_FACTOR
@@ -143,24 +137,24 @@ def parse_cosmo_file(
     >>> volume
     135.8705...
     """
-    module: ModuleType
     if "DMol3/COSMO Results" in contents:
         format = "DMol-3"
-        module = dmol3
+        atoms_df = get_atom_dataframe(dmol3, contents)
+        segments_df = get_segment_dataframe(dmol3, contents)
+        volume = get_volume(dmol3, contents)
     elif "$segment_information" in contents and "$coord_car" in contents:
         format = "TURBOMOLE"
-        module = turbomole
-    elif chaos.is_chaos_json(contents):
+        atoms_df = get_atom_dataframe(turbomole, contents)
+        segments_df = get_segment_dataframe(turbomole, contents)
+        volume = get_volume(turbomole, contents)
+    elif (data := chaos.parse_record(contents)) is not None:
         format = chaos.FORMAT_NAME
-        module = chaos
+        atoms_df = chaos.get_atom_dataframe(data)
+        segments_df = chaos.get_segment_dataframe(data)
+        volume = chaos.get_volume(data)
     else:
         raise ValueError(
             "Could not parse COSMO file contents. Supported formats: "
             "TURBOMOLE, DMol-3, CHAOS"
         )
-    return (
-        format,
-        get_atom_dataframe(module, contents),
-        get_segment_dataframe(module, contents),
-        get_volume(module, contents),
-    )
+    return format, atoms_df, segments_df, volume
