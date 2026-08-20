@@ -20,9 +20,12 @@ for `cosmolayer.parser.chaos`:
 
 - **`chaos_sample.json`** – 2-Fluorotoluene (`Cc1ccccc1F`), ωB97X-D/def2-TZVP
   gas-phase geometry with a single-point C-PCM solvation calculation. Unlike
-  the `.cosmo` files above, segment positions and the `CavArea`/`CavVolume`
-  scalars in this format are reported in atomic units (Bohr / Bohr² / Bohr³);
-  `cosmolayer.parser.chaos` converts them to Å / Å² / Å³ on load.
+  the `.cosmo` files above, the `CavVolume` scalar and segment positions in
+  this format are reported in atomic units (Bohr / Bohr³);
+  `cosmolayer.parser.chaos` converts them to Å / Å³ on load.
+  `solvation.CavArea` (also in Bohr²) is present in the record but unused by
+  the parser – segment/atom areas are read directly from the per-segment
+  `area` field, which is already in Å².
 
 ### COSMO-SAC 2002 Sigma profiles (`.sigma`)
 

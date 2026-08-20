@@ -46,14 +46,29 @@ def is_chaos_json(contents: str) -> bool:
     Returns
     -------
     bool
-        True if ``contents`` parses as JSON and has ``general``,
-        ``structural``, and ``solvation`` top-level keys.
+        True if ``contents`` parses as JSON, has ``general``,
+        ``structural``, and ``solvation`` top-level keys, and also has the
+        nested fields (``general.AtomList``, ``structural.Coordinates``,
+        ``solvation.SegmentList``, ``solvation.CavVolume``) that
+        :func:`get_atom_dataframe`, :func:`get_segment_dataframe`, and
+        :func:`get_volume` require. A record missing any of these is not
+        recognized as CHAOS JSON, so callers fall through to raising
+        ``ValueError`` instead of a raw ``KeyError``/``TypeError``.
     """
     try:
         data = json.loads(contents)
     except json.JSONDecodeError:
         return False
-    return isinstance(data, dict) and REQUIRED_TOP_LEVEL_KEYS <= data.keys()
+    if not (isinstance(data, dict) and REQUIRED_TOP_LEVEL_KEYS <= data.keys()):
+        return False
+    try:
+        data["general"]["AtomList"]
+        data["structural"]["Coordinates"]
+        data["solvation"]["SegmentList"]
+        data["solvation"]["CavVolume"]
+    except (KeyError, TypeError):
+        return False
+    return True
 
 
 def get_atom_dataframe(contents: str) -> pd.DataFrame:

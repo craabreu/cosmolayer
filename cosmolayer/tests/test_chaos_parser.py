@@ -134,6 +134,18 @@ def test_parse_cosmo_file_detects_chaos_format(chaos_json: str) -> None:
     assert volume == pytest.approx(916.9 * 0.52917721067**3)
 
 
+def test_is_chaos_json_false_for_top_level_keys_missing_nested_fields() -> None:
+    assert (
+        chaos.is_chaos_json('{"general":{},"structural":{},"solvation":{}}')
+        is False
+    )
+
+
+def test_parse_cosmo_file_raises_value_error_for_incomplete_chaos_record() -> None:
+    with pytest.raises(ValueError, match="Could not parse COSMO file"):
+        parse_cosmo_file('{"general":{},"structural":{},"solvation":{}}')
+
+
 def test_parse_cosmo_file_still_rejects_unknown_format() -> None:
     with pytest.raises(ValueError, match="Could not parse COSMO file"):
         parse_cosmo_file("this is neither DMol-3, TURBOMOLE, nor CHAOS")

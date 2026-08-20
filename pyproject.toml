@@ -84,6 +84,7 @@ cosmolayer = [
     "py.typed",
     "data/*.csv",
     "data/*.cosmo",
+    "data/*.json",
 ]
 
 [tool.versioningit]
