@@ -125,8 +125,17 @@ def get_segment_dataframe(contents: str) -> pd.DataFrame:
             "charge": charge,
             "area": area,
         }
-        for _segment_index, parent_atom_index, x, y, z, charge, area, _sigma, _potential
-        in segment_list
+        for (
+            _segment_index,
+            parent_atom_index,
+            x,
+            y,
+            z,
+            charge,
+            area,
+            _sigma,
+            _potential,
+        ) in segment_list
     ]
     return pd.DataFrame(rows, columns=["atom", "x", "y", "z", "charge", "area"])
 

@@ -196,9 +196,7 @@ class TestSegmentStoreRoundTrip:
         assert len(store.atoms_df) == store.molecules_df["num_atoms"].sum()
 
         # O (water) is the only one of the four fixtures with 3 atoms.
-        water_row = store.molecules_df.loc[
-            store.molecules_df["num_atoms"] == 3
-        ].iloc[0]
+        water_row = store.molecules_df.loc[store.molecules_df["num_atoms"] == 3].iloc[0]
         offset = int(water_row["atom_offsets"])
         water_atoms = store.atoms_df.iloc[offset : offset + 3]
 
@@ -304,9 +302,7 @@ class TestMultipleFilenamesPerSmiles:
         assert len(s.molecules_df) == 3
         assert list(s.molecules_df["smiles"]).count(water_smi) == 2
 
-    def test_conformer_rows_have_distinct_offsets(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_conformer_rows_have_distinct_offsets(self, tmp_path: pathlib.Path) -> None:
         water_smi = _atom_mapped("O")
         mapping: dict[str, str | list[str]] = {water_smi: ["O.cosmo", "O.cosmo"]}
         s = SegmentStore.from_cosmo_files(
