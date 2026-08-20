@@ -1,0 +1,65 @@
+"""Unit tests for the CHAOS JSON parser."""
+
+import json
+from importlib.resources import files
+
+import pandas as pd
+import pytest
+
+from cosmolayer.parser import chaos
+
+
+@pytest.fixture
+def chaos_json() -> str:
+    path = files("cosmolayer.data") / "chaos_sample.json"
+    return path.read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def chaos_dict(chaos_json: str) -> dict:
+    return json.loads(chaos_json)
+
+
+def test_is_chaos_json_true_for_chaos_record(chaos_json: str) -> None:
+    assert chaos.is_chaos_json(chaos_json) is True
+
+
+def test_is_chaos_json_false_for_non_json_text() -> None:
+    assert chaos.is_chaos_json("not json at all") is False
+
+
+def test_is_chaos_json_false_for_unrelated_json() -> None:
+    assert chaos.is_chaos_json('{"foo": "bar"}') is False
+
+
+def test_get_atom_dataframe_shape_and_columns(chaos_json: str) -> None:
+    df = chaos.get_atom_dataframe(chaos_json)
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.columns) == ["id", "x", "y", "z", "element"]
+    assert len(df) == 15
+
+
+def test_get_atom_dataframe_element_order_matches_atom_list(
+    chaos_json: str, chaos_dict: dict
+) -> None:
+    df = chaos.get_atom_dataframe(chaos_json)
+    expected_elements = [a["element"] for a in chaos_dict["general"]["AtomList"]]
+    assert list(df["element"]) == expected_elements
+    assert expected_elements[:8] == ["C", "C", "C", "C", "C", "C", "C", "F"]
+    assert expected_elements[8:] == ["H"] * 7
+
+
+def test_get_atom_dataframe_coordinates_match_structural_block(
+    chaos_json: str, chaos_dict: dict
+) -> None:
+    df = chaos.get_atom_dataframe(chaos_json)
+    expected_first = chaos_dict["structural"]["Coordinates"][0]
+    expected_last = chaos_dict["structural"]["Coordinates"][-1]
+    assert df.iloc[0][["x", "y", "z"]].tolist() == pytest.approx(expected_first)
+    assert df.iloc[-1][["x", "y", "z"]].tolist() == pytest.approx(expected_last)
+
+
+def test_get_atom_dataframe_ids_are_unique_strings(chaos_json: str) -> None:
+    df = chaos.get_atom_dataframe(chaos_json)
+    assert df["id"].map(type).eq(str).all()
+    assert df["id"].is_unique
