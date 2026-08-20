@@ -129,3 +129,23 @@ def get_segment_dataframe(contents: str) -> pd.DataFrame:
         in segment_list
     ]
     return pd.DataFrame(rows, columns=["atom", "x", "y", "z", "charge", "area"])
+
+
+def get_volume(contents: str) -> float:
+    """Parse the cavity volume from a CHAOS JSON record.
+
+    ``solvation.CavVolume`` is reported in Bohr³ and is converted to Å³
+    here.
+
+    Parameters
+    ----------
+    contents : str
+        Contents of a CHAOS JSON file.
+
+    Returns
+    -------
+    float
+        Cavity volume in Å³.
+    """
+    data = json.loads(contents)
+    return float(data["solvation"]["CavVolume"]) * VOLUME_CONVERSION_FACTOR

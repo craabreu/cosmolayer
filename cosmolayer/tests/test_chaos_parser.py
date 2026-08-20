@@ -118,3 +118,11 @@ def test_get_segment_dataframe_area_sum_matches_atom_cosmo_charge(
         assert per_atom_area.loc[atom_idx] == pytest.approx(
             expected["area"], abs=1e-4
         )
+
+
+def test_get_volume_converts_bohr_cubed_to_angstrom_cubed(chaos_json: str) -> None:
+    volume = chaos.get_volume(chaos_json)
+    # raw solvation.CavVolume = 916.9 (Bohr^3)
+    expected = 916.9 * 0.52917721067**3
+    assert volume == pytest.approx(expected)
+    assert isinstance(volume, float)
