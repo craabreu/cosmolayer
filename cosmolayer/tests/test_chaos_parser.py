@@ -63,3 +63,58 @@ def test_get_atom_dataframe_ids_are_unique_strings(chaos_json: str) -> None:
     df = chaos.get_atom_dataframe(chaos_json)
     assert df["id"].map(type).eq(str).all()
     assert df["id"].is_unique
+
+
+def test_get_segment_dataframe_shape_and_columns(chaos_json: str) -> None:
+    df = chaos.get_segment_dataframe(chaos_json)
+    assert list(df.columns) == ["atom", "x", "y", "z", "charge", "area"]
+    assert len(df) == 1226
+
+
+def test_get_segment_dataframe_atom_index_is_zero_based(
+    chaos_json: str, chaos_dict: dict
+) -> None:
+    df = chaos.get_segment_dataframe(chaos_json)
+    n_atoms = len(chaos_dict["general"]["AtomList"])
+    assert df["atom"].min() >= 0
+    assert df["atom"].max() <= n_atoms - 1
+    # first raw segment row has parent_atom_index == 1 (1-based) -> 0 here
+    assert df["atom"].iloc[0] == 0
+    # last raw segment row has parent_atom_index == 15 (1-based) -> 14 here
+    assert df["atom"].iloc[-1] == 14
+
+
+def test_get_segment_dataframe_positions_converted_from_bohr(
+    chaos_json: str,
+) -> None:
+    df = chaos.get_segment_dataframe(chaos_json)
+    # raw SegmentList[0] = [1, 1, -3.158137715, -1.863936184, 3.195421904, ...]
+    expected_x_angstrom = -3.158137715 * 0.52917721067
+    expected_y_angstrom = -1.863936184 * 0.52917721067
+    expected_z_angstrom = 3.195421904 * 0.52917721067
+    row = df.iloc[0]
+    assert row["x"] == pytest.approx(expected_x_angstrom)
+    assert row["y"] == pytest.approx(expected_y_angstrom)
+    assert row["z"] == pytest.approx(expected_z_angstrom)
+
+
+def test_get_segment_dataframe_charge_and_area_unconverted(
+    chaos_json: str,
+) -> None:
+    df = chaos.get_segment_dataframe(chaos_json)
+    # raw SegmentList[0] charge=-1.0343e-05, area=0.042547346 (already e / Å²)
+    row = df.iloc[0]
+    assert row["charge"] == pytest.approx(-1.0343e-05)
+    assert row["area"] == pytest.approx(0.042547346)
+
+
+def test_get_segment_dataframe_area_sum_matches_atom_cosmo_charge(
+    chaos_json: str, chaos_dict: dict
+) -> None:
+    df = chaos.get_segment_dataframe(chaos_json)
+    per_atom_area = df.groupby("atom")["area"].sum()
+    atom_cosmo = chaos_dict["solvation"]["AtomCOSMOCharge"]
+    for atom_idx, expected in enumerate(atom_cosmo):
+        assert per_atom_area.loc[atom_idx] == pytest.approx(
+            expected["area"], abs=1e-4
+        )

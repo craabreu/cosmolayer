@@ -90,3 +90,42 @@ def get_atom_dataframe(contents: str) -> pd.DataFrame:
         for atom, xyz in zip(atom_list, coordinates, strict=True)
     ]
     return pd.DataFrame(rows, columns=["id", "x", "y", "z", "element"])
+
+
+def get_segment_dataframe(contents: str) -> pd.DataFrame:
+    """Parse per-segment cavity data from a CHAOS JSON record.
+
+    Each entry of ``solvation.SegmentList`` is
+    ``[segment_index, parent_atom_index, x, y, z, charge, area, sigma,
+    potential]``, both indices 1-based. ``x, y, z`` are in Bohr and are
+    converted to Å here; ``charge`` (e) and ``area`` (Å²) need no
+    conversion. ``sigma`` and ``potential`` are dropped, matching the
+    columns produced by the DMol-3/TURBOMOLE parsers.
+
+    Parameters
+    ----------
+    contents : str
+        Contents of a CHAOS JSON file.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``atom`` (0-based index into the atom dataframe from
+        :func:`get_atom_dataframe`), ``x``, ``y``, ``z`` (Å), ``charge``
+        (e), ``area`` (Å²).
+    """
+    data = json.loads(contents)
+    segment_list = data["solvation"]["SegmentList"]
+    rows = [
+        {
+            "atom": parent_atom_index - 1,
+            "x": x * SEGMENT_POSITION_CONVERSION_FACTOR,
+            "y": y * SEGMENT_POSITION_CONVERSION_FACTOR,
+            "z": z * SEGMENT_POSITION_CONVERSION_FACTOR,
+            "charge": charge,
+            "area": area,
+        }
+        for _segment_index, parent_atom_index, x, y, z, charge, area, _sigma, _potential
+        in segment_list
+    ]
+    return pd.DataFrame(rows, columns=["atom", "x", "y", "z", "charge", "area"])
