@@ -9,11 +9,13 @@ from types import ModuleType
 
 import pandas as pd
 
-from . import dmol3, turbomole
+from . import chaos, dmol3, turbomole
 from .utils import parse_table, parse_value
 
 
 def get_atom_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
+    if module is chaos:
+        return chaos.get_atom_dataframe(file_contents)
     df = parse_table(
         file_contents,
         module.ATOM_ROW_REGEX,
@@ -26,6 +28,8 @@ def get_atom_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
 
 
 def get_segment_dataframe(module: ModuleType, file_contents: str) -> pd.DataFrame:
+    if module is chaos:
+        return chaos.get_segment_dataframe(file_contents)
     df = parse_table(
         file_contents,
         module.SEGMENT_ROW_REGEX,
@@ -39,6 +43,8 @@ def get_segment_dataframe(module: ModuleType, file_contents: str) -> pd.DataFram
 
 
 def get_volume(module: ModuleType, file_contents: str) -> float:
+    if module is chaos:
+        return chaos.get_volume(file_contents)
     return float(
         parse_value(file_contents, module.VOLUME_REGEX)
         * module.VOLUME_CONVERSION_FACTOR
@@ -52,8 +58,8 @@ def parse_cosmo_file(
 
     This function reads the contents of a COSMO (Conductor-like Screening Model) output
     file and extracts atomic coordinates, segment information, and molecular volume.
-    It automatically detects the file format (TURBOMOLE or DMol-3) and uses the
-    appropriate parser.
+    It automatically detects the file format (TURBOMOLE, DMol-3, or CHAOS) and uses
+    the appropriate parser.
 
     Parameters
     ----------
@@ -63,7 +69,7 @@ def parse_cosmo_file(
     Returns
     -------
     format : str
-        The file format detected ("DMol-3" or "TURBOMOLE").
+        The file format detected ("DMol-3", "TURBOMOLE", or "CHAOS").
     atom_df : pd.DataFrame
         DataFrame containing atomic information with columns:
         - id: atom identifier (str)
@@ -122,6 +128,20 @@ def parse_cosmo_file(
     429
     >>> volume
     86.10187...
+
+    Parse a CHAOS dataset JSON record:
+
+    >>> path = files("cosmolayer.data") / "chaos_sample.json"
+    >>> contents = path.read_text(encoding="utf-8", errors="replace")
+    >>> fmt, atoms, segments, volume = parse_cosmo_file(contents)
+    >>> print(fmt)
+    CHAOS
+    >>> len(atoms)
+    15
+    >>> len(segments)
+    1226
+    >>> volume
+    135.8705...
     """
     module: ModuleType
     if "DMol3/COSMO Results" in contents:
@@ -130,9 +150,13 @@ def parse_cosmo_file(
     elif "$segment_information" in contents and "$coord_car" in contents:
         format = "TURBOMOLE"
         module = turbomole
+    elif chaos.is_chaos_json(contents):
+        format = chaos.FORMAT_NAME
+        module = chaos
     else:
         raise ValueError(
-            "Could not parse COSMO file contents. Supported formats: TURBOMOLE, DMol-3"
+            "Could not parse COSMO file contents. Supported formats: "
+            "TURBOMOLE, DMol-3, CHAOS"
         )
     return (
         format,

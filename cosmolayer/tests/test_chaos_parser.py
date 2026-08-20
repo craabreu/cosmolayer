@@ -126,3 +126,20 @@ def test_get_volume_converts_bohr_cubed_to_angstrom_cubed(chaos_json: str) -> No
     expected = 916.9 * 0.52917721067**3
     assert volume == pytest.approx(expected)
     assert isinstance(volume, float)
+
+
+def test_parse_cosmo_file_detects_chaos_format(chaos_json: str) -> None:
+    from cosmolayer.parser import parse_cosmo_file
+
+    fmt, atom_df, segment_df, volume = parse_cosmo_file(chaos_json)
+    assert fmt == "CHAOS"
+    assert len(atom_df) == 15
+    assert len(segment_df) == 1226
+    assert volume == pytest.approx(916.9 * 0.52917721067**3)
+
+
+def test_parse_cosmo_file_still_rejects_unknown_format() -> None:
+    from cosmolayer.parser import parse_cosmo_file
+
+    with pytest.raises(ValueError, match="Could not parse COSMO file"):
+        parse_cosmo_file("this is neither DMol-3, TURBOMOLE, nor CHAOS")
