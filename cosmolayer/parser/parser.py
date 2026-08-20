@@ -8,6 +8,8 @@
 from types import ModuleType
 
 import pandas as pd
+from rdkit import Chem
+from rdkit.Chem import rdDetermineBonds
 
 from . import chaos, dmol3, turbomole
 from .utils import parse_table, parse_value
@@ -42,6 +44,59 @@ def get_volume(module: ModuleType, file_contents: str) -> float:
     return float(
         parse_value(file_contents, module.VOLUME_REGEX)
         * module.VOLUME_CONVERSION_FACTOR
+    )
+
+
+def get_atom_mapped_smiles(
+    atoms_df: pd.DataFrame,
+    charge: int = 0,
+    print_errors: bool = True,
+) -> str | None:
+    """Derive an atom-mapped SMILES string from a molecule's 3D geometry.
+
+    Bonds and stereochemistry are perceived from the atomic coordinates using
+    RDKit. This is a best-effort chemistry step: it can fail for legitimate
+    reasons (e.g. a geometry from which no valid bond order can be derived),
+    in which case ``None`` is returned rather than raising.
+
+    Parameters
+    ----------
+    atoms_df : pd.DataFrame
+        DataFrame with ``element``, ``x``, ``y``, and ``z`` columns, one row
+        per atom, in the order the resulting SMILES should be atom-mapped.
+    charge : int, default=0
+        Net molecular charge to assume when perceiving bond orders.
+    print_errors : bool, default=True
+        Whether to print a message to stdout when bond/stereo perception
+        fails.
+
+    Returns
+    -------
+    str | None
+        The atom-mapped, canonical, isomeric SMILES string, or ``None`` if
+        bonds or stereochemistry could not be determined from the geometry.
+    """
+    xyz_block = (
+        f"{len(atoms_df)}"
+        f"\n\n"
+        f"{atoms_df[['element', 'x', 'y', 'z']].to_string(index=False, header=False)}"
+    )
+    mol = Chem.MolFromXYZBlock(xyz_block)
+    if mol is None:
+        if print_errors:
+            print("Error parsing molecule: could not build a molecule from geometry")
+        return None
+    try:
+        rdDetermineBonds.DetermineBonds(mol, charge=charge)
+        Chem.AssignStereochemistryFrom3D(mol)
+    except (ValueError, RuntimeError, Chem.rdchem.MolSanitizeException) as e:
+        if print_errors:
+            print(f"Error parsing molecule: {e}")
+        return None
+    for i, atom in enumerate(mol.GetAtoms()):
+        atom.SetAtomMapNum(i + 1)
+    return Chem.MolToSmiles(
+        mol, canonical=True, isomericSmiles=True, allHsExplicit=True
     )
 
 
