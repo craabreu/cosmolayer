@@ -1,3 +1,3 @@
-from .parser import get_atom_mapped_smiles, parse_cosmo_file
+from .parser import get_rdkit_molecule, parse_cosmo_file
 
-__all__ = ["parse_cosmo_file", "get_atom_mapped_smiles"]
+__all__ = ["parse_cosmo_file", "get_rdkit_molecule"]

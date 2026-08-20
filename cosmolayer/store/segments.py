@@ -35,7 +35,7 @@ from numpy.typing import NDArray
 from rdkit import Chem
 from tqdm.auto import tqdm
 
-from cosmolayer.parser import parse_cosmo_file
+from cosmolayer.parser import get_rdkit_molecule, parse_cosmo_file
 
 from .averaging import (
     AVERAGING_SCHEMES,
@@ -187,109 +187,58 @@ class SegmentStore:
         self.charges = data[:, 3]
         self.areas = data[:, 4]
 
-    @staticmethod
-    def _reorder_molecule(mol: Chem.Mol) -> Chem.Mol:
-        """Reorder atoms into ascending AtomMapNum order.
-
-        After reordering, atom ``i`` has ``AtomMapNum == i`` (0-based) or
-        ``AtomMapNum == i + 1`` (1-based), matching the COSMO file's
-        0-based atom indices used as global atom indices. Atom-map numbers
-        are required: RDKit's canonical SMILES output doesn't preserve
-        input atom order, so an unmapped SMILES can't be trusted to match
-        the COSMO file's atom order.
-
-        Parameters
-        ----------
-        mol : Chem.Mol
-            Molecule to reorder.
-
-        Returns
-        -------
-        Chem.Mol
-            Reordered molecule.
-
-        Raises
-        ------
-        ValueError
-            If the atom map numbers are not a 0-based or 1-based
-            permutation of the atom indices (including the unmapped case,
-            where every map number is 0).
-        """
-        num_atoms = mol.GetNumAtoms()
-        map_nums = {atom.GetAtomMapNum() for atom in mol.GetAtoms()}
-        if map_nums in (set(range(num_atoms)), set(range(1, num_atoms + 1))):
-            new_order = sorted(
-                range(num_atoms), key=lambda i: mol.GetAtomWithIdx(i).GetAtomMapNum()
-            )
-            return Chem.RenumberAtoms(mol, new_order)
-
-        raise ValueError(
-            "Bad atom map numbers: must be a 0-based or 1-based permutation "
-            "of the atom indices"
-        )
-
     @classmethod
     def _parse_molecule(
         cls,
         cosmo_files_dir: pathlib.Path,
         filename: str,
-        smi: str,
         fingerprint_generator: FingerprintGenerator,
     ) -> tuple[Chem.Mol, pd.DataFrame, pd.DataFrame, float, NDArray[np.int8]]:
-        """Parse one ``.cosmo`` file/SMILES pair and fingerprint the
-        molecule.
+        """Parse one ``.cosmo`` file, derive its molecule from its
+        geometry, and fingerprint it.
+
+        The molecule's net charge is estimated as
+        ``round(-segment_df["charge"].sum())``: COSMO segment charges
+        screen the solute's own charge, so they roughly cancel it.
 
         Parameters
         ----------
         cosmo_files_dir : pathlib.Path
             Directory holding ``filename``.
         filename : str
-            ``.cosmo`` filename, relative to ``cosmo_files_dir``.
-        smi : str
-            SMILES string for this molecule.
+            ``.cosmo`` (or CHAOS ``.json``) filename, relative to
+            ``cosmo_files_dir``.
         fingerprint_generator : FingerprintGenerator
             Generator used to fingerprint the parsed molecule.
 
         Returns
         -------
         mol, atom_df, segment_df, volume, fingerprint
-            The reordered molecule, its atom and segment tables, its
-            volume, and its fingerprint.
+            The atom-mapped molecule (already ordered to match
+            ``atom_df``'s rows), its atom and segment tables, its volume,
+            and its fingerprint.
 
         Raises
         ------
         ValueError
-            If the SMILES can't be parsed, or its atom count doesn't
-            match the ``.cosmo`` file's.
+            If bonds or stereochemistry couldn't be determined from the
+            file's geometry.
         """
         _, atom_df, segment_df, volume = parse_cosmo_file(
             (cosmo_files_dir / filename).read_text(encoding="utf-8", errors="replace")
         )
-        mol = Chem.MolFromSmiles(smi, _SMILES_PARSER_PARAMS)
+        charge = round(-segment_df["charge"].sum())
+        mol = get_rdkit_molecule(atom_df, charge=charge, print_errors=False)
         if mol is None:
-            raise ValueError(f"RDKit could not parse SMILES {smi!r}")
-        if mol.GetNumAtoms() != len(atom_df):
             raise ValueError(
-                f"SMILES {smi!r} has {mol.GetNumAtoms()} atoms, but "
-                f"{filename} has {len(atom_df)}"
+                f"Could not determine bonds/stereochemistry for {filename} "
+                f"(estimated charge={charge})"
             )
-        mol = cls._reorder_molecule(mol)
-        for i, atom in enumerate(mol.GetAtoms()):
-            expected_element = atom_df["element"].iat[i]
-            if atom.GetSymbol() != expected_element:
-                raise ValueError(
-                    f"SMILES {smi!r} has element {atom.GetSymbol()!r} at "
-                    f"local atom index {i}, but {filename} has element "
-                    f"{expected_element!r} at that same index."
-                )
-            # Re-stamp 1-based, so mol's map numbers survive
-            # Chem.MolToSmiles's re-canonicalization once stored (GH #43).
-            atom.SetAtomMapNum(i + 1)
         fingerprint = fingerprint_generator.generate(mol)
         return mol, atom_df, segment_df, volume, fingerprint
 
     @staticmethod
-    def _build_molecules_df(
+    def _build_molecules_df(  # noqa: PLR0913
         successful_molecules: list[str],
         segment_offsets: list[int],
         atom_offsets: list[int],
@@ -669,50 +618,11 @@ class SegmentStore:
             averaged_sigmas,
         )
 
-    @staticmethod
-    def _flatten_smiles_to_filenames(
-        smiles_to_filenames: Mapping[str, str | list[str]],
-    ) -> list[tuple[str, str]]:
-        """Expand a SMILES-to-filename(s) mapping into an ordered list of
-        ``(smiles, filename)`` pairs, one per ``.cosmo`` file.
-
-        Parameters
-        ----------
-        smiles_to_filenames : Mapping[str, str | list[str]]
-            SMILES string to a single ``.cosmo`` filename, or a list of
-            them (e.g. multiple conformers of the same molecule).
-
-        Returns
-        -------
-        list[tuple[str, str]]
-            ``(smiles, filename)`` pairs, in input order; a SMILES mapped
-            to a list of filenames yields one pair per filename, in that
-            list's order.
-
-        Raises
-        ------
-        ValueError
-            If a value is neither a ``str`` nor a non-empty list of
-            ``str``.
-        """
-        pairs: list[tuple[str, str]] = []
-        for smi, filenames in smiles_to_filenames.items():
-            if isinstance(filenames, str):
-                pairs.append((smi, filenames))
-            elif isinstance(filenames, list) and filenames:
-                pairs.extend((smi, filename) for filename in filenames)
-            else:
-                raise ValueError(
-                    f"smiles_to_filenames[{smi!r}] must be a filename (str) "
-                    f"or a non-empty list of filenames, got {filenames!r}."
-                )
-        return pairs
-
     @classmethod
     def from_cosmo_files(  # noqa: PLR0913, PLR0917
         cls,
         cosmo_files_dir: pathlib.Path,
-        smiles_to_filenames: Mapping[str, str | list[str]],
+        filenames: Sequence[str],
         storage_dir: pathlib.Path,
         ignore_errors: bool = False,
         schemes: Sequence[AveragingScheme] | None = None,
@@ -722,29 +632,28 @@ class SegmentStore:
     ) -> "SegmentStore":
         """Parse COSMO files, build a store, and write it to ``storage_dir``.
 
-        Atoms are numbered in the COSMO file's 0-based order. Each SMILES
-        must be atom-mapped onto that indexing (0-based or 1-based) and
-        have the same atom count and per-atom elements as its COSMO file.
-        Averaged sigmas are computed and written unless ``schemes`` is an
-        empty sequence.
+        Each molecule's SMILES is derived directly from its file's 3D
+        geometry (bond and stereochemistry perception via
+        ``cosmolayer.parser.get_rdkit_molecule``), atom-mapped to that
+        file's 0-based atom order. Averaged sigmas are computed and
+        written unless ``schemes`` is an empty sequence.
 
         Parameters
         ----------
         cosmo_files_dir : pathlib.Path
-            Directory containing the ``.cosmo`` files named by
-            ``smiles_to_filenames``'s values.
-        smiles_to_filenames : Mapping[str, str | list[str]]
-            SMILES string to ``.cosmo`` filename(s) (relative to
-            ``cosmo_files_dir``). A SMILES mapped to a list of filenames
-            (e.g. multiple conformers of the same molecule) yields one
-            ``molecules_df`` row per filename, all sharing that SMILES.
+            Directory containing the files named by ``filenames``.
+        filenames : Sequence[str]
+            ``.cosmo`` (or CHAOS ``.json``) filenames, relative to
+            ``cosmo_files_dir``, one per ``molecules_df`` row. A filename
+            may repeat (e.g. multiple conformers of the same molecule);
+            each occurrence yields its own row.
         storage_dir : pathlib.Path
             Destination directory for the output files. Created if
             missing.
         ignore_errors : bool, optional
-            If True, skip molecules that fail to parse or validate and
-            count them in ``metadata.num_cosmo_parse_failures``. Default
-            False.
+            If True, skip molecules that fail to parse or whose bonds
+            can't be determined, and count them in
+            ``metadata.num_cosmo_parse_failures``. Default False.
         schemes : Sequence[AveragingScheme] | None, optional
             Averaging schemes to compute. ``None`` (default) uses
             ``AVERAGING_SCHEMES``. Pass ``()`` to skip averaging.
@@ -789,17 +698,14 @@ class SegmentStore:
         num_cosmo_parse_failures = 0
         fingerprint_generator = FingerprintGenerator(clustering_specs)
 
-        for smi, filename in tqdm(
-            cls._flatten_smiles_to_filenames(smiles_to_filenames),
-            desc="Processing COSMO files",
-        ):
+        for filename in tqdm(filenames, desc="Processing COSMO files"):
             try:
                 mol, atom_df, segment_df, volume, fingerprint = cls._parse_molecule(
-                    cosmo_files_dir, filename, smi, fingerprint_generator
+                    cosmo_files_dir, filename, fingerprint_generator
                 )
             except (ValueError, AssertionError) as e:
                 if ignore_errors:
-                    tqdm.write(f"Error parsing {smi}->{filename}: {e}")
+                    tqdm.write(f"Error parsing {filename}: {e}")
                     num_cosmo_parse_failures += 1
                     continue
                 else:

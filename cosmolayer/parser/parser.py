@@ -47,12 +47,12 @@ def get_volume(module: ModuleType, file_contents: str) -> float:
     )
 
 
-def get_atom_mapped_smiles(
+def get_rdkit_molecule(
     atoms_df: pd.DataFrame,
     charge: int = 0,
     print_errors: bool = True,
-) -> str | None:
-    """Derive an atom-mapped SMILES string from a molecule's 3D geometry.
+) -> Chem.Mol | None:
+    """Derive an atom-mapped RDKit molecule from a molecule's 3D geometry.
 
     Bonds and stereochemistry are perceived from the atomic coordinates using
     RDKit. This is a best-effort chemistry step: it can fail for legitimate
@@ -63,7 +63,7 @@ def get_atom_mapped_smiles(
     ----------
     atoms_df : pd.DataFrame
         DataFrame with ``element``, ``x``, ``y``, and ``z`` columns, one row
-        per atom, in the order the resulting SMILES should be atom-mapped.
+        per atom, in the order the resulting molecule should be atom-mapped.
     charge : int, default=0
         Net molecular charge to assume when perceiving bond orders.
     print_errors : bool, default=True
@@ -72,9 +72,11 @@ def get_atom_mapped_smiles(
 
     Returns
     -------
-    str | None
-        The atom-mapped, canonical, isomeric SMILES string, or ``None`` if
-        bonds or stereochemistry could not be determined from the geometry.
+    Chem.Mol | None
+        The atom-mapped molecule (atom ``i``'s ``AtomMapNum`` is ``i + 1``,
+        matching ``atoms_df``'s row order), or ``None`` if bonds or
+        stereochemistry could not be determined from the geometry. Convert
+        to a SMILES string with ``Chem.MolToSmiles``.
     """
     xyz_block = (
         f"{len(atoms_df)}"
@@ -95,9 +97,7 @@ def get_atom_mapped_smiles(
         return None
     for i, atom in enumerate(mol.GetAtoms()):
         atom.SetAtomMapNum(i + 1)
-    return Chem.MolToSmiles(
-        mol, canonical=True, isomericSmiles=True, allHsExplicit=True
-    )
+    return mol
 
 
 def parse_cosmo_file(

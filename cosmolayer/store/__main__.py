@@ -4,12 +4,10 @@ profiles.
 
 Run as::
 
-    cosmostore --storage-dir DIR \\
-        --cosmo-files-dir DIR --smiles-to-filenames FILE.json
+    cosmostore --storage-dir DIR --cosmo-files-dir DIR
 """
 
 import argparse
-import json
 import pathlib
 import time
 from collections.abc import Callable, Sequence
@@ -57,20 +55,20 @@ def get_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=(
-            "Directory containing the .cosmo files referenced by "
-            "--smiles-to-filenames. Required only if --storage-dir doesn't "
-            "already hold a built store."
+            "Directory to scan for input files matching --extension. "
+            "Required only if --storage-dir doesn't already hold a built "
+            "store."
         ),
     )
     arg_parser.add_argument(
-        "--smiles-to-filenames",
+        "--extension",
         type=str,
-        default=None,
+        choices=["cosmo", "json"],
+        default="cosmo",
         help=(
-            "Path to a JSON file mapping each SMILES string to its .cosmo "
-            "filename, or a list of filenames for multiple conformers of "
-            "the same molecule (relative to --cosmo-files-dir). Required "
-            "only if --storage-dir doesn't already hold a built store."
+            "File extension to look for in --cosmo-files-dir: 'cosmo' for "
+            "TURBOMOLE/DMol-3 .cosmo files, 'json' for CHAOS dataset "
+            "records. Default: cosmo."
         ),
     )
     arg_parser.add_argument(
@@ -106,21 +104,21 @@ def _ensure_store_built(
     if SegmentStore.exists(storage_dir):
         print("Segment data already exists.")
         return
-    if args.cosmo_files_dir is None or args.smiles_to_filenames is None:
+    if args.cosmo_files_dir is None:
         arg_parser.error(
-            "--cosmo-files-dir and --smiles-to-filenames are required "
-            f"when --storage-dir ({storage_dir}) doesn't already hold "
-            "a built store."
+            "--cosmo-files-dir is required when --storage-dir "
+            f"({storage_dir}) doesn't already hold a built store."
         )
-    print("Storing segment data and averaged sigmas...")
     cosmo_files_dir = pathlib.Path(args.cosmo_files_dir)
-    with open(args.smiles_to_filenames) as f:
-        smiles_to_filenames = json.load(f)
+    filenames = sorted(p.name for p in cosmo_files_dir.glob(f"*.{args.extension}"))
+    if not filenames:
+        arg_parser.error(f"No *.{args.extension} files found in {cosmo_files_dir}.")
+    print("Storing segment data and averaged sigmas...")
     _timed(
         "store segment data and averaged sigmas",
         lambda: SegmentStore.from_cosmo_files(
             cosmo_files_dir,
-            smiles_to_filenames,
+            filenames,
             storage_dir,
             num_threads=args.num_threads,
         ),
