@@ -137,13 +137,13 @@ def parse_cosmo_file(
     >>> volume
     135.8705...
     """
-    if "DMol3/COSMO Results" in contents:
-        format = "DMol-3"
+    if dmol3.is_dmol3_format(contents):
+        format = dmol3.FORMAT_NAME
         atoms_df = get_atom_dataframe(dmol3, contents)
         segments_df = get_segment_dataframe(dmol3, contents)
         volume = get_volume(dmol3, contents)
-    elif "$segment_information" in contents and "$coord_car" in contents:
-        format = "TURBOMOLE"
+    elif turbomole.is_turbomole_format(contents):
+        format = turbomole.FORMAT_NAME
         atoms_df = get_atom_dataframe(turbomole, contents)
         segments_df = get_segment_dataframe(turbomole, contents)
         volume = get_volume(turbomole, contents)
@@ -155,6 +155,6 @@ def parse_cosmo_file(
     else:
         raise ValueError(
             "Could not parse COSMO file contents. Supported formats: "
-            "TURBOMOLE, DMol-3, CHAOS"
+            f"{turbomole.FORMAT_NAME}, {dmol3.FORMAT_NAME}, {chaos.FORMAT_NAME}"
         )
     return format, atoms_df, segments_df, volume
