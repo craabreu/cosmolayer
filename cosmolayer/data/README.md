@@ -13,6 +13,20 @@ Raw COSMO output from quantum mechanical calculations:
 - **`NCCO.cosmo`** – 2-Aminoethanol, **DMol-3**
 - **`O.cosmo`** – Water, **DMol-3**
 
+### CHAOS dataset records (`.json`)
+
+A sample record from the CHAOS dataset (arXiv:2511.19002), used as test data
+for `cosmolayer.parser.chaos`:
+
+- **`chaos_sample.json`** – 2-Fluorotoluene (`Cc1ccccc1F`), ωB97X-D/def2-TZVP
+  gas-phase geometry with a single-point C-PCM solvation calculation. Unlike
+  the `.cosmo` files above, the `CavVolume` scalar and segment positions in
+  this format are reported in atomic units (Bohr / Bohr³);
+  `cosmolayer.parser.chaos` converts them to Å / Å³ on load.
+  `solvation.CavArea` (also in Bohr²) is present in the record but unused by
+  the parser – segment/atom areas are read directly from the per-segment
+  `area` field, which is already in Å².
+
 ### COSMO-SAC 2002 Sigma profiles (`.sigma`)
 
 Precomputed sigma profiles for the **COSMO-SAC 2002** model (see `CosmoSac2002Model.create_mixture` and `create_cosmo_sac_2002_matrix`):
@@ -80,5 +94,10 @@ mixture = CosmoSac2010Model.create_mixture(components)
 - Surface charge densities
 - Surface areas
 - Atom assignments
+
+**CHAOS JSON records** (`.json`) contain the same information as `.cosmo`
+files — per-atom data and per-segment cavity data — but as a single
+structured JSON document per molecule instead of fixed-column text tables.
+See `cosmolayer.parser.chaos` for the field mapping.
 
 The parsers in `cosmolayer.parser` read these files and provide the data needed for COSMO-SAC activity coefficient calculations. The `.sigma` and `.sigma3` files store precomputed sigma profiles for the COSMO-SAC 2002 and COSMO-SAC 2010 models respectively (see `cosmolayer.cosmosac`); they are used by tests and validation scripts.
