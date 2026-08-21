@@ -125,9 +125,21 @@ def get_atom_dataframe(data: dict) -> pd.DataFrame:
     pd.DataFrame
         Columns: ``id`` (synthesized as ``f"{element}{index}"``), ``x``,
         ``y``, ``z`` (Å), ``element``.
+
+    Raises
+    ------
+    ValueError
+        If ``structural.Coordinates`` is JSON ``null``, or any per-atom
+        entry (or component) is ``null``.
     """
     atom_list = data["general"]["AtomList"]
     coordinates = data["structural"]["Coordinates"]
+    if coordinates is None or any(
+        xyz is None or any(c is None for c in xyz) for xyz in coordinates
+    ):
+        raise ValueError(
+            "CHAOS record has null structural.Coordinates; cannot build an atom table."
+        )
     rows = [
         {
             "id": f"{atom['element']}{atom['index']}",

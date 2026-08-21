@@ -1,5 +1,6 @@
 """Unit tests for the CHAOS JSON parser."""
 
+import copy
 import json
 from importlib.resources import files
 
@@ -61,6 +62,20 @@ def test_get_atom_dataframe_ids_are_unique_strings(chaos_dict: dict) -> None:
     df = chaos.get_atom_dataframe(chaos_dict)
     assert df["id"].map(type).eq(str).all()
     assert df["id"].is_unique
+
+
+def test_get_atom_dataframe_rejects_null_coordinates(chaos_dict: dict) -> None:
+    data = copy.deepcopy(chaos_dict)
+    data["structural"]["Coordinates"] = None
+    with pytest.raises(ValueError, match="null"):
+        chaos.get_atom_dataframe(data)
+
+
+def test_get_atom_dataframe_rejects_null_coordinate_entry(chaos_dict: dict) -> None:
+    data = copy.deepcopy(chaos_dict)
+    data["structural"]["Coordinates"][0] = None
+    with pytest.raises(ValueError, match="null"):
+        chaos.get_atom_dataframe(data)
 
 
 def test_get_segment_dataframe_shape_and_columns(chaos_dict: dict) -> None:
