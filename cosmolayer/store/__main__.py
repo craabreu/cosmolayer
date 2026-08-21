@@ -255,9 +255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _print_atom_stats(
         atom_sigma_profiles, atom_areas, atom_charges, atom_segment_counts
     )
-    _print_molecule_stats(
-        molecule_areas, molecule_charges, molecule_sigma_profiles
-    )
+    _print_molecule_stats(molecule_areas, molecule_charges, molecule_sigma_profiles)
     return 0
 
 

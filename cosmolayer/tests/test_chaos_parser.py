@@ -125,12 +125,40 @@ def test_get_segment_dataframe_area_sum_matches_atom_cosmo_charge(
         assert per_atom_area.loc[atom_idx] == pytest.approx(expected["area"], abs=1e-4)
 
 
+def test_get_segment_dataframe_rejects_null_segment_list(chaos_dict: dict) -> None:
+    data = copy.deepcopy(chaos_dict)
+    data["solvation"]["SegmentList"] = None
+    with pytest.raises(ValueError, match="null"):
+        chaos.get_segment_dataframe(data)
+
+
+def test_get_segment_dataframe_rejects_null_segment_entry(chaos_dict: dict) -> None:
+    data = copy.deepcopy(chaos_dict)
+    data["solvation"]["SegmentList"][0] = None
+    with pytest.raises(ValueError, match="null"):
+        chaos.get_segment_dataframe(data)
+
+
+def test_get_segment_dataframe_rejects_null_segment_component(chaos_dict: dict) -> None:
+    data = copy.deepcopy(chaos_dict)
+    data["solvation"]["SegmentList"][0][2] = None
+    with pytest.raises(ValueError, match="null"):
+        chaos.get_segment_dataframe(data)
+
+
 def test_get_volume_converts_bohr_cubed_to_angstrom_cubed(chaos_dict: dict) -> None:
     volume = chaos.get_volume(chaos_dict)
     # raw solvation.CavVolume = 916.9 (Bohr^3)
     expected = 916.9 * 0.52917721067**3
     assert volume == pytest.approx(expected)
     assert isinstance(volume, float)
+
+
+def test_get_volume_rejects_null_cav_volume(chaos_dict: dict) -> None:
+    data = copy.deepcopy(chaos_dict)
+    data["solvation"]["CavVolume"] = None
+    with pytest.raises(ValueError, match="null"):
+        chaos.get_volume(data)
 
 
 def test_parse_cosmo_file_detects_chaos_format(chaos_json: str) -> None:

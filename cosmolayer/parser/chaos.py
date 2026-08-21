@@ -174,8 +174,20 @@ def get_segment_dataframe(data: dict) -> pd.DataFrame:
         Columns: ``atom`` (0-based index into the atom dataframe from
         :func:`get_atom_dataframe`), ``x``, ``y``, ``z`` (Å), ``charge``
         (e), ``area`` (Å²).
+
+    Raises
+    ------
+    ValueError
+        If ``solvation.SegmentList`` is JSON ``null``, or any entry (or
+        component) is ``null``.
     """
     segment_list = data["solvation"]["SegmentList"]
+    if segment_list is None or any(
+        entry is None or any(c is None for c in entry) for entry in segment_list
+    ):
+        raise ValueError(
+            "CHAOS record has null solvation.SegmentList; cannot build a segment table."
+        )
     rows = [
         {
             "atom": parent_atom_index - 1,
@@ -215,5 +227,15 @@ def get_volume(data: dict) -> float:
     -------
     float
         Cavity volume in Å³.
+
+    Raises
+    ------
+    ValueError
+        If ``solvation.CavVolume`` is JSON ``null``.
     """
-    return float(data["solvation"]["CavVolume"]) * VOLUME_CONVERSION_FACTOR
+    cav_volume = data["solvation"]["CavVolume"]
+    if cav_volume is None:
+        raise ValueError(
+            "CHAOS record has null solvation.CavVolume; cannot compute a cavity volume."
+        )
+    return float(cav_volume) * VOLUME_CONVERSION_FACTOR
