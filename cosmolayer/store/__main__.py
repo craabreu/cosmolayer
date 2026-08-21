@@ -94,6 +94,22 @@ def get_parser() -> argparse.ArgumentParser:
             "contain that scheme. Default: raw sigma."
         ),
     )
+    arg_parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help=(
+            "Disable tqdm progress bars. By default, bars are shown for "
+            "COSMO parsing, averaging, clustering, and sigma-profile work."
+        ),
+    )
+    arg_parser.add_argument(
+        "--ignore-errors",
+        action="store_true",
+        help=(
+            "Skip .cosmo files that fail to parse or validate when "
+            "building a store. By default those failures abort the run."
+        ),
+    )
     return arg_parser
 
 
@@ -122,14 +138,19 @@ def _ensure_store_built(
             cosmo_files_dir,
             filename_to_smiles,
             storage_dir,
+            ignore_errors=args.ignore_errors,
             num_threads=args.num_threads,
-            progress=True,
+            progress=not args.no_progress,
         ),
     )
 
 
 def _report_atom_stats(
-    store: SegmentStore, sigma_scheme: str | None, num_threads: int | None
+    store: SegmentStore,
+    sigma_scheme: str | None,
+    num_threads: int | None,
+    *,
+    progress: bool,
 ) -> tuple[SigmaProfileTable, NDArray[np.float32], NDArray[np.float32]]:
     """Print per-atom statistics and return the atom profile table, areas,
     and charges."""
@@ -157,7 +178,7 @@ def _report_atom_stats(
             grid=SigmaGrid(),
             num_threads=num_threads,
             centered=True,
-            progress=True,
+            progress=progress,
         ),
     )
     has_area = atom_sigma_profiles.areas > 0
@@ -177,6 +198,8 @@ def _report_molecule_stats(
     atom_areas: NDArray[np.float32],
     atom_charges: NDArray[np.float32],
     num_threads: int | None,
+    *,
+    progress: bool,
 ) -> None:
     """Print per-molecule statistics derived from the atom-level results."""
     atom_offsets = store.molecules_df["atom_offsets"].values.astype("int64")
@@ -192,7 +215,9 @@ def _report_molecule_stats(
 
     molecule_sigma_profiles = _timed(
         "compute molecule sigma profiles",
-        lambda: atom_sigma_profiles.aggregate(num_threads=num_threads, progress=True),
+        lambda: atom_sigma_profiles.aggregate(
+            num_threads=num_threads, progress=progress
+        ),
     )
     mass_err = np.abs(molecule_sigma_profiles.profiles.sum(axis=1) / molecule_areas - 1)
     print(
@@ -226,11 +251,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{storage_dir}. Known schemes: {sorted(store.averaged_sigmas)}."
         )
 
+    progress = not args.no_progress
     atom_sigma_profiles, atom_areas, atom_charges = _report_atom_stats(
-        store, args.sigma_scheme, args.num_threads
+        store, args.sigma_scheme, args.num_threads, progress=progress
     )
     _report_molecule_stats(
-        store, atom_sigma_profiles, atom_areas, atom_charges, args.num_threads
+        store,
+        atom_sigma_profiles,
+        atom_areas,
+        atom_charges,
+        args.num_threads,
+        progress=progress,
     )
     return 0
 

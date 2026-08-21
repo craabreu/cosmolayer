@@ -26,6 +26,7 @@ from cosmolayer.store import (
     ClusteringSpecs,
     SegmentStore,
     SigmaGrid,
+    SigmaProfileTable,
     StoreMetadata,
 )
 from cosmolayer.store.__main__ import main as store_main
@@ -1465,3 +1466,132 @@ def test_main_enables_progress_when_building_store(
             ]
         )
     assert seen["progress"] is True
+
+
+def test_main_no_progress_disables_progress_when_building_store(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+
+    def spy(*args: object, **kwargs: object) -> SegmentStore:
+        progress = kwargs.get("progress")
+        seen["progress"] = progress if isinstance(progress, bool) else None
+        raise RuntimeError("stop before building")
+
+    monkeypatch.setattr(SegmentStore, "from_cosmo_files", spy)
+    mapping = tmp_path / "map.json"
+    mapping.write_text("{}")
+    with pytest.raises(RuntimeError, match="stop before building"):
+        store_main(
+            [
+                "--storage-dir",
+                str(tmp_path / "store"),
+                "--cosmo-files-dir",
+                str(tmp_path),
+                "--filenames-to-smiles",
+                str(mapping),
+                "--num-threads",
+                "1",
+                "--no-progress",
+            ]
+        )
+    assert seen["progress"] is False
+
+
+def test_main_defaults_to_not_ignoring_errors(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+
+    def spy(*args: object, **kwargs: object) -> SegmentStore:
+        ignore_errors = kwargs.get("ignore_errors")
+        seen["ignore_errors"] = (
+            ignore_errors if isinstance(ignore_errors, bool) else None
+        )
+        raise RuntimeError("stop before building")
+
+    monkeypatch.setattr(SegmentStore, "from_cosmo_files", spy)
+    mapping = tmp_path / "map.json"
+    mapping.write_text("{}")
+    with pytest.raises(RuntimeError, match="stop before building"):
+        store_main(
+            [
+                "--storage-dir",
+                str(tmp_path / "store"),
+                "--cosmo-files-dir",
+                str(tmp_path),
+                "--filenames-to-smiles",
+                str(mapping),
+                "--num-threads",
+                "1",
+            ]
+        )
+    assert seen["ignore_errors"] is False
+
+
+def test_main_ignore_errors_forwards_to_from_cosmo_files(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+
+    def spy(*args: object, **kwargs: object) -> SegmentStore:
+        ignore_errors = kwargs.get("ignore_errors")
+        seen["ignore_errors"] = (
+            ignore_errors if isinstance(ignore_errors, bool) else None
+        )
+        raise RuntimeError("stop before building")
+
+    monkeypatch.setattr(SegmentStore, "from_cosmo_files", spy)
+    mapping = tmp_path / "map.json"
+    mapping.write_text("{}")
+    with pytest.raises(RuntimeError, match="stop before building"):
+        store_main(
+            [
+                "--storage-dir",
+                str(tmp_path / "store"),
+                "--cosmo-files-dir",
+                str(tmp_path),
+                "--filenames-to-smiles",
+                str(mapping),
+                "--num-threads",
+                "1",
+                "--ignore-errors",
+            ]
+        )
+    assert seen["ignore_errors"] is True
+
+
+def test_main_no_progress_disables_profile_bars(
+    built_store_dir: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+    real_atom = SegmentStore.compute_atom_sigma_profiles
+    real_aggregate = SigmaProfileTable.aggregate
+
+    def spy_atom(
+        self: SegmentStore, *args: object, **kwargs: object
+    ) -> SigmaProfileTable:
+        progress = kwargs.get("progress")
+        seen["atom"] = progress if isinstance(progress, bool) else None
+        return real_atom(self, *args, **kwargs)
+
+    def spy_aggregate(
+        self: SigmaProfileTable, *args: object, **kwargs: object
+    ) -> SigmaProfileTable:
+        progress = kwargs.get("progress")
+        seen["aggregate"] = progress if isinstance(progress, bool) else None
+        return real_aggregate(self, *args, **kwargs)
+
+    monkeypatch.setattr(SegmentStore, "compute_atom_sigma_profiles", spy_atom)
+    monkeypatch.setattr(SigmaProfileTable, "aggregate", spy_aggregate)
+    exit_code = store_main(
+        [
+            "--storage-dir",
+            str(built_store_dir),
+            "--num-threads",
+            "1",
+            "--no-progress",
+        ]
+    )
+    assert exit_code == 0
+    assert seen == {"atom": False, "aggregate": False}
