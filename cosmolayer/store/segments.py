@@ -737,7 +737,7 @@ class SegmentStore:
             core.
         progress : bool, optional
             If True, show tqdm while parsing COSMO files, averaging
-            sigmas, and running chalcedon's Butina clustering bars.
+            sigmas, clustering, and computing cluster medoid distances.
             Default False, so a library call stays quiet.
 
         Returns
@@ -819,7 +819,9 @@ class SegmentStore:
         cluster_ids = butina_cluster(
             fingerprint_array, clustering_specs.cutoff, progress=progress
         )
-        cluster_distance = cluster_medoid_distances(fingerprint_array, cluster_ids)
+        cluster_distance = cluster_medoid_distances(
+            fingerprint_array, cluster_ids, progress=progress
+        )
 
         data = np.concatenate(data_chunks, axis=0)
         atom_indices = np.concatenate(atoms_chunks)

@@ -14,6 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 from rdkit import Chem, rdBase
 from rdkit.Chem import rdFingerprintGenerator
+from tqdm.auto import tqdm
 
 from cosmolayer.store._chalcedon.butina_cluster import (
     butina_cluster as _chalcedon_butina_cluster,
@@ -131,6 +132,8 @@ _MEDOID_SCORE_MAX_CELLS = 4_000_000
 def cluster_medoid_distances(
     fingerprints: NDArray[np.int8],
     cluster_ids: NDArray[np.int64],
+    *,
+    progress: bool = False,
 ) -> NDArray[np.float64]:
     """Tanimoto distance of each molecule to its cluster's Tanimoto medoid.
 
@@ -146,6 +149,8 @@ def cluster_medoid_distances(
         ``FingerprintGenerator.generate``.
     cluster_ids : np.ndarray, shape (n,)
         Cluster id per molecule, as produced by ``butina_cluster``.
+    progress : bool, optional
+        If True, show a tqdm bar over clusters. Default False.
 
     Returns
     -------
@@ -168,7 +173,11 @@ def cluster_medoid_distances(
         return distances
 
     fps_all = np.asarray(fingerprints, dtype=np.float64)
-    for cluster_id in np.unique(cluster_ids):
+    for cluster_id in tqdm(
+        np.unique(cluster_ids),
+        desc="Computing medoids",
+        disable=not progress,
+    ):
         members = np.flatnonzero(cluster_ids == cluster_id)
         k = int(members.shape[0])
         if k == 1:

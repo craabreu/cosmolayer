@@ -665,6 +665,22 @@ class TestClusterMedoidDistances:
         with pytest.raises(ValueError, match="same length"):
             cluster_medoid_distances(fps, ids)
 
+    def test_progress_enables_tqdm(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        disables: list[bool] = []
+
+        def spy(*args: object, **kwargs: object) -> object:
+            disable = kwargs.get("disable")
+            if isinstance(disable, bool):
+                disables.append(disable)
+            return real_tqdm(*args, **kwargs)
+
+        monkeypatch.setattr("cosmolayer.store.clustering.tqdm", spy)
+        fps = np.array([[1, 0], [0, 1], [1, 1]], dtype=np.int8)
+        ids = np.array([0, 0, 1], dtype=np.int64)
+        cluster_medoid_distances(fps, ids, progress=True)
+        cluster_medoid_distances(fps, ids)
+        assert disables == [False, True]
+
 
 class TestSegmentStoreClustering:
     def test_cluster_id_column_present_and_typed(self, store: SegmentStore) -> None:
@@ -712,6 +728,21 @@ class TestSegmentStoreClustering:
             return real(fingerprints, cutoff, progress=progress)
 
         monkeypatch.setattr("cosmolayer.store.segments.butina_cluster", spy)
+        medoid_seen: list[bool] = []
+        real_medoid = cluster_medoid_distances
+
+        def medoid_spy(
+            fingerprints: NDArray[np.int8],
+            cluster_ids: NDArray[np.int64],
+            *,
+            progress: bool = False,
+        ) -> NDArray[np.float64]:
+            medoid_seen.append(progress)
+            return real_medoid(fingerprints, cluster_ids, progress=progress)
+
+        monkeypatch.setattr(
+            "cosmolayer.store.segments.cluster_medoid_distances", medoid_spy
+        )
         SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
             FILENAME_TO_SMILES,
@@ -728,6 +759,7 @@ class TestSegmentStoreClustering:
             num_threads=1,
         )
         assert seen == [True, False]
+        assert medoid_seen == [True, False]
 
 
 # --------------------------------------------------------------------- #
@@ -1516,6 +1548,7 @@ def test_main_runs_end_to_end(
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "Molecule profile mass conservation" in out
+    assert "Time to" not in out
 
 
 def test_main_enables_progress_when_building_store(

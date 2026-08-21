@@ -11,9 +11,7 @@ Run as::
 import argparse
 import json
 import pathlib
-import time
-from collections.abc import Callable, Sequence
-from typing import TypeVar
+from collections.abc import Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -23,17 +21,6 @@ from .grid import SigmaGrid
 from .profiles import SigmaProfileTable
 from .reporting import print_stats
 from .segments import SegmentStore
-
-_T = TypeVar("_T")
-
-
-def _timed(label: str, fn: Callable[[], _T]) -> _T:
-    """Run ``fn``, print how long it took under ``label``, and return its
-    result."""
-    start_time = time.time()
-    result = fn()
-    print(f"Time to {label}: {time.time() - start_time:.2f} seconds")
-    return result
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -132,67 +119,45 @@ def _ensure_store_built(
     cosmo_files_dir = pathlib.Path(args.cosmo_files_dir)
     with open(args.filenames_to_smiles) as f:
         filename_to_smiles = json.load(f)
-    _timed(
-        "store segment data and averaged sigmas",
-        lambda: SegmentStore.from_cosmo_files(
-            cosmo_files_dir,
-            filename_to_smiles,
-            storage_dir,
-            ignore_errors=args.ignore_errors,
-            num_threads=args.num_threads,
-            progress=not args.no_progress,
-        ),
+    SegmentStore.from_cosmo_files(
+        cosmo_files_dir,
+        filename_to_smiles,
+        storage_dir,
+        ignore_errors=args.ignore_errors,
+        num_threads=args.num_threads,
+        progress=not args.no_progress,
     )
 
 
-def _report_atom_stats(
+def _compute_atom_data(
     store: SegmentStore,
     sigma_scheme: str | None,
     num_threads: int | None,
     *,
     progress: bool,
-) -> tuple[SigmaProfileTable, NDArray[np.float32], NDArray[np.float32]]:
-    """Print per-atom statistics and return the atom profile table, areas,
-    and charges."""
+) -> tuple[
+    SigmaProfileTable, NDArray[np.float32], NDArray[np.float32], NDArray[np.intp]
+]:
+    """Compute per-atom properties and centered sigma profiles."""
     total_num_atoms = int(store.molecules_df["num_atoms"].sum())
-    atom_charges, atom_areas = _timed(
-        "compute per-atom properties",
-        lambda: (
-            compute_per_atom_properties(
-                np.asarray(store.charges), store.atom_indices, total_num_atoms
-            ),
-            compute_per_atom_properties(
-                np.asarray(store.areas), store.atom_indices, total_num_atoms
-            ),
-        ),
+    atom_charges = compute_per_atom_properties(
+        np.asarray(store.charges), store.atom_indices, total_num_atoms
+    )
+    atom_areas = compute_per_atom_properties(
+        np.asarray(store.areas), store.atom_indices, total_num_atoms
     )
     atom_segment_counts = np.bincount(store.atom_indices, minlength=total_num_atoms)
-    print_stats("Atom charges", atom_charges)
-    print_stats("Atom areas", atom_areas)
-    print_stats("Atom segment counts", atom_segment_counts)
-
-    atom_sigma_profiles = _timed(
-        "compute atom sigma profiles",
-        lambda: store.compute_atom_sigma_profiles(
-            scheme=sigma_scheme,
-            grid=SigmaGrid(),
-            num_threads=num_threads,
-            centered=True,
-            progress=progress,
-        ),
+    atom_sigma_profiles = store.compute_atom_sigma_profiles(
+        scheme=sigma_scheme,
+        grid=SigmaGrid(),
+        num_threads=num_threads,
+        centered=True,
+        progress=progress,
     )
-    has_area = atom_sigma_profiles.areas > 0
-    print(f"Atoms with no surface segments: {(~has_area).sum()} of {total_num_atoms}")
-    first_moments = (
-        atom_sigma_profiles.profiles[has_area].astype(np.float64)
-        @ atom_sigma_profiles.sigma_values
-    )
-    print_stats("Atom profile first moments", first_moments, value_format=".3e")
-
-    return atom_sigma_profiles, atom_areas, atom_charges
+    return atom_sigma_profiles, atom_areas, atom_charges, atom_segment_counts
 
 
-def _report_molecule_stats(
+def _compute_molecule_data(
     store: SegmentStore,
     atom_sigma_profiles: SigmaProfileTable,
     atom_areas: NDArray[np.float32],
@@ -200,25 +165,47 @@ def _report_molecule_stats(
     num_threads: int | None,
     *,
     progress: bool,
-) -> None:
-    """Print per-molecule statistics derived from the atom-level results."""
+) -> tuple[NDArray[np.float32], NDArray[np.float32], SigmaProfileTable]:
+    """Compute per-molecule properties and aggregated sigma profiles."""
     atom_offsets = store.molecules_df["atom_offsets"].values.astype("int64")
-    molecule_areas, molecule_charges = _timed(
-        "compute per-molecule properties",
-        lambda: (
-            compute_per_molecule_properties(atom_areas, atom_offsets),
-            compute_per_molecule_properties(atom_charges, atom_offsets),
-        ),
+    molecule_areas = compute_per_molecule_properties(atom_areas, atom_offsets)
+    molecule_charges = compute_per_molecule_properties(atom_charges, atom_offsets)
+    molecule_sigma_profiles = atom_sigma_profiles.aggregate(
+        num_threads=num_threads, progress=progress
     )
+    return molecule_areas, molecule_charges, molecule_sigma_profiles
+
+
+def _print_atom_stats(
+    atom_sigma_profiles: SigmaProfileTable,
+    atom_areas: NDArray[np.float32],
+    atom_charges: NDArray[np.float32],
+    atom_segment_counts: NDArray[np.intp],
+) -> None:
+    """Print per-atom statistics from already-computed arrays."""
+    print_stats("Atom charges", atom_charges)
+    print_stats("Atom areas", atom_areas)
+    print_stats("Atom segment counts", atom_segment_counts)
+    has_area = atom_sigma_profiles.areas > 0
+    print(
+        f"Atoms with no surface segments: {(~has_area).sum()} of "
+        f"{len(atom_sigma_profiles.areas)}"
+    )
+    first_moments = (
+        atom_sigma_profiles.profiles[has_area].astype(np.float64)
+        @ atom_sigma_profiles.sigma_values
+    )
+    print_stats("Atom profile first moments", first_moments, value_format=".3e")
+
+
+def _print_molecule_stats(
+    molecule_areas: NDArray[np.float32],
+    molecule_charges: NDArray[np.float32],
+    molecule_sigma_profiles: SigmaProfileTable,
+) -> None:
+    """Print per-molecule statistics from already-computed arrays."""
     print_stats("Molecule areas", molecule_areas)
     print_stats("Molecule charges", molecule_charges)
-
-    molecule_sigma_profiles = _timed(
-        "compute molecule sigma profiles",
-        lambda: atom_sigma_profiles.aggregate(
-            num_threads=num_threads, progress=progress
-        ),
-    )
     mass_err = np.abs(molecule_sigma_profiles.profiles.sum(axis=1) / molecule_areas - 1)
     print(
         f"Molecule profile mass conservation, max relative error: {mass_err.max():.2e}"
@@ -243,7 +230,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     storage_dir = pathlib.Path(args.storage_dir)
 
     _ensure_store_built(args, arg_parser, storage_dir)
-    store = _timed("load segment data", lambda: SegmentStore.load(storage_dir))
+    store = SegmentStore.load(storage_dir)
 
     if args.sigma_scheme is not None and args.sigma_scheme not in store.averaged_sigmas:
         arg_parser.error(
@@ -252,16 +239,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     progress = not args.no_progress
-    atom_sigma_profiles, atom_areas, atom_charges = _report_atom_stats(
-        store, args.sigma_scheme, args.num_threads, progress=progress
+    atom_sigma_profiles, atom_areas, atom_charges, atom_segment_counts = (
+        _compute_atom_data(
+            store, args.sigma_scheme, args.num_threads, progress=progress
+        )
     )
-    _report_molecule_stats(
+    molecule_areas, molecule_charges, molecule_sigma_profiles = _compute_molecule_data(
         store,
         atom_sigma_profiles,
         atom_areas,
         atom_charges,
         args.num_threads,
         progress=progress,
+    )
+    _print_atom_stats(
+        atom_sigma_profiles, atom_areas, atom_charges, atom_segment_counts
+    )
+    _print_molecule_stats(
+        molecule_areas, molecule_charges, molecule_sigma_profiles
     )
     return 0
 
