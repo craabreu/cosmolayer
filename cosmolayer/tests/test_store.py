@@ -245,6 +245,11 @@ class TestSegmentStoreRoundTrip:
         assert store.metadata.num_cosmo_parse_failures == 0
         assert len(store.molecules_df) == 4
 
+    def test_molecules_df_filename_matches_source_cosmo_file(
+        self, store: SegmentStore
+    ) -> None:
+        assert set(store.molecules_df["filename"]) == set(FILENAME_TO_SMILES)
+
     def test_atoms_df_matches_source_cosmo_file(self, store: SegmentStore) -> None:
         assert list(store.atoms_df.columns) == ["id", "element", "x", "y", "z"]
         assert len(store.atoms_df) == store.molecules_df["num_atoms"].sum()
@@ -275,6 +280,7 @@ class TestSegmentStoreRoundTrip:
         assert reloaded.atom_indices.dtype == np.int64
         assert list(reloaded.molecules_df.columns) == [
             "smiles",
+            "filename",
             "segment_offsets",
             "atom_offsets",
             "num_atoms",

@@ -8,9 +8,9 @@ load an existing one with ``SegmentStore.load``. Both use a flat
     <storage_dir>/data.npy          float32 (n_segs_total, 5): [x, y, z, charge, area]
     <storage_dir>/atom_indices.npy  int64   (n_segs_total,):   global atom index per
                                      segment
-    <storage_dir>/molecules.parquet columns: smiles, segment_offsets, atom_offsets,
-                                     num_atoms, volume, cluster_id, cluster_distance,
-                                     split (optional)
+    <storage_dir>/molecules.parquet columns: smiles, filename, segment_offsets,
+                                     atom_offsets, num_atoms, volume, cluster_id,
+                                     cluster_distance, split (optional)
     <storage_dir>/atoms.parquet     columns: id, element, x, y, z -- one row per atom,
                                      in global atom index order
     <storage_dir>/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}
@@ -292,6 +292,7 @@ class SegmentStore:
     @staticmethod
     def _build_molecules_df(  # noqa: PLR0913
         successful_molecules: list[str],
+        filenames: list[str],
         segment_offsets: list[int],
         atom_offsets: list[int],
         num_atoms: list[int],
@@ -303,6 +304,7 @@ class SegmentStore:
         return pd.DataFrame(
             {
                 "smiles": successful_molecules,
+                "filename": filenames,
                 "segment_offsets": np.array(segment_offsets, dtype="int64"),
                 "atom_offsets": np.array(atom_offsets, dtype="int64"),
                 "num_atoms": np.array(num_atoms, dtype="int64"),
@@ -763,6 +765,7 @@ class SegmentStore:
         num_atoms = []
         volumes = []
         successful_molecules = []
+        filenames = []
         present_items = [
             (filename, smi)
             for filename, smi in filename_to_smiles.items()
@@ -811,6 +814,7 @@ class SegmentStore:
             num_atoms.append(len(atom_df))
             volumes.append(volume)
             successful_molecules.append(Chem.MolToSmiles(mol))
+            filenames.append(filename)
 
         if not successful_molecules:
             raise ValueError("No COSMO files could be parsed successfully.")
@@ -828,6 +832,7 @@ class SegmentStore:
         atoms_df = pd.concat(atom_tables, ignore_index=True)
         molecules_df = cls._build_molecules_df(
             successful_molecules,
+            filenames,
             segment_offsets,
             atom_offsets,
             num_atoms,
