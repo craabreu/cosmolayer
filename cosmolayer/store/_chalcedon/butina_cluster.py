@@ -4,7 +4,7 @@ Vendored from https://github.com/rowansci/chalcedon at commit
 92da3cc5bd6ffb0d397cb49ea556f168d1d38b7e (MIT license, see ``NOTICE`` in
 this directory). Modified from upstream to add the ``progress`` parameter
 gating the tqdm bars, so a library call doesn't print to stderr by
-default; otherwise unchanged.
+default; to use ``tqdm.auto``; and to leave bars on screen when enabled.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from cosmolayer.store._chalcedon.tanimoto_similarity import (
     Precision,
@@ -117,8 +117,8 @@ def butina_cluster(
 
     for row_start in tqdm(
         range(0, fingerprint_count, block_size),
-        desc="step 1/2: counting neighbors",
-        leave=False,
+        desc="Counting neighbors",
+        leave=True,
         disable=not progress,
     ):
         row_end = min(row_start + block_size, fingerprint_count)
@@ -137,8 +137,8 @@ def butina_cluster(
     cursor = 0
     with tqdm(
         total=fingerprint_count,
-        desc="step 2/2: assigning clusters",
-        leave=False,
+        desc="Assigning clusters",
+        leave=True,
         disable=not progress,
     ) as progress_bar:
         while cursor < fingerprint_count:

@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 from numpy.typing import NDArray
 from rdkit import Chem
+from tqdm.auto import tqdm as real_tqdm
 
 from cosmolayer.cosmosac import Component
 from cosmolayer.parser import parse_cosmo_file
@@ -25,6 +26,7 @@ from cosmolayer.store import (
     ClusteringSpecs,
     SegmentStore,
     SigmaGrid,
+    SigmaProfileTable,
     StoreMetadata,
 )
 from cosmolayer.store.__main__ import main as store_main
@@ -172,6 +174,54 @@ class TestAveraging:
             )
         np.testing.assert_allclose(whole[0], np.concatenate(pieces))
 
+    def test_by_molecule_progress_matches_quiet_result(self) -> None:
+        rng = np.random.default_rng(2)
+        offsets = np.array([0, 3, 8], dtype=np.int64)
+        n = 10
+        coords = rng.normal(size=(n, 3))
+        charges = rng.normal(size=n) * 1e-3
+        areas = rng.uniform(0.5, 2.0, size=n)
+        schemes = [COSMO_SAC_2010]
+        quiet = average_sigmas_by_molecule(
+            coords, charges, areas, offsets, schemes, num_threads=1
+        )
+        with_bar = average_sigmas_by_molecule(
+            coords, charges, areas, offsets, schemes, num_threads=1, progress=True
+        )
+        np.testing.assert_allclose(quiet, with_bar)
+
+    def test_by_molecule_progress_enables_tqdm(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        disables: list[bool] = []
+
+        def spy(*args: object, **kwargs: object) -> object:
+            disable = kwargs.get("disable")
+            if isinstance(disable, bool):
+                disables.append(disable)
+            return real_tqdm(*args, **kwargs)
+
+        monkeypatch.setattr("cosmolayer.store.averaging.tqdm", spy)
+        rng = np.random.default_rng(3)
+        offsets = np.array([0, 2], dtype=np.int64)
+        n = 4
+        coords = rng.normal(size=(n, 3))
+        charges = rng.normal(size=n) * 1e-3
+        areas = rng.uniform(0.5, 2.0, size=n)
+        average_sigmas_by_molecule(
+            coords, charges, areas, offsets, [COSMO_SAC_2010], num_threads=1
+        )
+        average_sigmas_by_molecule(
+            coords,
+            charges,
+            areas,
+            offsets,
+            [COSMO_SAC_2010],
+            num_threads=1,
+            progress=True,
+        )
+        assert disables == [True, False]
+
 
 # --------------------------------------------------------------------- #
 # binning helpers
@@ -194,6 +244,11 @@ class TestSegmentStoreRoundTrip:
         assert store.metadata.num_molecules == 4
         assert store.metadata.num_cosmo_parse_failures == 0
         assert len(store.molecules_df) == 4
+
+    def test_molecules_df_filename_matches_source_cosmo_file(
+        self, store: SegmentStore
+    ) -> None:
+        assert set(store.molecules_df["filename"]) == set(FILENAME_TO_SMILES)
 
     def test_atoms_df_matches_source_cosmo_file(self, store: SegmentStore) -> None:
         assert list(store.atoms_df.columns) == ["id", "element", "x", "y", "z"]
@@ -225,6 +280,7 @@ class TestSegmentStoreRoundTrip:
         assert reloaded.atom_indices.dtype == np.int64
         assert list(reloaded.molecules_df.columns) == [
             "smiles",
+            "filename",
             "segment_offsets",
             "atom_offsets",
             "num_atoms",
@@ -291,6 +347,23 @@ class TestSegmentStoreRoundTrip:
         bad_mapping = {"O.cosmo": "CCCC"}
         with pytest.raises(ValueError):
             SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
+
+    def test_skips_missing_cosmo_files(self, tmp_path: pathlib.Path) -> None:
+        mapping = dict(FILENAME_TO_SMILES)
+        mapping["missing.cosmo"] = _atom_mapped("O")
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapping, tmp_path, num_threads=1, schemes=()
+        )
+        assert s.metadata.num_molecules == 4
+        assert s.metadata.num_cosmo_parse_failures == 1
+
+    def test_all_missing_cosmo_files_raises(self, tmp_path: pathlib.Path) -> None:
+        with pytest.raises(ValueError, match="No COSMO files"):
+            SegmentStore.from_cosmo_files(
+                COSMO_DATA_DIR,
+                {"missing.cosmo": _atom_mapped("O")},
+                tmp_path,
+            )
 
 
 class TestFilenameToSmiles:
@@ -482,7 +555,9 @@ class TestButinaCluster:
         a way mypy's strict re-export check would flag."""
         call_sizes: list[int] = []
 
-        def spy(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.intp]:
+        def spy(
+            fingerprints: NDArray[np.int8], cutoff: float, progress: bool = False
+        ) -> NDArray[np.intp]:
             call_sizes.append(fingerprints.shape[0])
             return np.zeros(fingerprints.shape[0], dtype=np.intp)
 
@@ -492,6 +567,25 @@ class TestButinaCluster:
         fp = np.array([[1, 0, 1, 0], [0, 1, 0, 1]], dtype=np.int8)
         butina_cluster(fp, cutoff=0.1)
         assert call_sizes == [2]
+
+    def test_forwards_progress_flag_to_chalcedon(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[bool] = []
+
+        def spy(
+            fingerprints: NDArray[np.int8], cutoff: float, progress: bool = False
+        ) -> NDArray[np.intp]:
+            seen.append(progress)
+            return np.zeros(fingerprints.shape[0], dtype=np.intp)
+
+        monkeypatch.setattr(
+            "cosmolayer.store.clustering._chalcedon_butina_cluster", spy
+        )
+        fp = np.array([[1, 0, 1, 0], [0, 1, 0, 1]], dtype=np.int8)
+        butina_cluster(fp, cutoff=0.1)
+        butina_cluster(fp, cutoff=0.1, progress=True)
+        assert seen == [False, True]
 
 
 def _tanimoto_distance(a: NDArray[np.int8], b: NDArray[np.int8]) -> float:
@@ -577,6 +671,22 @@ class TestClusterMedoidDistances:
         with pytest.raises(ValueError, match="same length"):
             cluster_medoid_distances(fps, ids)
 
+    def test_progress_enables_tqdm(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        disables: list[bool] = []
+
+        def spy(*args: object, **kwargs: object) -> object:
+            disable = kwargs.get("disable")
+            if isinstance(disable, bool):
+                disables.append(disable)
+            return real_tqdm(*args, **kwargs)
+
+        monkeypatch.setattr("cosmolayer.store.clustering.tqdm", spy)
+        fps = np.array([[1, 0], [0, 1], [1, 1]], dtype=np.int8)
+        ids = np.array([0, 0, 1], dtype=np.int64)
+        cluster_medoid_distances(fps, ids, progress=True)
+        cluster_medoid_distances(fps, ids)
+        assert disables == [False, True]
+
 
 class TestSegmentStoreClustering:
     def test_cluster_id_column_present_and_typed(self, store: SegmentStore) -> None:
@@ -610,6 +720,52 @@ class TestSegmentStoreClustering:
         # cutoff=0.0 means only exact fingerprint matches share a cluster;
         # these four molecules are all distinct, so each is its own cluster.
         assert sorted(s.molecules_df["cluster_id"].tolist()) == [0, 1, 2, 3]
+
+    def test_from_cosmo_files_forwards_progress(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[bool] = []
+        real = butina_cluster
+
+        def spy(
+            fingerprints: NDArray[np.int8], cutoff: float, progress: bool = False
+        ) -> NDArray[np.int64]:
+            seen.append(progress)
+            return real(fingerprints, cutoff, progress=progress)
+
+        monkeypatch.setattr("cosmolayer.store.segments.butina_cluster", spy)
+        medoid_seen: list[bool] = []
+        real_medoid = cluster_medoid_distances
+
+        def medoid_spy(
+            fingerprints: NDArray[np.int8],
+            cluster_ids: NDArray[np.int64],
+            *,
+            progress: bool = False,
+        ) -> NDArray[np.float64]:
+            medoid_seen.append(progress)
+            return real_medoid(fingerprints, cluster_ids, progress=progress)
+
+        monkeypatch.setattr(
+            "cosmolayer.store.segments.cluster_medoid_distances", medoid_spy
+        )
+        SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            FILENAME_TO_SMILES,
+            tmp_path / "with_progress",
+            schemes=(),
+            num_threads=1,
+            progress=True,
+        )
+        SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            FILENAME_TO_SMILES,
+            tmp_path / "default",
+            schemes=(),
+            num_threads=1,
+        )
+        assert seen == [True, False]
+        assert medoid_seen == [True, False]
 
 
 # --------------------------------------------------------------------- #
@@ -1206,6 +1362,68 @@ class TestSigmaProfileTable:
         with pytest.raises(ValueError, match="already at molecule level"):
             molecule_table.aggregate()
 
+    def test_aggregate_when_first_segment_is_not_first_atom(self) -> None:
+        """CHAOS files list segments in an order that need not start at
+        atom 0. atom_offsets come from the atom table, not from whichever
+        segment happens to be first."""
+        grid = SigmaGrid(0.025, 11)
+        sigmas = np.zeros(3, dtype=np.float64)
+        areas = np.ones(3, dtype=np.float64)
+        table = SigmaProfileTable.from_segments(
+            sigmas,
+            areas,
+            np.array([0], dtype=np.int64),
+            atom_indices=np.array([2, 0, 1], dtype=np.int64),
+            atom_offsets=np.array([0], dtype=np.int64),
+            num_rows=3,
+            grid=grid,
+            num_threads=1,
+        )
+        np.testing.assert_array_equal(table.atom_offsets, [0])
+        aggregated = table.aggregate(num_threads=1)
+        assert aggregated.profiles.shape == (1, len(grid))
+        np.testing.assert_allclose(aggregated.profiles.sum(), areas.sum(), rtol=1e-5)
+
+    def test_aggregate_when_first_atom_is_buried(self) -> None:
+        """A buried first atom parents no segments. Inferring offsets
+        from min(segment atom) would skip it and break aggregate."""
+        grid = SigmaGrid(0.025, 11)
+        # Two molecules. Mol 0 has atoms 0-2 with atom 0 buried; mol 1
+        # has atoms 3-4. Segments exist only on atoms 1, 2, 3, 4.
+        sigmas = np.zeros(4, dtype=np.float64)
+        areas = np.ones(4, dtype=np.float64)
+        table = SigmaProfileTable.from_segments(
+            sigmas,
+            areas,
+            np.array([0, 2], dtype=np.int64),
+            atom_indices=np.array([2, 1, 4, 3], dtype=np.int64),
+            atom_offsets=np.array([0, 3], dtype=np.int64),
+            num_rows=5,
+            grid=grid,
+            num_threads=1,
+        )
+        np.testing.assert_array_equal(table.atom_offsets, [0, 3])
+        assert table.areas[0] == 0
+        aggregated = table.aggregate(num_threads=1)
+        assert aggregated.profiles.shape == (2, len(grid))
+        np.testing.assert_allclose(aggregated.profiles.sum(), areas.sum(), rtol=1e-5)
+
+    def test_atom_profile_offsets_match_store(self, store: SegmentStore) -> None:
+        table = store.compute_atom_sigma_profiles(num_threads=1)
+        np.testing.assert_array_equal(
+            table.atom_offsets, store.molecules_df["atom_offsets"].to_numpy()
+        )
+
+    def test_from_segments_requires_atom_offsets_at_atom_level(self) -> None:
+        with pytest.raises(ValueError, match="atom_offsets"):
+            SigmaProfileTable.from_segments(
+                np.zeros(1, dtype=np.float64),
+                np.ones(1, dtype=np.float64),
+                np.array([0], dtype=np.int64),
+                atom_indices=np.array([0], dtype=np.int64),
+                num_threads=1,
+            )
+
     def test_level_property(self, store: SegmentStore) -> None:
         atom_table = store.compute_atom_sigma_profiles(num_threads=1)
         molecule_table = store.compute_molecule_sigma_profiles(num_threads=1)
@@ -1336,3 +1554,162 @@ def test_main_runs_end_to_end(
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "Molecule profile mass conservation" in out
+    assert "Time to" not in out
+
+
+def test_main_enables_progress_when_building_store(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+
+    def spy(*args: object, **kwargs: object) -> SegmentStore:
+        progress = kwargs.get("progress")
+        seen["progress"] = progress if isinstance(progress, bool) else None
+        raise RuntimeError("stop before building")
+
+    monkeypatch.setattr(SegmentStore, "from_cosmo_files", spy)
+    mapping = tmp_path / "map.json"
+    mapping.write_text("{}")
+    with pytest.raises(RuntimeError, match="stop before building"):
+        store_main(
+            [
+                "--storage-dir",
+                str(tmp_path / "store"),
+                "--cosmo-files-dir",
+                str(tmp_path),
+                "--filenames-to-smiles",
+                str(mapping),
+                "--num-threads",
+                "1",
+            ]
+        )
+    assert seen["progress"] is True
+
+
+def test_main_no_progress_disables_progress_when_building_store(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+
+    def spy(*args: object, **kwargs: object) -> SegmentStore:
+        progress = kwargs.get("progress")
+        seen["progress"] = progress if isinstance(progress, bool) else None
+        raise RuntimeError("stop before building")
+
+    monkeypatch.setattr(SegmentStore, "from_cosmo_files", spy)
+    mapping = tmp_path / "map.json"
+    mapping.write_text("{}")
+    with pytest.raises(RuntimeError, match="stop before building"):
+        store_main(
+            [
+                "--storage-dir",
+                str(tmp_path / "store"),
+                "--cosmo-files-dir",
+                str(tmp_path),
+                "--filenames-to-smiles",
+                str(mapping),
+                "--num-threads",
+                "1",
+                "--no-progress",
+            ]
+        )
+    assert seen["progress"] is False
+
+
+def test_main_defaults_to_not_ignoring_errors(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+
+    def spy(*args: object, **kwargs: object) -> SegmentStore:
+        ignore_errors = kwargs.get("ignore_errors")
+        seen["ignore_errors"] = (
+            ignore_errors if isinstance(ignore_errors, bool) else None
+        )
+        raise RuntimeError("stop before building")
+
+    monkeypatch.setattr(SegmentStore, "from_cosmo_files", spy)
+    mapping = tmp_path / "map.json"
+    mapping.write_text("{}")
+    with pytest.raises(RuntimeError, match="stop before building"):
+        store_main(
+            [
+                "--storage-dir",
+                str(tmp_path / "store"),
+                "--cosmo-files-dir",
+                str(tmp_path),
+                "--filenames-to-smiles",
+                str(mapping),
+                "--num-threads",
+                "1",
+            ]
+        )
+    assert seen["ignore_errors"] is False
+
+
+def test_main_ignore_errors_forwards_to_from_cosmo_files(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+
+    def spy(*args: object, **kwargs: object) -> SegmentStore:
+        ignore_errors = kwargs.get("ignore_errors")
+        seen["ignore_errors"] = (
+            ignore_errors if isinstance(ignore_errors, bool) else None
+        )
+        raise RuntimeError("stop before building")
+
+    monkeypatch.setattr(SegmentStore, "from_cosmo_files", spy)
+    mapping = tmp_path / "map.json"
+    mapping.write_text("{}")
+    with pytest.raises(RuntimeError, match="stop before building"):
+        store_main(
+            [
+                "--storage-dir",
+                str(tmp_path / "store"),
+                "--cosmo-files-dir",
+                str(tmp_path),
+                "--filenames-to-smiles",
+                str(mapping),
+                "--num-threads",
+                "1",
+                "--ignore-errors",
+            ]
+        )
+    assert seen["ignore_errors"] is True
+
+
+def test_main_no_progress_disables_profile_bars(
+    built_store_dir: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+    real_atom = SegmentStore.compute_atom_sigma_profiles
+    real_aggregate = SigmaProfileTable.aggregate
+
+    def spy_atom(
+        self: SegmentStore, *args: object, **kwargs: object
+    ) -> SigmaProfileTable:
+        progress = kwargs.get("progress")
+        seen["atom"] = progress if isinstance(progress, bool) else None
+        return real_atom(self, *args, **kwargs)  # ty: ignore[invalid-argument-type]
+
+    def spy_aggregate(
+        self: SigmaProfileTable, *args: object, **kwargs: object
+    ) -> SigmaProfileTable:
+        progress = kwargs.get("progress")
+        seen["aggregate"] = progress if isinstance(progress, bool) else None
+        return real_aggregate(self, *args, **kwargs)  # ty: ignore[invalid-argument-type]
+
+    monkeypatch.setattr(SegmentStore, "compute_atom_sigma_profiles", spy_atom)
+    monkeypatch.setattr(SigmaProfileTable, "aggregate", spy_aggregate)
+    exit_code = store_main(
+        [
+            "--storage-dir",
+            str(built_store_dir),
+            "--num-threads",
+            "1",
+            "--no-progress",
+        ]
+    )
+    assert exit_code == 0
+    assert seen == {"atom": False, "aggregate": False}

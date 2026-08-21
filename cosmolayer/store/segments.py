@@ -8,9 +8,9 @@ load an existing one with ``SegmentStore.load``. Both use a flat
     <storage_dir>/data.npy          float32 (n_segs_total, 5): [x, y, z, charge, area]
     <storage_dir>/atom_indices.npy  int64   (n_segs_total,):   global atom index per
                                      segment
-    <storage_dir>/molecules.parquet columns: smiles, segment_offsets, atom_offsets,
-                                     num_atoms, volume, cluster_id, cluster_distance,
-                                     split (optional)
+    <storage_dir>/molecules.parquet columns: smiles, filename, segment_offsets,
+                                     atom_offsets, num_atoms, volume, cluster_id,
+                                     cluster_distance, split (optional)
     <storage_dir>/atoms.parquet     columns: id, element, x, y, z -- one row per atom,
                                      in global atom index order
     <storage_dir>/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}
@@ -83,8 +83,9 @@ class StoreMetadata:
     num_molecules : int
         Number of molecules successfully stored.
     num_cosmo_parse_failures : int
-        Number of molecules skipped because they failed to parse or
-        validate (only possible with ``ignore_errors=True``, see
+        Number of molecules skipped because the COSMO file was missing,
+        or because they failed to parse or validate (parse/validate
+        skips require ``ignore_errors=True``, see
         ``SegmentStore.from_cosmo_files``).
     schemes : dict[str, AveragingScheme]
         Averaging schemes this store has computed sigmas for, keyed by
@@ -291,6 +292,7 @@ class SegmentStore:
     @staticmethod
     def _build_molecules_df(  # noqa: PLR0913
         successful_molecules: list[str],
+        filenames: list[str],
         segment_offsets: list[int],
         atom_offsets: list[int],
         num_atoms: list[int],
@@ -302,6 +304,7 @@ class SegmentStore:
         return pd.DataFrame(
             {
                 "smiles": successful_molecules,
+                "filename": filenames,
                 "segment_offsets": np.array(segment_offsets, dtype="int64"),
                 "atom_offsets": np.array(atom_offsets, dtype="int64"),
                 "num_atoms": np.array(num_atoms, dtype="int64"),
@@ -315,6 +318,8 @@ class SegmentStore:
         self,
         schemes: Sequence[AveragingScheme] | None = None,
         num_threads: int | None = None,
+        *,
+        progress: bool = False,
     ) -> dict[str, NDArray[np.float32]]:
         """Compute averaged charge densities under each scheme, without
         writing to disk or mutating this store.
@@ -325,6 +330,8 @@ class SegmentStore:
             Schemes to apply. ``None`` (default) uses ``AVERAGING_SCHEMES``.
         num_threads : int | None, optional
             Thread count. ``None`` (default) uses every CPU core.
+        progress : bool, optional
+            If True, show a tqdm bar while averaging. Default False.
 
         Returns
         -------
@@ -355,6 +362,7 @@ class SegmentStore:
             segment_offsets,
             schemes,
             num_threads=num_threads,
+            progress=progress,
         )
         return {
             scheme.name: arr.astype(np.float32)
@@ -680,6 +688,7 @@ class SegmentStore:
         clustering_specs: ClusteringSpecs | None = None,
         split_fractions: Mapping[str, float] | None = None,
         num_threads: int | None = None,
+        progress: bool = False,
     ) -> "SegmentStore":
         """Parse COSMO files, build a store, and write it to ``storage_dir``.
 
@@ -699,13 +708,16 @@ class SegmentStore:
             file's atom-mapped SMILES. Two files of the same molecule may
             share a SMILES (same atom order) or carry different SMILES
             (different atom orders); each key yields one ``molecules_df``
-            row.
+            row. Keys whose files are not present under
+            ``cosmo_files_dir`` are skipped and counted in
+            ``metadata.num_cosmo_parse_failures``.
         storage_dir : pathlib.Path
             Destination directory for the output files. Created if
             missing.
         ignore_errors : bool, optional
             If True, skip molecules that fail to parse or validate and
-            count them in ``metadata.num_cosmo_parse_failures``. Default
+            count them in ``metadata.num_cosmo_parse_failures``. Missing
+            files are always skipped, even when this is False. Default
             False.
         schemes : Sequence[AveragingScheme] | None, optional
             Averaging schemes to compute. ``None`` (default) uses
@@ -725,6 +737,10 @@ class SegmentStore:
         num_threads : int | None, optional
             Thread count for averaging. ``None`` (default) uses every CPU
             core.
+        progress : bool, optional
+            If True, show tqdm while parsing COSMO files, averaging
+            sigmas, clustering, and computing cluster medoid distances.
+            Default False, so a library call stays quiet.
 
         Returns
         -------
@@ -749,12 +765,24 @@ class SegmentStore:
         num_atoms = []
         volumes = []
         successful_molecules = []
-        num_cosmo_parse_failures = 0
+        filenames = []
+        present_items = [
+            (filename, smi)
+            for filename, smi in filename_to_smiles.items()
+            if (cosmo_files_dir / filename).is_file()
+        ]
+        num_cosmo_parse_failures = len(filename_to_smiles) - len(present_items)
+        if num_cosmo_parse_failures:
+            tqdm.write(
+                f"Skipping {num_cosmo_parse_failures} missing COSMO file"
+                f"{'s' if num_cosmo_parse_failures != 1 else ''}."
+            )
         fingerprint_generator = FingerprintGenerator(clustering_specs)
 
         for filename, smi in tqdm(
-            filename_to_smiles.items(),
+            present_items,
             desc="Processing COSMO files",
+            disable=not progress,
         ):
             if not isinstance(smi, str):
                 raise ValueError(
@@ -786,19 +814,25 @@ class SegmentStore:
             num_atoms.append(len(atom_df))
             volumes.append(volume)
             successful_molecules.append(Chem.MolToSmiles(mol))
+            filenames.append(filename)
 
         if not successful_molecules:
             raise ValueError("No COSMO files could be parsed successfully.")
 
         fingerprint_array = np.stack(fingerprints, axis=0)
-        cluster_ids = butina_cluster(fingerprint_array, clustering_specs.cutoff)
-        cluster_distance = cluster_medoid_distances(fingerprint_array, cluster_ids)
+        cluster_ids = butina_cluster(
+            fingerprint_array, clustering_specs.cutoff, progress=progress
+        )
+        cluster_distance = cluster_medoid_distances(
+            fingerprint_array, cluster_ids, progress=progress
+        )
 
         data = np.concatenate(data_chunks, axis=0)
         atom_indices = np.concatenate(atoms_chunks)
         atoms_df = pd.concat(atom_tables, ignore_index=True)
         molecules_df = cls._build_molecules_df(
             successful_molecules,
+            filenames,
             segment_offsets,
             atom_offsets,
             num_atoms,
@@ -823,7 +857,9 @@ class SegmentStore:
         if schemes is None or schemes:
             resolved_schemes = AVERAGING_SCHEMES if schemes is None else schemes
             store.averaged_sigmas = store.compute_averaged_sigmas(
-                schemes=resolved_schemes, num_threads=num_threads
+                schemes=resolved_schemes,
+                num_threads=num_threads,
+                progress=progress,
             )
             store.metadata.schemes.update({s.name: s for s in resolved_schemes})
         if split_fractions is not None:
@@ -870,6 +906,8 @@ class SegmentStore:
         grid: SigmaGrid = DEFAULT_SIGMA_GRID,
         num_threads: int | None = None,
         centered: bool = False,
+        *,
+        progress: bool = False,
     ) -> SigmaProfileTable:
         """Compute per-atom sigma profiles for this store.
 
@@ -884,6 +922,8 @@ class SegmentStore:
             Thread count. ``None`` (default) uses every CPU core.
         centered : bool, optional
             If True, center each atom's profile on its mean charge density.
+        progress : bool, optional
+            If True, show a tqdm bar while binning. Default False.
 
         Returns
         -------
@@ -903,10 +943,12 @@ class SegmentStore:
             np.asarray(self.areas, dtype=np.float64),
             segment_offsets,
             atom_indices=np.asarray(self.atom_indices),
+            atom_offsets=self.molecules_df["atom_offsets"].to_numpy().astype("int64"),
             num_rows=total_num_atoms,
             grid=grid,
             centered=centered,
             num_threads=num_threads,
+            progress=progress,
         )
 
     def compute_molecule_sigma_profiles(
@@ -915,6 +957,8 @@ class SegmentStore:
         grid: SigmaGrid = DEFAULT_SIGMA_GRID,
         num_threads: int | None = None,
         centered: bool = False,
+        *,
+        progress: bool = False,
     ) -> SigmaProfileTable:
         """Compute per-molecule sigma profiles from segment-level data.
 
@@ -933,6 +977,8 @@ class SegmentStore:
         centered : bool, optional
             If True, center each molecule's profile on its mean charge
             density.
+        progress : bool, optional
+            If True, show a tqdm bar while binning. Default False.
 
         Returns
         -------
@@ -949,6 +995,7 @@ class SegmentStore:
             grid=grid,
             centered=centered,
             num_threads=num_threads,
+            progress=progress,
         )
 
 
