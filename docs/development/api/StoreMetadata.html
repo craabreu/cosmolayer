@@ -459,8 +459,9 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>num_molecules</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of molecules successfully stored.</p></li>
-<li><p><strong>num_cosmo_parse_failures</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of molecules skipped because they failed to parse or
-validate (only possible with <code class="docutils literal notranslate"><span class="pre">ignore_errors=True</span></code>, see
+<li><p><strong>num_cosmo_parse_failures</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Number of molecules skipped because the COSMO file was missing,
+or because they failed to parse or validate (parse/validate
+skips require <code class="docutils literal notranslate"><span class="pre">ignore_errors=True</span></code>, see
 <code class="docutils literal notranslate"><span class="pre">SegmentStore.from_cosmo_files</span></code>).</p></li>
 <li><p><strong>schemes</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><a class="reference internal" href="AveragingScheme.html#cosmolayer.store.AveragingScheme" title="cosmolayer.store.AveragingScheme"><em>AveragingScheme</em></a><em>]</em>) – Averaging schemes this store has computed sigmas for, keyed by
 scheme name.</p></li>

@@ -407,9 +407,9 @@
 <span class="sd">    &lt;storage_dir&gt;/data.npy          float32 (n_segs_total, 5): [x, y, z, charge, area]</span>
 <span class="sd">    &lt;storage_dir&gt;/atom_indices.npy  int64   (n_segs_total,):   global atom index per</span>
 <span class="sd">                                     segment</span>
-<span class="sd">    &lt;storage_dir&gt;/molecules.parquet columns: smiles, segment_offsets, atom_offsets,</span>
-<span class="sd">                                     num_atoms, volume, cluster_id, cluster_distance,</span>
-<span class="sd">                                     split (optional)</span>
+<span class="sd">    &lt;storage_dir&gt;/molecules.parquet columns: smiles, filename, segment_offsets,</span>
+<span class="sd">                                     atom_offsets, num_atoms, volume, cluster_id,</span>
+<span class="sd">                                     cluster_distance, split (optional)</span>
 <span class="sd">    &lt;storage_dir&gt;/atoms.parquet     columns: id, element, x, y, z -- one row per atom,</span>
 <span class="sd">                                     in global atom index order</span>
 <span class="sd">    &lt;storage_dir&gt;/metadata.json     {num_molecules, num_cosmo_parse_failures, schemes}</span>
@@ -484,8 +484,9 @@
 <span class="sd">    num_molecules : int</span>
 <span class="sd">        Number of molecules successfully stored.</span>
 <span class="sd">    num_cosmo_parse_failures : int</span>
-<span class="sd">        Number of molecules skipped because they failed to parse or</span>
-<span class="sd">        validate (only possible with ``ignore_errors=True``, see</span>
+<span class="sd">        Number of molecules skipped because the COSMO file was missing,</span>
+<span class="sd">        or because they failed to parse or validate (parse/validate</span>
+<span class="sd">        skips require ``ignore_errors=True``, see</span>
 <span class="sd">        ``SegmentStore.from_cosmo_files``).</span>
 <span class="sd">    schemes : dict[str, AveragingScheme]</span>
 <span class="sd">        Averaging schemes this store has computed sigmas for, keyed by</span>
@@ -701,6 +702,7 @@
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_build_molecules_df</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913</span>
         <span class="n">successful_molecules</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="n">filenames</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
         <span class="n">segment_offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
         <span class="n">atom_offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
         <span class="n">num_atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
@@ -712,6 +714,7 @@
         <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
             <span class="p">{</span>
                 <span class="s2">"smiles"</span><span class="p">:</span> <span class="n">successful_molecules</span><span class="p">,</span>
+                <span class="s2">"filename"</span><span class="p">:</span> <span class="n">filenames</span><span class="p">,</span>
                 <span class="s2">"segment_offsets"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"int64"</span><span class="p">),</span>
                 <span class="s2">"atom_offsets"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"int64"</span><span class="p">),</span>
                 <span class="s2">"num_atoms"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">num_atoms</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"int64"</span><span class="p">),</span>
@@ -727,6 +730,8 @@
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">progress</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">]]:</span>
 <span class="w">        </span><span class="sd">"""Compute averaged charge densities under each scheme, without</span>
 <span class="sd">        writing to disk or mutating this store.</span>
@@ -737,6 +742,8 @@
 <span class="sd">            Schemes to apply. ``None`` (default) uses ``AVERAGING_SCHEMES``.</span>
 <span class="sd">        num_threads : int | None, optional</span>
 <span class="sd">            Thread count. ``None`` (default) uses every CPU core.</span>
+<span class="sd">        progress : bool, optional</span>
+<span class="sd">            If True, show a tqdm bar while averaging. Default False.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -767,6 +774,7 @@
             <span class="n">segment_offsets</span><span class="p">,</span>
             <span class="n">schemes</span><span class="p">,</span>
             <span class="n">num_threads</span><span class="o">=</span><span class="n">num_threads</span><span class="p">,</span>
+            <span class="n">progress</span><span class="o">=</span><span class="n">progress</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="p">{</span>
             <span class="n">scheme</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">arr</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
@@ -1113,6 +1121,7 @@
         <span class="n">clustering_specs</span><span class="p">:</span> <span class="n">ClusteringSpecs</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">split_fractions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">progress</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"SegmentStore"</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Parse COSMO files, build a store, and write it to ``storage_dir``.</span>
 
@@ -1132,13 +1141,16 @@
 <span class="sd">            file's atom-mapped SMILES. Two files of the same molecule may</span>
 <span class="sd">            share a SMILES (same atom order) or carry different SMILES</span>
 <span class="sd">            (different atom orders); each key yields one ``molecules_df``</span>
-<span class="sd">            row.</span>
+<span class="sd">            row. Keys whose files are not present under</span>
+<span class="sd">            ``cosmo_files_dir`` are skipped and counted in</span>
+<span class="sd">            ``metadata.num_cosmo_parse_failures``.</span>
 <span class="sd">        storage_dir : pathlib.Path</span>
 <span class="sd">            Destination directory for the output files. Created if</span>
 <span class="sd">            missing.</span>
 <span class="sd">        ignore_errors : bool, optional</span>
 <span class="sd">            If True, skip molecules that fail to parse or validate and</span>
-<span class="sd">            count them in ``metadata.num_cosmo_parse_failures``. Default</span>
+<span class="sd">            count them in ``metadata.num_cosmo_parse_failures``. Missing</span>
+<span class="sd">            files are always skipped, even when this is False. Default</span>
 <span class="sd">            False.</span>
 <span class="sd">        schemes : Sequence[AveragingScheme] | None, optional</span>
 <span class="sd">            Averaging schemes to compute. ``None`` (default) uses</span>
@@ -1158,6 +1170,10 @@
 <span class="sd">        num_threads : int | None, optional</span>
 <span class="sd">            Thread count for averaging. ``None`` (default) uses every CPU</span>
 <span class="sd">            core.</span>
+<span class="sd">        progress : bool, optional</span>
+<span class="sd">            If True, show tqdm while parsing COSMO files, averaging</span>
+<span class="sd">            sigmas, clustering, and computing cluster medoid distances.</span>
+<span class="sd">            Default False, so a library call stays quiet.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1182,12 +1198,24 @@
         <span class="n">num_atoms</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">volumes</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">successful_molecules</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">num_cosmo_parse_failures</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">filenames</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">present_items</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">smi</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">filename</span><span class="p">,</span> <span class="n">smi</span> <span class="ow">in</span> <span class="n">filename_to_smiles</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">cosmo_files_dir</span> <span class="o">/</span> <span class="n">filename</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span>
+        <span class="p">]</span>
+        <span class="n">num_cosmo_parse_failures</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">filename_to_smiles</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">present_items</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">num_cosmo_parse_failures</span><span class="p">:</span>
+            <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Skipping </span><span class="si">{</span><span class="n">num_cosmo_parse_failures</span><span class="si">}</span><span class="s2"> missing COSMO file"</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">'s'</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">num_cosmo_parse_failures</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">''</span><span class="si">}</span><span class="s2">."</span>
+            <span class="p">)</span>
         <span class="n">fingerprint_generator</span> <span class="o">=</span> <span class="n">FingerprintGenerator</span><span class="p">(</span><span class="n">clustering_specs</span><span class="p">)</span>
 
         <span class="k">for</span> <span class="n">filename</span><span class="p">,</span> <span class="n">smi</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
-            <span class="n">filename_to_smiles</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span>
+            <span class="n">present_items</span><span class="p">,</span>
             <span class="n">desc</span><span class="o">=</span><span class="s2">"Processing COSMO files"</span><span class="p">,</span>
+            <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="n">progress</span><span class="p">,</span>
         <span class="p">):</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">smi</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
@@ -1219,19 +1247,25 @@
             <span class="n">num_atoms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atom_df</span><span class="p">))</span>
             <span class="n">volumes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">volume</span><span class="p">)</span>
             <span class="n">successful_molecules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Chem</span><span class="o">.</span><span class="n">MolToSmiles</span><span class="p">(</span><span class="n">mol</span><span class="p">))</span>
+            <span class="n">filenames</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="n">successful_molecules</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"No COSMO files could be parsed successfully."</span><span class="p">)</span>
 
         <span class="n">fingerprint_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">fingerprints</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="n">cluster_ids</span> <span class="o">=</span> <span class="n">butina_cluster</span><span class="p">(</span><span class="n">fingerprint_array</span><span class="p">,</span> <span class="n">clustering_specs</span><span class="o">.</span><span class="n">cutoff</span><span class="p">)</span>
-        <span class="n">cluster_distance</span> <span class="o">=</span> <span class="n">cluster_medoid_distances</span><span class="p">(</span><span class="n">fingerprint_array</span><span class="p">,</span> <span class="n">cluster_ids</span><span class="p">)</span>
+        <span class="n">cluster_ids</span> <span class="o">=</span> <span class="n">butina_cluster</span><span class="p">(</span>
+            <span class="n">fingerprint_array</span><span class="p">,</span> <span class="n">clustering_specs</span><span class="o">.</span><span class="n">cutoff</span><span class="p">,</span> <span class="n">progress</span><span class="o">=</span><span class="n">progress</span>
+        <span class="p">)</span>
+        <span class="n">cluster_distance</span> <span class="o">=</span> <span class="n">cluster_medoid_distances</span><span class="p">(</span>
+            <span class="n">fingerprint_array</span><span class="p">,</span> <span class="n">cluster_ids</span><span class="p">,</span> <span class="n">progress</span><span class="o">=</span><span class="n">progress</span>
+        <span class="p">)</span>
 
         <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">data_chunks</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="n">atom_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">atoms_chunks</span><span class="p">)</span>
         <span class="n">atoms_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">atom_tables</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">molecules_df</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_build_molecules_df</span><span class="p">(</span>
             <span class="n">successful_molecules</span><span class="p">,</span>
+            <span class="n">filenames</span><span class="p">,</span>
             <span class="n">segment_offsets</span><span class="p">,</span>
             <span class="n">atom_offsets</span><span class="p">,</span>
             <span class="n">num_atoms</span><span class="p">,</span>
@@ -1256,7 +1290,9 @@
         <span class="k">if</span> <span class="n">schemes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">schemes</span><span class="p">:</span>
             <span class="n">resolved_schemes</span> <span class="o">=</span> <span class="n">AVERAGING_SCHEMES</span> <span class="k">if</span> <span class="n">schemes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">schemes</span>
             <span class="n">store</span><span class="o">.</span><span class="n">averaged_sigmas</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">compute_averaged_sigmas</span><span class="p">(</span>
-                <span class="n">schemes</span><span class="o">=</span><span class="n">resolved_schemes</span><span class="p">,</span> <span class="n">num_threads</span><span class="o">=</span><span class="n">num_threads</span>
+                <span class="n">schemes</span><span class="o">=</span><span class="n">resolved_schemes</span><span class="p">,</span>
+                <span class="n">num_threads</span><span class="o">=</span><span class="n">num_threads</span><span class="p">,</span>
+                <span class="n">progress</span><span class="o">=</span><span class="n">progress</span><span class="p">,</span>
             <span class="p">)</span>
             <span class="n">store</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">schemes</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">s</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">resolved_schemes</span><span class="p">})</span>
         <span class="k">if</span> <span class="n">split_fractions</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -1309,6 +1345,8 @@
         <span class="n">grid</span><span class="p">:</span> <span class="n">SigmaGrid</span> <span class="o">=</span> <span class="n">DEFAULT_SIGMA_GRID</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">centered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">progress</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SigmaProfileTable</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Compute per-atom sigma profiles for this store.</span>
 
@@ -1323,6 +1361,8 @@
 <span class="sd">            Thread count. ``None`` (default) uses every CPU core.</span>
 <span class="sd">        centered : bool, optional</span>
 <span class="sd">            If True, center each atom's profile on its mean charge density.</span>
+<span class="sd">        progress : bool, optional</span>
+<span class="sd">            If True, show a tqdm bar while binning. Default False.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1342,10 +1382,12 @@
             <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">areas</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
             <span class="n">segment_offsets</span><span class="p">,</span>
             <span class="n">atom_indices</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atom_indices</span><span class="p">),</span>
+            <span class="n">atom_offsets</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"atom_offsets"</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"int64"</span><span class="p">),</span>
             <span class="n">num_rows</span><span class="o">=</span><span class="n">total_num_atoms</span><span class="p">,</span>
             <span class="n">grid</span><span class="o">=</span><span class="n">grid</span><span class="p">,</span>
             <span class="n">centered</span><span class="o">=</span><span class="n">centered</span><span class="p">,</span>
             <span class="n">num_threads</span><span class="o">=</span><span class="n">num_threads</span><span class="p">,</span>
+            <span class="n">progress</span><span class="o">=</span><span class="n">progress</span><span class="p">,</span>
         <span class="p">)</span></div>
 
 
@@ -1357,6 +1399,8 @@
         <span class="n">grid</span><span class="p">:</span> <span class="n">SigmaGrid</span> <span class="o">=</span> <span class="n">DEFAULT_SIGMA_GRID</span><span class="p">,</span>
         <span class="n">num_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">centered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">progress</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SigmaProfileTable</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Compute per-molecule sigma profiles from segment-level data.</span>
 
@@ -1375,6 +1419,8 @@
 <span class="sd">        centered : bool, optional</span>
 <span class="sd">            If True, center each molecule's profile on its mean charge</span>
 <span class="sd">            density.</span>
+<span class="sd">        progress : bool, optional</span>
+<span class="sd">            If True, show a tqdm bar while binning. Default False.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1391,6 +1437,7 @@
             <span class="n">grid</span><span class="o">=</span><span class="n">grid</span><span class="p">,</span>
             <span class="n">centered</span><span class="o">=</span><span class="n">centered</span><span class="p">,</span>
             <span class="n">num_threads</span><span class="o">=</span><span class="n">num_threads</span><span class="p">,</span>
+            <span class="n">progress</span><span class="o">=</span><span class="n">progress</span><span class="p">,</span>
         <span class="p">)</span></div>
 </div>
 

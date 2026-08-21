@@ -423,6 +423,7 @@ atom- and molecule-level charges, areas, and sigma profiles.</p>
                   <span class="p">[</span><span class="o">--</span><span class="n">cosmo</span><span class="o">-</span><span class="n">files</span><span class="o">-</span><span class="nb">dir</span> <span class="n">COSMO_FILES_DIR</span><span class="p">]</span>
                   <span class="p">[</span><span class="o">--</span><span class="n">filenames</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">smiles</span> <span class="n">FILENAMES_TO_SMILES</span><span class="p">]</span>
                   <span class="p">[</span><span class="o">--</span><span class="n">num</span><span class="o">-</span><span class="n">threads</span> <span class="n">NUM_THREADS</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">sigma</span><span class="o">-</span><span class="n">scheme</span> <span class="n">SIGMA_SCHEME</span><span class="p">]</span>
+                  <span class="p">[</span><span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">progress</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">ignore</span><span class="o">-</span><span class="n">errors</span><span class="p">]</span>
 </pre></div>
 </div>
 <section id="cosmostore-named-arguments">
@@ -442,6 +443,14 @@ atom- and molecule-level charges, areas, and sigma profiles.</p>
 </dd>
 <dt><kbd>--sigma-scheme</kbd></dt>
 <dd><p>Averaging scheme for every statistic (e.g. ‘cosmo-rs’, ‘cosmo-sac-2002’, ‘cosmo-sac-2010’). The store must already contain that scheme. Default: raw sigma.</p>
+</dd>
+<dt><kbd>--no-progress</kbd></dt>
+<dd><p>Disable tqdm progress bars. By default, bars are shown for COSMO parsing, averaging, clustering, and sigma-profile work.</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+<dt><kbd>--ignore-errors</kbd></dt>
+<dd><p>Skip .cosmo files that fail to parse or validate when building a store. By default those failures abort the run.</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">False</span></code></p>
 </dd>
 </dl>
 </section>
