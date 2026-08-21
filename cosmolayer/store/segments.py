@@ -289,7 +289,7 @@ class SegmentStore:
         return mol, atom_df, segment_df, volume, fingerprint
 
     @staticmethod
-    def _build_molecules_df(
+    def _build_molecules_df(  # noqa: PLR0913
         successful_molecules: list[str],
         segment_offsets: list[int],
         atom_offsets: list[int],
@@ -669,50 +669,11 @@ class SegmentStore:
             averaged_sigmas,
         )
 
-    @staticmethod
-    def _flatten_smiles_to_filenames(
-        smiles_to_filenames: Mapping[str, str | list[str]],
-    ) -> list[tuple[str, str]]:
-        """Expand a SMILES-to-filename(s) mapping into an ordered list of
-        ``(smiles, filename)`` pairs, one per ``.cosmo`` file.
-
-        Parameters
-        ----------
-        smiles_to_filenames : Mapping[str, str | list[str]]
-            SMILES string to a single ``.cosmo`` filename, or a list of
-            them (e.g. multiple conformers of the same molecule).
-
-        Returns
-        -------
-        list[tuple[str, str]]
-            ``(smiles, filename)`` pairs, in input order; a SMILES mapped
-            to a list of filenames yields one pair per filename, in that
-            list's order.
-
-        Raises
-        ------
-        ValueError
-            If a value is neither a ``str`` nor a non-empty list of
-            ``str``.
-        """
-        pairs: list[tuple[str, str]] = []
-        for smi, filenames in smiles_to_filenames.items():
-            if isinstance(filenames, str):
-                pairs.append((smi, filenames))
-            elif isinstance(filenames, list) and filenames:
-                pairs.extend((smi, filename) for filename in filenames)
-            else:
-                raise ValueError(
-                    f"smiles_to_filenames[{smi!r}] must be a filename (str) "
-                    f"or a non-empty list of filenames, got {filenames!r}."
-                )
-        return pairs
-
     @classmethod
-    def from_cosmo_files(  # noqa: PLR0913, PLR0917
+    def from_cosmo_files(  # noqa: PLR0913, PLR0915, PLR0917
         cls,
         cosmo_files_dir: pathlib.Path,
-        smiles_to_filenames: Mapping[str, str | list[str]],
+        filename_to_smiles: Mapping[str, str],
         storage_dir: pathlib.Path,
         ignore_errors: bool = False,
         schemes: Sequence[AveragingScheme] | None = None,
@@ -732,12 +693,13 @@ class SegmentStore:
         ----------
         cosmo_files_dir : pathlib.Path
             Directory containing the ``.cosmo`` files named by
-            ``smiles_to_filenames``'s values.
-        smiles_to_filenames : Mapping[str, str | list[str]]
-            SMILES string to ``.cosmo`` filename(s) (relative to
-            ``cosmo_files_dir``). A SMILES mapped to a list of filenames
-            (e.g. multiple conformers of the same molecule) yields one
-            ``molecules_df`` row per filename, all sharing that SMILES.
+            ``filename_to_smiles``'s keys.
+        filename_to_smiles : Mapping[str, str]
+            ``.cosmo`` filename (relative to ``cosmo_files_dir``) to that
+            file's atom-mapped SMILES. Two files of the same molecule may
+            share a SMILES (same atom order) or carry different SMILES
+            (different atom orders); each key yields one ``molecules_df``
+            row.
         storage_dir : pathlib.Path
             Destination directory for the output files. Created if
             missing.
@@ -772,9 +734,10 @@ class SegmentStore:
         Raises
         ------
         ValueError
-            If a molecule cannot be parsed and ``ignore_errors`` is False,
-            if no molecule could be stored, or if a scheme name collides
-            with a reserved store filename.
+            If a mapping value is not a SMILES string, if a molecule
+            cannot be parsed and ``ignore_errors`` is False, if no
+            molecule could be stored, or if a scheme name collides with a
+            reserved store filename.
         """
         if clustering_specs is None:
             clustering_specs = ClusteringSpecs()
@@ -789,17 +752,22 @@ class SegmentStore:
         num_cosmo_parse_failures = 0
         fingerprint_generator = FingerprintGenerator(clustering_specs)
 
-        for smi, filename in tqdm(
-            cls._flatten_smiles_to_filenames(smiles_to_filenames),
+        for filename, smi in tqdm(
+            filename_to_smiles.items(),
             desc="Processing COSMO files",
         ):
+            if not isinstance(smi, str):
+                raise ValueError(
+                    f"filename_to_smiles[{filename!r}] must be a SMILES "
+                    f"string, got {smi!r}."
+                )
             try:
                 mol, atom_df, segment_df, volume, fingerprint = cls._parse_molecule(
                     cosmo_files_dir, filename, smi, fingerprint_generator
                 )
             except (ValueError, AssertionError) as e:
                 if ignore_errors:
-                    tqdm.write(f"Error parsing {smi}->{filename}: {e}")
+                    tqdm.write(f"Error parsing {filename}: {e}")
                     num_cosmo_parse_failures += 1
                     continue
                 else:
