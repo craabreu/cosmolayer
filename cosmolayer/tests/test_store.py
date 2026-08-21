@@ -1326,8 +1326,8 @@ class TestSigmaProfileTable:
 
     def test_aggregate_when_first_segment_is_not_first_atom(self) -> None:
         """CHAOS files list segments in an order that need not start at
-        atom 0. atom_offsets must be each molecule's lowest atom index,
-        not the atom of its first segment, or aggregate IndexErrors."""
+        atom 0. atom_offsets come from the atom table, not from whichever
+        segment happens to be first."""
         grid = SigmaGrid(0.025, 11)
         sigmas = np.zeros(3, dtype=np.float64)
         areas = np.ones(3, dtype=np.float64)
@@ -1336,6 +1336,7 @@ class TestSigmaProfileTable:
             areas,
             np.array([0], dtype=np.int64),
             atom_indices=np.array([2, 0, 1], dtype=np.int64),
+            atom_offsets=np.array([0], dtype=np.int64),
             num_rows=3,
             grid=grid,
             num_threads=1,
@@ -1344,6 +1345,46 @@ class TestSigmaProfileTable:
         aggregated = table.aggregate(num_threads=1)
         assert aggregated.profiles.shape == (1, len(grid))
         np.testing.assert_allclose(aggregated.profiles.sum(), areas.sum(), rtol=1e-5)
+
+    def test_aggregate_when_first_atom_is_buried(self) -> None:
+        """A buried first atom parents no segments. Inferring offsets
+        from min(segment atom) would skip it and break aggregate."""
+        grid = SigmaGrid(0.025, 11)
+        # Two molecules. Mol 0 has atoms 0-2 with atom 0 buried; mol 1
+        # has atoms 3-4. Segments exist only on atoms 1, 2, 3, 4.
+        sigmas = np.zeros(4, dtype=np.float64)
+        areas = np.ones(4, dtype=np.float64)
+        table = SigmaProfileTable.from_segments(
+            sigmas,
+            areas,
+            np.array([0, 2], dtype=np.int64),
+            atom_indices=np.array([2, 1, 4, 3], dtype=np.int64),
+            atom_offsets=np.array([0, 3], dtype=np.int64),
+            num_rows=5,
+            grid=grid,
+            num_threads=1,
+        )
+        np.testing.assert_array_equal(table.atom_offsets, [0, 3])
+        assert table.areas[0] == 0
+        aggregated = table.aggregate(num_threads=1)
+        assert aggregated.profiles.shape == (2, len(grid))
+        np.testing.assert_allclose(aggregated.profiles.sum(), areas.sum(), rtol=1e-5)
+
+    def test_atom_profile_offsets_match_store(self, store: SegmentStore) -> None:
+        table = store.compute_atom_sigma_profiles(num_threads=1)
+        np.testing.assert_array_equal(
+            table.atom_offsets, store.molecules_df["atom_offsets"].to_numpy()
+        )
+
+    def test_from_segments_requires_atom_offsets_at_atom_level(self) -> None:
+        with pytest.raises(ValueError, match="atom_offsets"):
+            SigmaProfileTable.from_segments(
+                np.zeros(1, dtype=np.float64),
+                np.ones(1, dtype=np.float64),
+                np.array([0], dtype=np.int64),
+                atom_indices=np.array([0], dtype=np.int64),
+                num_threads=1,
+            )
 
     def test_level_property(self, store: SegmentStore) -> None:
         atom_table = store.compute_atom_sigma_profiles(num_threads=1)

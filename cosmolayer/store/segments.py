@@ -936,6 +936,7 @@ class SegmentStore:
             np.asarray(self.areas, dtype=np.float64),
             segment_offsets,
             atom_indices=np.asarray(self.atom_indices),
+            atom_offsets=self.molecules_df["atom_offsets"].to_numpy().astype("int64"),
             num_rows=total_num_atoms,
             grid=grid,
             centered=centered,

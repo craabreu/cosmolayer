@@ -85,6 +85,7 @@ class SigmaProfileTable:
         segment_offsets: NDArray[np.int64],
         *,
         atom_indices: NDArray[np.int64] | None = None,
+        atom_offsets: NDArray[np.int64] | None = None,
         num_rows: int | None = None,
         grid: SigmaGrid = DEFAULT_SIGMA_GRID,
         centered: bool = False,
@@ -111,8 +112,12 @@ class SigmaProfileTable:
         atom_indices : np.ndarray | None, optional
             Global atom index of each segment. ``None`` (default) builds
             one profile per molecule. When given, builds one profile per
-            atom; the result's ``atom_offsets`` is each molecule's
-            lowest atom index (not the atom of its first segment).
+            atom and ``atom_offsets`` is required.
+        atom_offsets : np.ndarray | None, optional
+            Start index of each molecule's atoms in the concatenated atom
+            table (including buried atoms that parent no segments).
+            Required when ``atom_indices`` is given; must not be inferred
+            from segment order or from ``min`` over parent atoms.
         num_rows : int | None, optional
             Number of profile rows. ``None`` (default) uses
             ``len(segment_offsets)`` (molecule level) or
@@ -138,15 +143,21 @@ class SigmaProfileTable:
         segment_offsets = np.asarray(segment_offsets)
 
         if atom_indices is None:
+            if atom_offsets is not None:
+                raise ValueError("atom_offsets is only valid with atom_indices")
             row_indices = row_indices_from_offsets(segment_offsets, len(sigmas))
             num_rows = len(segment_offsets) if num_rows is None else num_rows
             atom_offsets = None
         else:
+            if atom_offsets is None:
+                raise ValueError(
+                    "atom_offsets is required when atom_indices is given; "
+                    "it must be the atom-table start of each molecule, not "
+                    "inferred from segments (buried atoms parent none)."
+                )
             row_indices = np.asarray(atom_indices)
             num_rows = int(np.max(row_indices)) + 1 if num_rows is None else num_rows
-            atom_offsets = np.minimum.reduceat(row_indices, segment_offsets).astype(
-                np.int64
-            )
+            atom_offsets = np.asarray(atom_offsets, dtype=np.int64)
 
         areas_out = np.zeros(num_rows, dtype=np.float32)
         charges_out = np.zeros(num_rows, dtype=np.float32)
