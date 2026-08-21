@@ -59,8 +59,8 @@ COSMO_DATA_DIR = pathlib.Path(str(files("cosmolayer.data")))
 # Each .cosmo fixture's atom table includes explicit hydrogens, in the
 # same order Chem.AddHs(Chem.MolFromSmiles(smi)) produces them, so
 # _atom_mapped(smi) is correctly ordered for each fixture below.
-SMILES_TO_FILENAME = {
-    _atom_mapped(smi): f"{smi}.cosmo" for smi in ["O", "CF", "NCCO", "C=C(N)O"]
+FILENAME_TO_SMILES = {
+    f"{smi}.cosmo": _atom_mapped(smi) for smi in ["O", "CF", "NCCO", "C=C(N)O"]
 }
 
 
@@ -74,7 +74,7 @@ def built_store_dir(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
     # stable across CI runs.
     storage_dir: pathlib.Path = tmp_path_factory.mktemp("segment_store")
     SegmentStore.from_cosmo_files(
-        COSMO_DATA_DIR, SMILES_TO_FILENAME, storage_dir, num_threads=1
+        COSMO_DATA_DIR, FILENAME_TO_SMILES, storage_dir, num_threads=1
     )
     return storage_dir
 
@@ -267,7 +267,7 @@ class TestSegmentStoreRoundTrip:
 
     def test_skip_averaging_with_empty_schemes(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         assert s.averaged_sigmas == {}
         assert s.metadata.schemes == {}
@@ -279,34 +279,42 @@ class TestSegmentStoreRoundTrip:
             )
 
     def test_ignore_errors_counts_failures(self, tmp_path: pathlib.Path) -> None:
-        bad_mapping = dict(SMILES_TO_FILENAME)
-        bad_mapping["CCCC"] = "O.cosmo"  # atom count mismatch -> parse failure
+        bad_mapping = dict(FILENAME_TO_SMILES)
+        bad_mapping["O.cosmo"] = "CCCC"  # atom count mismatch -> parse failure
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR, bad_mapping, tmp_path, ignore_errors=True, num_threads=1
         )
         assert s.metadata.num_cosmo_parse_failures == 1
-        assert s.metadata.num_molecules == 4
+        assert s.metadata.num_molecules == 3
 
     def test_ignore_errors_false_raises(self, tmp_path: pathlib.Path) -> None:
-        bad_mapping = {"CCCC": "O.cosmo"}
+        bad_mapping = {"O.cosmo": "CCCC"}
         with pytest.raises(ValueError):
             SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
 
 
-class TestMultipleFilenamesPerSmiles:
-    """A SMILES may map to more than one .cosmo file (e.g. multiple
-    conformers); each file gets its own molecules_df row."""
+class TestFilenameToSmiles:
+    """Each .cosmo file maps to its own SMILES, so two files may share a
+    SMILES (same atom order) or carry different atom-mapped SMILES (same
+    connectivity, different numbering)."""
 
-    def test_list_of_filenames_yields_one_row_per_file(
+    def test_repeated_smiles_yields_one_row_per_file(
         self, tmp_path: pathlib.Path
     ) -> None:
         water_smi = _atom_mapped("O")
-        mapping: dict[str, str | list[str]] = {
-            water_smi: ["O.cosmo", "O.cosmo"],
-            _atom_mapped("CF"): "CF.cosmo",
+        cosmo_dir = tmp_path / "cosmo"
+        cosmo_dir.mkdir()
+        src = (COSMO_DATA_DIR / "O.cosmo").read_text()
+        (cosmo_dir / "O_a.cosmo").write_text(src)
+        (cosmo_dir / "O_b.cosmo").write_text(src)
+        (cosmo_dir / "CF.cosmo").write_text((COSMO_DATA_DIR / "CF.cosmo").read_text())
+        mapping = {
+            "O_a.cosmo": water_smi,
+            "O_b.cosmo": water_smi,
+            "CF.cosmo": _atom_mapped("CF"),
         }
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, mapping, tmp_path, num_threads=1
+            cosmo_dir, mapping, tmp_path / "store", num_threads=1, schemes=()
         )
         assert s.metadata.num_molecules == 3
         assert len(s.molecules_df) == 3
@@ -314,9 +322,14 @@ class TestMultipleFilenamesPerSmiles:
 
     def test_conformer_rows_have_distinct_offsets(self, tmp_path: pathlib.Path) -> None:
         water_smi = _atom_mapped("O")
-        mapping: dict[str, str | list[str]] = {water_smi: ["O.cosmo", "O.cosmo"]}
+        cosmo_dir = tmp_path / "cosmo"
+        cosmo_dir.mkdir()
+        src = (COSMO_DATA_DIR / "O.cosmo").read_text()
+        (cosmo_dir / "O_a.cosmo").write_text(src)
+        (cosmo_dir / "O_b.cosmo").write_text(src)
+        mapping = {"O_a.cosmo": water_smi, "O_b.cosmo": water_smi}
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, mapping, tmp_path, num_threads=1
+            cosmo_dir, mapping, tmp_path / "store", num_threads=1, schemes=()
         )
         conformer_rows = s.molecules_df.loc[s.molecules_df["smiles"] == water_smi]
         assert list(conformer_rows["segment_offsets"]) == sorted(
@@ -326,13 +339,13 @@ class TestMultipleFilenamesPerSmiles:
             set(conformer_rows["atom_offsets"])
         )
 
-    def test_empty_filename_list_raises(self) -> None:
-        with pytest.raises(ValueError, match="C"):
-            SegmentStore._flatten_smiles_to_filenames({"C": []})
-
-    def test_non_str_non_list_value_raises(self) -> None:
-        with pytest.raises(ValueError, match="C"):
-            SegmentStore._flatten_smiles_to_filenames({"C": 123})  # ty: ignore[invalid-argument-type]
+    def test_non_str_smiles_raises(self, tmp_path: pathlib.Path) -> None:
+        with pytest.raises(ValueError, match="SMILES"):
+            SegmentStore.from_cosmo_files(
+                COSMO_DATA_DIR,
+                {"O.cosmo": ["not", "a", "smiles"]},  # ty: ignore[invalid-argument-type]
+                tmp_path,
+            )
 
 
 class TestStoredSmilesIsAlwaysAtomMapped:
@@ -363,7 +376,7 @@ class TestElementValidation:
         # count as "O.cosmo"'s [O, H, H], so this only fails the new
         # element-by-index check, not the pre-existing count check.
         hydrogen_sulfide = _atom_mapped("S")
-        bad_mapping = {hydrogen_sulfide: "O.cosmo"}
+        bad_mapping = {"O.cosmo": hydrogen_sulfide}
         with pytest.raises(ValueError, match="element"):
             SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
 
@@ -378,7 +391,7 @@ class TestUnmappedMultiAtomSmilesRejected:
         unmapped_water = Chem.MolToSmiles(Chem.AddHs(Chem.MolFromSmiles("O")))
         with pytest.raises(ValueError, match="atom map"):
             SegmentStore.from_cosmo_files(
-                COSMO_DATA_DIR, {unmapped_water: "O.cosmo"}, tmp_path
+                COSMO_DATA_DIR, {"O.cosmo": unmapped_water}, tmp_path
             )
 
 
@@ -573,7 +586,9 @@ class TestSegmentStoreClustering:
         assert len(cluster_ids) == len(store.molecules_df)
         assert cluster_ids.min() >= 0
 
-    def test_cluster_distance_column_present_and_typed(self, store: SegmentStore) -> None:
+    def test_cluster_distance_column_present_and_typed(
+        self, store: SegmentStore
+    ) -> None:
         assert "cluster_distance" in store.molecules_df.columns
         distances = store.molecules_df["cluster_distance"]
         assert distances.dtype == np.float64
@@ -586,7 +601,7 @@ class TestSegmentStoreClustering:
     def test_custom_clustering_specs_accepted(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
-            SMILES_TO_FILENAME,
+            FILENAME_TO_SMILES,
             tmp_path,
             clustering_specs=ClusteringSpecs(cutoff=0.0, fp_size=256),
             schemes=(),
@@ -659,7 +674,7 @@ class TestSegmentStoreSplitting:
 
     def test_assign_splits_adds_column(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         labels = s.assign_splits({"train": 0.75, "test": 0.25})
         assert "split" in s.molecules_df.columns
@@ -670,7 +685,7 @@ class TestSegmentStoreSplitting:
         self, tmp_path: pathlib.Path
     ) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         s.assign_splits({"train": 0.75, "test": 0.25})
         second = s.assign_splits({"a": 0.5, "b": 0.5})
@@ -679,7 +694,7 @@ class TestSegmentStoreSplitting:
 
     def test_invalid_fractions_raise(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         with pytest.raises(ValueError):
             s.assign_splits({"train": 0.5})
@@ -687,7 +702,7 @@ class TestSegmentStoreSplitting:
     def test_split_fractions_at_build_time(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
-            SMILES_TO_FILENAME,
+            FILENAME_TO_SMILES,
             tmp_path,
             split_fractions={"train": 0.75, "test": 0.25},
             schemes=(),
@@ -700,7 +715,7 @@ class TestSegmentStoreSplitting:
         self, tmp_path: pathlib.Path
     ) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         assert "split" not in s.molecules_df.columns
 
@@ -709,7 +724,7 @@ class TestSegmentStoreSplitting:
     ) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
-            SMILES_TO_FILENAME,
+            FILENAME_TO_SMILES,
             tmp_path,
             split_fractions={"train": 0.75, "test": 0.25},
             schemes=(),
@@ -782,7 +797,9 @@ class TestRestrictToMolecules:
             assert len(arr) == len(restricted.data)
             assert name in store.averaged_sigmas
 
-    def test_cluster_distance_preserved_for_kept_rows(self, store: SegmentStore) -> None:
+    def test_cluster_distance_preserved_for_kept_rows(
+        self, store: SegmentStore
+    ) -> None:
         selected = np.array([1, 3], dtype=np.int64)
         restricted = restrict_to_molecules(store, selected)
         np.testing.assert_array_equal(
@@ -794,7 +811,7 @@ class TestRestrictToMolecules:
 class TestSegmentStoreSubsample:
     def test_requires_existing_split_column(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         with pytest.raises(ValueError, match="assign_splits"):
             s.subsample(2)
@@ -802,7 +819,7 @@ class TestSegmentStoreSubsample:
     def test_result_has_requested_molecule_count(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
-            SMILES_TO_FILENAME,
+            FILENAME_TO_SMILES,
             tmp_path,
             split_fractions={"train": 0.75, "test": 0.25},
             schemes=(),
@@ -816,7 +833,7 @@ class TestSegmentStoreSubsample:
     ) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
-            SMILES_TO_FILENAME,
+            FILENAME_TO_SMILES,
             tmp_path,
             split_fractions={"train": 0.75, "test": 0.25},
             schemes=(),
@@ -834,7 +851,7 @@ class TestSegmentStoreSubsample:
     def test_deterministic_without_seed(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
-            SMILES_TO_FILENAME,
+            FILENAME_TO_SMILES,
             tmp_path,
             split_fractions={"train": 0.75, "test": 0.25},
             schemes=(),
@@ -849,7 +866,7 @@ class TestSegmentStoreSubsample:
     def test_invalid_num_molecules_raises(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
-            SMILES_TO_FILENAME,
+            FILENAME_TO_SMILES,
             tmp_path,
             split_fractions={"train": 0.75, "test": 0.25},
             schemes=(),
@@ -865,7 +882,7 @@ class TestSegmentStoreSubsample:
     ) -> None:
         s = SegmentStore.from_cosmo_files(
             COSMO_DATA_DIR,
-            SMILES_TO_FILENAME,
+            FILENAME_TO_SMILES,
             tmp_path,
             split_fractions={"train": 0.75, "test": 0.25},
             schemes=(),
@@ -937,7 +954,7 @@ class TestSegmentStoreCoarseGrain:
         # maps -- so simulate a store that predates that fix (or was
         # otherwise built with unmapped smiles) by stripping them back out.
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
 
         def _strip_map_numbers(smi: str) -> str:
@@ -956,7 +973,7 @@ class TestSegmentStoreCoarseGrain:
         self, tmp_path: pathlib.Path
     ) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         coarse = s.coarse_grain()
         coarse_num_atoms = coarse.molecules_df["num_atoms"].sum()
@@ -968,7 +985,7 @@ class TestSegmentStoreCoarseGrain:
         self, tmp_path: pathlib.Path
     ) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         coarse = s.coarse_grain()
         assert len(coarse.molecules_df) == len(s.molecules_df)
@@ -979,7 +996,7 @@ class TestSegmentStoreCoarseGrain:
 
     def test_data_and_metadata_columns_untouched(self, tmp_path: pathlib.Path) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         coarse = s.coarse_grain()
         np.testing.assert_array_equal(np.asarray(coarse.data), np.asarray(s.data))
@@ -995,7 +1012,7 @@ class TestSegmentStoreCoarseGrain:
         self, tmp_path: pathlib.Path
     ) -> None:
         s = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, SMILES_TO_FILENAME, tmp_path, schemes=(), num_threads=1
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
         )
         coarse = s.coarse_grain()
         coarse_num_atoms = int(coarse.molecules_df["num_atoms"].sum())
@@ -1235,7 +1252,7 @@ class TestCrossValidationAgainstComponent:
 
         mapped_smi = _atom_mapped(smi)
         store = SegmentStore.from_cosmo_files(
-            COSMO_DATA_DIR, {mapped_smi: f"{smi}.cosmo"}, tmp_path, num_threads=1
+            COSMO_DATA_DIR, {f"{smi}.cosmo": mapped_smi}, tmp_path, num_threads=1
         )
         table = store.compute_molecule_sigma_profiles(
             scheme="cosmo-sac-2010", grid=grid, centered=False, num_threads=1
