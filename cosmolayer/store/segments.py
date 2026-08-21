@@ -83,8 +83,9 @@ class StoreMetadata:
     num_molecules : int
         Number of molecules successfully stored.
     num_cosmo_parse_failures : int
-        Number of molecules skipped because they failed to parse or
-        validate (only possible with ``ignore_errors=True``, see
+        Number of molecules skipped because the COSMO file was missing,
+        or because they failed to parse or validate (parse/validate
+        skips require ``ignore_errors=True``, see
         ``SegmentStore.from_cosmo_files``).
     schemes : dict[str, AveragingScheme]
         Averaging schemes this store has computed sigmas for, keyed by
@@ -705,13 +706,16 @@ class SegmentStore:
             file's atom-mapped SMILES. Two files of the same molecule may
             share a SMILES (same atom order) or carry different SMILES
             (different atom orders); each key yields one ``molecules_df``
-            row.
+            row. Keys whose files are not present under
+            ``cosmo_files_dir`` are skipped and counted in
+            ``metadata.num_cosmo_parse_failures``.
         storage_dir : pathlib.Path
             Destination directory for the output files. Created if
             missing.
         ignore_errors : bool, optional
             If True, skip molecules that fail to parse or validate and
-            count them in ``metadata.num_cosmo_parse_failures``. Default
+            count them in ``metadata.num_cosmo_parse_failures``. Missing
+            files are always skipped, even when this is False. Default
             False.
         schemes : Sequence[AveragingScheme] | None, optional
             Averaging schemes to compute. ``None`` (default) uses
@@ -759,11 +763,21 @@ class SegmentStore:
         num_atoms = []
         volumes = []
         successful_molecules = []
-        num_cosmo_parse_failures = 0
+        present_items = [
+            (filename, smi)
+            for filename, smi in filename_to_smiles.items()
+            if (cosmo_files_dir / filename).is_file()
+        ]
+        num_cosmo_parse_failures = len(filename_to_smiles) - len(present_items)
+        if num_cosmo_parse_failures:
+            tqdm.write(
+                f"Skipping {num_cosmo_parse_failures} missing COSMO file"
+                f"{'s' if num_cosmo_parse_failures != 1 else ''}."
+            )
         fingerprint_generator = FingerprintGenerator(clustering_specs)
 
         for filename, smi in tqdm(
-            filename_to_smiles.items(),
+            present_items,
             desc="Processing COSMO files",
             disable=not progress,
         ):

@@ -342,6 +342,23 @@ class TestSegmentStoreRoundTrip:
         with pytest.raises(ValueError):
             SegmentStore.from_cosmo_files(COSMO_DATA_DIR, bad_mapping, tmp_path)
 
+    def test_skips_missing_cosmo_files(self, tmp_path: pathlib.Path) -> None:
+        mapping = dict(FILENAME_TO_SMILES)
+        mapping["missing.cosmo"] = _atom_mapped("O")
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, mapping, tmp_path, num_threads=1, schemes=()
+        )
+        assert s.metadata.num_molecules == 4
+        assert s.metadata.num_cosmo_parse_failures == 1
+
+    def test_all_missing_cosmo_files_raises(self, tmp_path: pathlib.Path) -> None:
+        with pytest.raises(ValueError, match="No COSMO files"):
+            SegmentStore.from_cosmo_files(
+                COSMO_DATA_DIR,
+                {"missing.cosmo": _atom_mapped("O")},
+                tmp_path,
+            )
+
 
 class TestFilenameToSmiles:
     """Each .cosmo file maps to its own SMILES, so two files may share a
