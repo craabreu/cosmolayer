@@ -1573,14 +1573,14 @@ def test_main_no_progress_disables_profile_bars(
     ) -> SigmaProfileTable:
         progress = kwargs.get("progress")
         seen["atom"] = progress if isinstance(progress, bool) else None
-        return real_atom(self, *args, **kwargs)
+        return real_atom(self, *args, **kwargs)  # ty: ignore[invalid-argument-type]
 
     def spy_aggregate(
         self: SigmaProfileTable, *args: object, **kwargs: object
     ) -> SigmaProfileTable:
         progress = kwargs.get("progress")
         seen["aggregate"] = progress if isinstance(progress, bool) else None
-        return real_aggregate(self, *args, **kwargs)
+        return real_aggregate(self, *args, **kwargs)  # ty: ignore[invalid-argument-type]
 
     monkeypatch.setattr(SegmentStore, "compute_atom_sigma_profiles", spy_atom)
     monkeypatch.setattr(SigmaProfileTable, "aggregate", spy_aggregate)
