@@ -111,8 +111,8 @@ class SigmaProfileTable:
         atom_indices : np.ndarray | None, optional
             Global atom index of each segment. ``None`` (default) builds
             one profile per molecule. When given, builds one profile per
-            atom; the result's ``atom_offsets`` is
-            ``atom_indices[segment_offsets]``.
+            atom; the result's ``atom_offsets`` is each molecule's
+            lowest atom index (not the atom of its first segment).
         num_rows : int | None, optional
             Number of profile rows. ``None`` (default) uses
             ``len(segment_offsets)`` (molecule level) or
@@ -144,7 +144,9 @@ class SigmaProfileTable:
         else:
             row_indices = np.asarray(atom_indices)
             num_rows = int(np.max(row_indices)) + 1 if num_rows is None else num_rows
-            atom_offsets = row_indices[segment_offsets].astype(np.int64)
+            atom_offsets = np.minimum.reduceat(row_indices, segment_offsets).astype(
+                np.int64
+            )
 
         areas_out = np.zeros(num_rows, dtype=np.float32)
         charges_out = np.zeros(num_rows, dtype=np.float32)

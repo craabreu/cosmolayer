@@ -1324,6 +1324,27 @@ class TestSigmaProfileTable:
         with pytest.raises(ValueError, match="already at molecule level"):
             molecule_table.aggregate()
 
+    def test_aggregate_when_first_segment_is_not_first_atom(self) -> None:
+        """CHAOS files list segments in an order that need not start at
+        atom 0. atom_offsets must be each molecule's lowest atom index,
+        not the atom of its first segment, or aggregate IndexErrors."""
+        grid = SigmaGrid(0.025, 11)
+        sigmas = np.zeros(3, dtype=np.float64)
+        areas = np.ones(3, dtype=np.float64)
+        table = SigmaProfileTable.from_segments(
+            sigmas,
+            areas,
+            np.array([0], dtype=np.int64),
+            atom_indices=np.array([2, 0, 1], dtype=np.int64),
+            num_rows=3,
+            grid=grid,
+            num_threads=1,
+        )
+        np.testing.assert_array_equal(table.atom_offsets, [0])
+        aggregated = table.aggregate(num_threads=1)
+        assert aggregated.profiles.shape == (1, len(grid))
+        np.testing.assert_allclose(aggregated.profiles.sum(), areas.sum(), rtol=1e-5)
+
     def test_level_property(self, store: SegmentStore) -> None:
         atom_table = store.compute_atom_sigma_profiles(num_threads=1)
         molecule_table = store.compute_molecule_sigma_profiles(num_threads=1)
