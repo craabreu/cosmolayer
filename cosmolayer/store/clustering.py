@@ -80,7 +80,9 @@ class FingerprintGenerator:
         return cast(NDArray[np.int8], fp)
 
 
-def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.int64]:
+def butina_cluster(
+    fingerprints: NDArray[np.int8], cutoff: float, *, progress: bool = False
+) -> NDArray[np.int64]:
     """Butina-cluster molecules by fingerprint Tanimoto distance.
 
     Delegates to chalcedon's count-sort-assign Butina implementation
@@ -98,6 +100,10 @@ def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.
     cutoff : float
         Tanimoto distance threshold: molecules within ``cutoff`` of a
         cluster centroid join that cluster.
+    progress : bool, optional
+        If True, show chalcedon's tqdm bars (neighbor counting and
+        cluster assignment) on stderr. Default False, so a library call
+        stays quiet.
 
     Returns
     -------
@@ -112,7 +118,9 @@ def butina_cluster(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.
     if n == 1:
         return np.zeros(1, dtype=np.int64)
 
-    cluster_ids = _chalcedon_butina_cluster(fingerprints, cutoff=cutoff)
+    cluster_ids = _chalcedon_butina_cluster(
+        fingerprints, cutoff=cutoff, progress=progress
+    )
     return cluster_ids.astype(np.int64)
 
 

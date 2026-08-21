@@ -123,6 +123,7 @@ def _ensure_store_built(
             filename_to_smiles,
             storage_dir,
             num_threads=args.num_threads,
+            progress=True,
         ),
     )
 
@@ -156,6 +157,7 @@ def _report_atom_stats(
             grid=SigmaGrid(),
             num_threads=num_threads,
             centered=True,
+            progress=True,
         ),
     )
     has_area = atom_sigma_profiles.areas > 0
@@ -190,7 +192,7 @@ def _report_molecule_stats(
 
     molecule_sigma_profiles = _timed(
         "compute molecule sigma profiles",
-        lambda: atom_sigma_profiles.aggregate(num_threads=num_threads),
+        lambda: atom_sigma_profiles.aggregate(num_threads=num_threads, progress=True),
     )
     mass_err = np.abs(molecule_sigma_profiles.profiles.sum(axis=1) / molecule_areas - 1)
     print(

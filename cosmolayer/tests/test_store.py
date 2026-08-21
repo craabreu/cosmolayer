@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 from numpy.typing import NDArray
 from rdkit import Chem
+from tqdm.auto import tqdm as real_tqdm
 
 from cosmolayer.cosmosac import Component
 from cosmolayer.parser import parse_cosmo_file
@@ -171,6 +172,54 @@ class TestAveraging:
                 )[0]
             )
         np.testing.assert_allclose(whole[0], np.concatenate(pieces))
+
+    def test_by_molecule_progress_matches_quiet_result(self) -> None:
+        rng = np.random.default_rng(2)
+        offsets = np.array([0, 3, 8], dtype=np.int64)
+        n = 10
+        coords = rng.normal(size=(n, 3))
+        charges = rng.normal(size=n) * 1e-3
+        areas = rng.uniform(0.5, 2.0, size=n)
+        schemes = [COSMO_SAC_2010]
+        quiet = average_sigmas_by_molecule(
+            coords, charges, areas, offsets, schemes, num_threads=1
+        )
+        with_bar = average_sigmas_by_molecule(
+            coords, charges, areas, offsets, schemes, num_threads=1, progress=True
+        )
+        np.testing.assert_allclose(quiet, with_bar)
+
+    def test_by_molecule_progress_enables_tqdm(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        disables: list[bool] = []
+
+        def spy(*args: object, **kwargs: object) -> object:
+            disable = kwargs.get("disable")
+            if isinstance(disable, bool):
+                disables.append(disable)
+            return real_tqdm(*args, **kwargs)
+
+        monkeypatch.setattr("cosmolayer.store.averaging.tqdm", spy)
+        rng = np.random.default_rng(3)
+        offsets = np.array([0, 2], dtype=np.int64)
+        n = 4
+        coords = rng.normal(size=(n, 3))
+        charges = rng.normal(size=n) * 1e-3
+        areas = rng.uniform(0.5, 2.0, size=n)
+        average_sigmas_by_molecule(
+            coords, charges, areas, offsets, [COSMO_SAC_2010], num_threads=1
+        )
+        average_sigmas_by_molecule(
+            coords,
+            charges,
+            areas,
+            offsets,
+            [COSMO_SAC_2010],
+            num_threads=1,
+            progress=True,
+        )
+        assert disables == [True, False]
 
 
 # --------------------------------------------------------------------- #
@@ -482,7 +531,9 @@ class TestButinaCluster:
         a way mypy's strict re-export check would flag."""
         call_sizes: list[int] = []
 
-        def spy(fingerprints: NDArray[np.int8], cutoff: float) -> NDArray[np.intp]:
+        def spy(
+            fingerprints: NDArray[np.int8], cutoff: float, progress: bool = False
+        ) -> NDArray[np.intp]:
             call_sizes.append(fingerprints.shape[0])
             return np.zeros(fingerprints.shape[0], dtype=np.intp)
 
@@ -492,6 +543,25 @@ class TestButinaCluster:
         fp = np.array([[1, 0, 1, 0], [0, 1, 0, 1]], dtype=np.int8)
         butina_cluster(fp, cutoff=0.1)
         assert call_sizes == [2]
+
+    def test_forwards_progress_flag_to_chalcedon(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[bool] = []
+
+        def spy(
+            fingerprints: NDArray[np.int8], cutoff: float, progress: bool = False
+        ) -> NDArray[np.intp]:
+            seen.append(progress)
+            return np.zeros(fingerprints.shape[0], dtype=np.intp)
+
+        monkeypatch.setattr(
+            "cosmolayer.store.clustering._chalcedon_butina_cluster", spy
+        )
+        fp = np.array([[1, 0, 1, 0], [0, 1, 0, 1]], dtype=np.int8)
+        butina_cluster(fp, cutoff=0.1)
+        butina_cluster(fp, cutoff=0.1, progress=True)
+        assert seen == [False, True]
 
 
 def _tanimoto_distance(a: NDArray[np.int8], b: NDArray[np.int8]) -> float:
@@ -610,6 +680,36 @@ class TestSegmentStoreClustering:
         # cutoff=0.0 means only exact fingerprint matches share a cluster;
         # these four molecules are all distinct, so each is its own cluster.
         assert sorted(s.molecules_df["cluster_id"].tolist()) == [0, 1, 2, 3]
+
+    def test_from_cosmo_files_forwards_progress(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[bool] = []
+        real = butina_cluster
+
+        def spy(
+            fingerprints: NDArray[np.int8], cutoff: float, progress: bool = False
+        ) -> NDArray[np.int64]:
+            seen.append(progress)
+            return real(fingerprints, cutoff, progress=progress)
+
+        monkeypatch.setattr("cosmolayer.store.segments.butina_cluster", spy)
+        SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            FILENAME_TO_SMILES,
+            tmp_path / "with_progress",
+            schemes=(),
+            num_threads=1,
+            progress=True,
+        )
+        SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR,
+            FILENAME_TO_SMILES,
+            tmp_path / "default",
+            schemes=(),
+            num_threads=1,
+        )
+        assert seen == [True, False]
 
 
 # --------------------------------------------------------------------- #
@@ -1336,3 +1436,32 @@ def test_main_runs_end_to_end(
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "Molecule profile mass conservation" in out
+
+
+def test_main_enables_progress_when_building_store(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool | None] = {}
+
+    def spy(*args: object, **kwargs: object) -> SegmentStore:
+        progress = kwargs.get("progress")
+        seen["progress"] = progress if isinstance(progress, bool) else None
+        raise RuntimeError("stop before building")
+
+    monkeypatch.setattr(SegmentStore, "from_cosmo_files", spy)
+    mapping = tmp_path / "map.json"
+    mapping.write_text("{}")
+    with pytest.raises(RuntimeError, match="stop before building"):
+        store_main(
+            [
+                "--storage-dir",
+                str(tmp_path / "store"),
+                "--cosmo-files-dir",
+                str(tmp_path),
+                "--filenames-to-smiles",
+                str(mapping),
+                "--num-threads",
+                "1",
+            ]
+        )
+    assert seen["progress"] is True

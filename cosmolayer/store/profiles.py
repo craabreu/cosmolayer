@@ -6,6 +6,7 @@ from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
+from tqdm.auto import tqdm
 
 from .binning import (
     AtomProfileAccumulator,
@@ -88,6 +89,7 @@ class SigmaProfileTable:
         grid: SigmaGrid = DEFAULT_SIGMA_GRID,
         centered: bool = False,
         num_threads: int | None = None,
+        progress: bool = False,
     ) -> "SigmaProfileTable":
         """Bin segment-level data into per-atom or per-molecule sigma
         profiles.
@@ -123,6 +125,8 @@ class SigmaProfileTable:
             before binning.
         num_threads : int | None, optional
             Thread count. ``None`` (default) uses every CPU core.
+        progress : bool, optional
+            If True, show a tqdm bar over molecules. Default False.
 
         Returns
         -------
@@ -155,19 +159,26 @@ class SigmaProfileTable:
         num_mols = len(segment_offsets)
         accumulator = AtomProfileAccumulator(areas_out, charges_out, profiles_out)
 
-        def process_range(start_mol: int, stop_mol: int) -> None:
-            start_seg = segment_offsets[start_mol]
-            stop_seg = segment_offsets[stop_mol] if stop_mol < num_mols else num_segs
-            accumulate_atom_profiles(
-                accumulator,
-                sigmas[start_seg:stop_seg],
-                areas[start_seg:stop_seg],
-                row_indices[start_seg:stop_seg],
-                grid,
-                centered,
-            )
+        with tqdm(
+            total=num_mols, desc="Binning sigma profiles", disable=not progress
+        ) as progress_bar:
 
-        run_in_threads(process_range, num_mols, num_threads=num_threads)
+            def process_range(start_mol: int, stop_mol: int) -> None:
+                start_seg = segment_offsets[start_mol]
+                stop_seg = (
+                    segment_offsets[stop_mol] if stop_mol < num_mols else num_segs
+                )
+                accumulate_atom_profiles(
+                    accumulator,
+                    sigmas[start_seg:stop_seg],
+                    areas[start_seg:stop_seg],
+                    row_indices[start_seg:stop_seg],
+                    grid,
+                    centered,
+                )
+                progress_bar.update(stop_mol - start_mol)
+
+            run_in_threads(process_range, num_mols, num_threads=num_threads)
 
         return cls(
             areas_out,
@@ -184,6 +195,7 @@ class SigmaProfileTable:
         grid: SigmaGrid | None = None,
         normalize: bool = False,
         num_threads: int | None = None,
+        progress: bool = False,
     ) -> "SigmaProfileTable":
         """Reassemble per-molecule profiles from these per-atom ones.
 
@@ -202,6 +214,8 @@ class SigmaProfileTable:
             it sums to 1.
         num_threads : int | None, optional
             Thread count. ``None`` (default) uses every CPU core.
+        progress : bool, optional
+            If True, show a tqdm bar over molecules. Default False.
 
         Returns
         -------
@@ -243,23 +257,28 @@ class SigmaProfileTable:
         molecule_profiles = np.zeros((num_mols, molecule_num_points), dtype=np.float64)
         atom_offsets = self.atom_offsets
 
-        def process_range(start_mol: int, stop_mol: int) -> None:
-            start_atom = atom_offsets[start_mol]
-            stop_atom = atom_offsets[stop_mol] if stop_mol < num_mols else num_atoms
-            batch = AtomTranslationBatch(
-                self.areas[start_atom:stop_atom],
-                translations[start_atom:stop_atom],
-                self.profiles[start_atom:stop_atom],
-                self.grid,
-            )
-            accumulate_translated_profiles(
-                molecule_profiles,
-                molecule_indices[start_atom:stop_atom],
-                batch,
-                output_grid,
-            )
+        with tqdm(
+            total=num_mols, desc="Aggregating sigma profiles", disable=not progress
+        ) as progress_bar:
 
-        run_in_threads(process_range, num_mols, num_threads=num_threads)
+            def process_range(start_mol: int, stop_mol: int) -> None:
+                start_atom = atom_offsets[start_mol]
+                stop_atom = atom_offsets[stop_mol] if stop_mol < num_mols else num_atoms
+                batch = AtomTranslationBatch(
+                    self.areas[start_atom:stop_atom],
+                    translations[start_atom:stop_atom],
+                    self.profiles[start_atom:stop_atom],
+                    self.grid,
+                )
+                accumulate_translated_profiles(
+                    molecule_profiles,
+                    molecule_indices[start_atom:stop_atom],
+                    batch,
+                    output_grid,
+                )
+                progress_bar.update(stop_mol - start_mol)
+
+            run_in_threads(process_range, num_mols, num_threads=num_threads)
 
         if normalize:
             molecule_profiles = molecule_profiles / molecule_profiles.sum(

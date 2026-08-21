@@ -315,6 +315,8 @@ class SegmentStore:
         self,
         schemes: Sequence[AveragingScheme] | None = None,
         num_threads: int | None = None,
+        *,
+        progress: bool = False,
     ) -> dict[str, NDArray[np.float32]]:
         """Compute averaged charge densities under each scheme, without
         writing to disk or mutating this store.
@@ -325,6 +327,8 @@ class SegmentStore:
             Schemes to apply. ``None`` (default) uses ``AVERAGING_SCHEMES``.
         num_threads : int | None, optional
             Thread count. ``None`` (default) uses every CPU core.
+        progress : bool, optional
+            If True, show a tqdm bar while averaging. Default False.
 
         Returns
         -------
@@ -355,6 +359,7 @@ class SegmentStore:
             segment_offsets,
             schemes,
             num_threads=num_threads,
+            progress=progress,
         )
         return {
             scheme.name: arr.astype(np.float32)
@@ -680,6 +685,7 @@ class SegmentStore:
         clustering_specs: ClusteringSpecs | None = None,
         split_fractions: Mapping[str, float] | None = None,
         num_threads: int | None = None,
+        progress: bool = False,
     ) -> "SegmentStore":
         """Parse COSMO files, build a store, and write it to ``storage_dir``.
 
@@ -725,6 +731,10 @@ class SegmentStore:
         num_threads : int | None, optional
             Thread count for averaging. ``None`` (default) uses every CPU
             core.
+        progress : bool, optional
+            If True, show tqdm while parsing COSMO files, averaging
+            sigmas, and running chalcedon's Butina clustering bars.
+            Default False, so a library call stays quiet.
 
         Returns
         -------
@@ -755,6 +765,7 @@ class SegmentStore:
         for filename, smi in tqdm(
             filename_to_smiles.items(),
             desc="Processing COSMO files",
+            disable=not progress,
         ):
             if not isinstance(smi, str):
                 raise ValueError(
@@ -791,7 +802,9 @@ class SegmentStore:
             raise ValueError("No COSMO files could be parsed successfully.")
 
         fingerprint_array = np.stack(fingerprints, axis=0)
-        cluster_ids = butina_cluster(fingerprint_array, clustering_specs.cutoff)
+        cluster_ids = butina_cluster(
+            fingerprint_array, clustering_specs.cutoff, progress=progress
+        )
         cluster_distance = cluster_medoid_distances(fingerprint_array, cluster_ids)
 
         data = np.concatenate(data_chunks, axis=0)
@@ -823,7 +836,9 @@ class SegmentStore:
         if schemes is None or schemes:
             resolved_schemes = AVERAGING_SCHEMES if schemes is None else schemes
             store.averaged_sigmas = store.compute_averaged_sigmas(
-                schemes=resolved_schemes, num_threads=num_threads
+                schemes=resolved_schemes,
+                num_threads=num_threads,
+                progress=progress,
             )
             store.metadata.schemes.update({s.name: s for s in resolved_schemes})
         if split_fractions is not None:
@@ -870,6 +885,8 @@ class SegmentStore:
         grid: SigmaGrid = DEFAULT_SIGMA_GRID,
         num_threads: int | None = None,
         centered: bool = False,
+        *,
+        progress: bool = False,
     ) -> SigmaProfileTable:
         """Compute per-atom sigma profiles for this store.
 
@@ -884,6 +901,8 @@ class SegmentStore:
             Thread count. ``None`` (default) uses every CPU core.
         centered : bool, optional
             If True, center each atom's profile on its mean charge density.
+        progress : bool, optional
+            If True, show a tqdm bar while binning. Default False.
 
         Returns
         -------
@@ -907,6 +926,7 @@ class SegmentStore:
             grid=grid,
             centered=centered,
             num_threads=num_threads,
+            progress=progress,
         )
 
     def compute_molecule_sigma_profiles(
@@ -915,6 +935,8 @@ class SegmentStore:
         grid: SigmaGrid = DEFAULT_SIGMA_GRID,
         num_threads: int | None = None,
         centered: bool = False,
+        *,
+        progress: bool = False,
     ) -> SigmaProfileTable:
         """Compute per-molecule sigma profiles from segment-level data.
 
@@ -933,6 +955,8 @@ class SegmentStore:
         centered : bool, optional
             If True, center each molecule's profile on its mean charge
             density.
+        progress : bool, optional
+            If True, show a tqdm bar while binning. Default False.
 
         Returns
         -------
@@ -949,6 +973,7 @@ class SegmentStore:
             grid=grid,
             centered=centered,
             num_threads=num_threads,
+            progress=progress,
         )
 
 

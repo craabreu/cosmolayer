@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
+from tqdm.auto import tqdm
 
 from cosmolayer.cosmosac.constants import (
     COSMO_SAC_2002_AVERAGING_RADIUS,
@@ -131,13 +132,15 @@ def average_sigmas(
     return results
 
 
-def average_sigmas_by_molecule(
+def average_sigmas_by_molecule(  # noqa: PLR0913
     coords: NDArray[np.float64],
     charges: NDArray[np.float64],
     areas: NDArray[np.float64],
     segment_offsets: NDArray[np.int64],
     schemes: Sequence[AveragingScheme],
     num_threads: int | None = None,
+    *,
+    progress: bool = False,
 ) -> NDArray[np.float64]:
     """Apply one or more averaging schemes to every molecule in a dataset.
 
@@ -160,6 +163,8 @@ def average_sigmas_by_molecule(
         Schemes to apply, in the order of the result rows.
     num_threads : int | None, optional
         Thread count. ``None`` (default) uses every CPU core.
+    progress : bool, optional
+        If True, show a tqdm bar over molecules. Default False.
 
     Returns
     -------
@@ -171,18 +176,24 @@ def average_sigmas_by_molecule(
     num_mols = len(segment_offsets)
     averaged_sigmas = np.empty((len(schemes), num_segs), dtype=np.float64)
 
-    def process_range(start_mol: int, stop_mol: int) -> None:
-        for mol in range(start_mol, stop_mol):
-            start_seg = segment_offsets[mol]
-            stop_seg = segment_offsets[mol + 1] if mol + 1 < num_mols else num_segs
-            if stop_seg == start_seg:
-                continue
-            averaged_sigmas[:, start_seg:stop_seg] = average_sigmas(
-                coords[start_seg:stop_seg],
-                charges[start_seg:stop_seg],
-                areas[start_seg:stop_seg],
-                schemes,
-            )
+    with tqdm(
+        total=num_mols, desc="Averaging sigmas", disable=not progress
+    ) as progress_bar:
 
-    run_in_threads(process_range, num_mols, num_threads=num_threads, limit_blas=True)
+        def process_range(start_mol: int, stop_mol: int) -> None:
+            for mol in range(start_mol, stop_mol):
+                start_seg = segment_offsets[mol]
+                stop_seg = segment_offsets[mol + 1] if mol + 1 < num_mols else num_segs
+                if stop_seg != start_seg:
+                    averaged_sigmas[:, start_seg:stop_seg] = average_sigmas(
+                        coords[start_seg:stop_seg],
+                        charges[start_seg:stop_seg],
+                        areas[start_seg:stop_seg],
+                        schemes,
+                    )
+                progress_bar.update(1)
+
+        run_in_threads(
+            process_range, num_mols, num_threads=num_threads, limit_blas=True
+        )
     return averaged_sigmas
