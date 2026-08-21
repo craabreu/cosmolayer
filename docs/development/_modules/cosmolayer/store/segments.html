@@ -699,7 +699,7 @@
         <span class="k">return</span> <span class="n">mol</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">fingerprint</span>
 
     <span class="nd">@staticmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_build_molecules_df</span><span class="p">(</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_build_molecules_df</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913</span>
         <span class="n">successful_molecules</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
         <span class="n">segment_offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
         <span class="n">atom_offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
@@ -1100,52 +1100,13 @@
         <span class="p">)</span></div>
 
 
-    <span class="nd">@staticmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_flatten_smiles_to_filenames</span><span class="p">(</span>
-        <span class="n">smiles_to_filenames</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
-    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
-<span class="w">        </span><span class="sd">"""Expand a SMILES-to-filename(s) mapping into an ordered list of</span>
-<span class="sd">        ``(smiles, filename)`` pairs, one per ``.cosmo`` file.</span>
-
-<span class="sd">        Parameters</span>
-<span class="sd">        ----------</span>
-<span class="sd">        smiles_to_filenames : Mapping[str, str | list[str]]</span>
-<span class="sd">            SMILES string to a single ``.cosmo`` filename, or a list of</span>
-<span class="sd">            them (e.g. multiple conformers of the same molecule).</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        list[tuple[str, str]]</span>
-<span class="sd">            ``(smiles, filename)`` pairs, in input order; a SMILES mapped</span>
-<span class="sd">            to a list of filenames yields one pair per filename, in that</span>
-<span class="sd">            list's order.</span>
-
-<span class="sd">        Raises</span>
-<span class="sd">        ------</span>
-<span class="sd">        ValueError</span>
-<span class="sd">            If a value is neither a ``str`` nor a non-empty list of</span>
-<span class="sd">            ``str``.</span>
-<span class="sd">        """</span>
-        <span class="n">pairs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">smi</span><span class="p">,</span> <span class="n">filenames</span> <span class="ow">in</span> <span class="n">smiles_to_filenames</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filenames</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-                <span class="n">pairs</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">smi</span><span class="p">,</span> <span class="n">filenames</span><span class="p">))</span>
-            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filenames</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="n">filenames</span><span class="p">:</span>
-                <span class="n">pairs</span><span class="o">.</span><span class="n">extend</span><span class="p">((</span><span class="n">smi</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span> <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">filenames</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">"smiles_to_filenames[</span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2">] must be a filename (str) "</span>
-                    <span class="sa">f</span><span class="s2">"or a non-empty list of filenames, got </span><span class="si">{</span><span class="n">filenames</span><span class="si">!r}</span><span class="s2">."</span>
-                <span class="p">)</span>
-        <span class="k">return</span> <span class="n">pairs</span>
-
 <div class="viewcode-block" id="SegmentStore.from_cosmo_files">
 <a class="viewcode-back" href="../../../api/SegmentStore.html#cosmolayer.store.SegmentStore.from_cosmo_files">[docs]</a>
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">from_cosmo_files</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913, PLR0917</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_cosmo_files</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913, PLR0915, PLR0917</span>
         <span class="bp">cls</span><span class="p">,</span>
         <span class="n">cosmo_files_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">,</span>
-        <span class="n">smiles_to_filenames</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+        <span class="n">filename_to_smiles</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
         <span class="n">storage_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">,</span>
         <span class="n">ignore_errors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
         <span class="n">schemes</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">AveragingScheme</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1165,12 +1126,13 @@
 <span class="sd">        ----------</span>
 <span class="sd">        cosmo_files_dir : pathlib.Path</span>
 <span class="sd">            Directory containing the ``.cosmo`` files named by</span>
-<span class="sd">            ``smiles_to_filenames``'s values.</span>
-<span class="sd">        smiles_to_filenames : Mapping[str, str | list[str]]</span>
-<span class="sd">            SMILES string to ``.cosmo`` filename(s) (relative to</span>
-<span class="sd">            ``cosmo_files_dir``). A SMILES mapped to a list of filenames</span>
-<span class="sd">            (e.g. multiple conformers of the same molecule) yields one</span>
-<span class="sd">            ``molecules_df`` row per filename, all sharing that SMILES.</span>
+<span class="sd">            ``filename_to_smiles``'s keys.</span>
+<span class="sd">        filename_to_smiles : Mapping[str, str]</span>
+<span class="sd">            ``.cosmo`` filename (relative to ``cosmo_files_dir``) to that</span>
+<span class="sd">            file's atom-mapped SMILES. Two files of the same molecule may</span>
+<span class="sd">            share a SMILES (same atom order) or carry different SMILES</span>
+<span class="sd">            (different atom orders); each key yields one ``molecules_df``</span>
+<span class="sd">            row.</span>
 <span class="sd">        storage_dir : pathlib.Path</span>
 <span class="sd">            Destination directory for the output files. Created if</span>
 <span class="sd">            missing.</span>
@@ -1205,9 +1167,10 @@
 <span class="sd">        Raises</span>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
-<span class="sd">            If a molecule cannot be parsed and ``ignore_errors`` is False,</span>
-<span class="sd">            if no molecule could be stored, or if a scheme name collides</span>
-<span class="sd">            with a reserved store filename.</span>
+<span class="sd">            If a mapping value is not a SMILES string, if a molecule</span>
+<span class="sd">            cannot be parsed and ``ignore_errors`` is False, if no</span>
+<span class="sd">            molecule could be stored, or if a scheme name collides with a</span>
+<span class="sd">            reserved store filename.</span>
 <span class="sd">        """</span>
         <span class="k">if</span> <span class="n">clustering_specs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">clustering_specs</span> <span class="o">=</span> <span class="n">ClusteringSpecs</span><span class="p">()</span>
@@ -1222,17 +1185,22 @@
         <span class="n">num_cosmo_parse_failures</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="n">fingerprint_generator</span> <span class="o">=</span> <span class="n">FingerprintGenerator</span><span class="p">(</span><span class="n">clustering_specs</span><span class="p">)</span>
 
-        <span class="k">for</span> <span class="n">smi</span><span class="p">,</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
-            <span class="bp">cls</span><span class="o">.</span><span class="n">_flatten_smiles_to_filenames</span><span class="p">(</span><span class="n">smiles_to_filenames</span><span class="p">),</span>
+        <span class="k">for</span> <span class="n">filename</span><span class="p">,</span> <span class="n">smi</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span>
+            <span class="n">filename_to_smiles</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span>
             <span class="n">desc</span><span class="o">=</span><span class="s2">"Processing COSMO files"</span><span class="p">,</span>
         <span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">smi</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"filename_to_smiles[</span><span class="si">{</span><span class="n">filename</span><span class="si">!r}</span><span class="s2">] must be a SMILES "</span>
+                    <span class="sa">f</span><span class="s2">"string, got </span><span class="si">{</span><span class="n">smi</span><span class="si">!r}</span><span class="s2">."</span>
+                <span class="p">)</span>
             <span class="k">try</span><span class="p">:</span>
                 <span class="n">mol</span><span class="p">,</span> <span class="n">atom_df</span><span class="p">,</span> <span class="n">segment_df</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">fingerprint</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_parse_molecule</span><span class="p">(</span>
                     <span class="n">cosmo_files_dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">smi</span><span class="p">,</span> <span class="n">fingerprint_generator</span>
                 <span class="p">)</span>
             <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">AssertionError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">ignore_errors</span><span class="p">:</span>
-                    <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Error parsing </span><span class="si">{</span><span class="n">smi</span><span class="si">}</span><span class="s2">-&gt;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                    <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Error parsing </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
                     <span class="n">num_cosmo_parse_failures</span> <span class="o">+=</span> <span class="mi">1</span>
                     <span class="k">continue</span>
                 <span class="k">else</span><span class="p">:</span>
