@@ -1137,6 +1137,49 @@ class TestSegmentStoreCoarseGrain:
         atom_indices = np.asarray(coarse.atom_indices, dtype=np.int64)
         assert max(atom_indices.tolist()) + 1 == coarse_num_atoms
 
+    def test_atom_indices_stay_within_their_own_molecules_range(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Every segment's remapped atom_indices value must fall within its
+        OWN molecule's [atom_offsets, atom_offsets + num_atoms) range, not a
+        neighboring molecule's.
+
+        Guards coarse_grain's per-molecule loop, which used to recompute a
+        boolean mask (`segment_molecule == m`) over the FULL segment array on
+        every iteration -- O(n_molecules * n_segments), fine on this
+        module's small fixtures but hours on a real ~53k-molecule /
+        ~100M-segment store. Rewritten to slice each molecule's own
+        contiguous segment range directly from segment_offsets instead
+        (segments are contiguous per molecule by construction, so this is
+        provably the same set of segments, just without rescanning the
+        whole array to find them) -- O(n_segments) total. The two
+        approaches happen to produce identical output, so this test cannot
+        distinguish old from new; it exists to catch a boundary slip in the
+        slicing itself, present or future. This fixture mixes molecules of
+        different sizes (O, CF, NCCO, C=C(N)O) specifically so an off-by-one
+        there would misattribute segments to the wrong molecule -- the
+        aggregate `max(atom_indices) + 1 == coarse_num_atoms` check above
+        would NOT necessarily catch that, since it only bounds the global
+        range, not per-molecule attribution.
+        """
+        s = SegmentStore.from_cosmo_files(
+            COSMO_DATA_DIR, FILENAME_TO_SMILES, tmp_path, schemes=(), num_threads=1
+        )
+        coarse = s.coarse_grain()
+
+        segment_offsets = coarse.molecules_df["segment_offsets"].to_numpy()
+        atom_offsets = coarse.molecules_df["atom_offsets"].to_numpy()
+        num_atoms = coarse.molecules_df["num_atoms"].to_numpy()
+        n_segs_total = len(coarse.data)
+        atom_indices = np.asarray(coarse.atom_indices, dtype=np.int64)
+
+        segment_bounds = np.append(segment_offsets, n_segs_total)
+        for m in range(len(coarse.molecules_df)):
+            lo, hi = segment_bounds[m], segment_bounds[m + 1]
+            this_molecules_atoms = atom_indices[lo:hi]
+            assert np.all(this_molecules_atoms >= atom_offsets[m])
+            assert np.all(this_molecules_atoms < atom_offsets[m] + num_atoms[m])
+
     def test_segments_and_molecule_count_unchanged(
         self, tmp_path: pathlib.Path
     ) -> None:
