@@ -530,15 +530,24 @@ class SegmentStore:
 
         old_local = np.asarray(self.atom_indices) - old_atom_offsets[segment_molecule]
         new_atom_indices = np.empty(n_segs_total, dtype=np.int64)
+        # Slice each molecule's own contiguous segment range directly from
+        # segment_offsets, rather than recomputing `segment_molecule == m`
+        # (an O(n_segs_total) scan of the FULL segment array) once per
+        # molecule. segment_molecule is built by construction as contiguous
+        # per-molecule blocks (np.repeat(np.arange(n_mols), segment_counts)
+        # above), so `segment_bounds[m]:segment_bounds[m + 1]` is exactly
+        # that boolean mask's nonzero range -- this makes the loop
+        # O(n_segs_total) total instead of O(n_mols * n_segs_total), which on
+        # a large store (e.g. ~53k molecules / ~100M segments) is the
+        # difference between seconds and hours.
+        segment_bounds = np.append(segment_offsets, n_segs_total)
         for m in range(n_mols):
-            in_molecule = segment_molecule == m
+            lo, hi = segment_bounds[m], segment_bounds[m + 1]
             lookup = np.array(
                 [remaps[m][j] for j in range(int(molecules_df["num_atoms"].iat[m]))],
                 dtype=np.int64,
             )
-            new_atom_indices[in_molecule] = (
-                lookup[old_local[in_molecule]] + new_atom_offsets[m]
-            )
+            new_atom_indices[lo:hi] = lookup[old_local[lo:hi]] + new_atom_offsets[m]
 
         new_molecules_df = molecules_df.copy()
         new_molecules_df["smiles"] = new_smiles
