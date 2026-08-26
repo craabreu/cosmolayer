@@ -951,15 +951,24 @@
 
         <span class="n">old_local</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atom_indices</span><span class="p">)</span> <span class="o">-</span> <span class="n">old_atom_offsets</span><span class="p">[</span><span class="n">segment_molecule</span><span class="p">]</span>
         <span class="n">new_atom_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n_segs_total</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="c1"># Slice each molecule's own contiguous segment range directly from</span>
+        <span class="c1"># segment_offsets, rather than recomputing `segment_molecule == m`</span>
+        <span class="c1"># (an O(n_segs_total) scan of the FULL segment array) once per</span>
+        <span class="c1"># molecule. segment_molecule is built by construction as contiguous</span>
+        <span class="c1"># per-molecule blocks (np.repeat(np.arange(n_mols), segment_counts)</span>
+        <span class="c1"># above), so `segment_bounds[m]:segment_bounds[m + 1]` is exactly</span>
+        <span class="c1"># that boolean mask's nonzero range -- this makes the loop</span>
+        <span class="c1"># O(n_segs_total) total instead of O(n_mols * n_segs_total), which on</span>
+        <span class="c1"># a large store (e.g. ~53k molecules / ~100M segments) is the</span>
+        <span class="c1"># difference between seconds and hours.</span>
+        <span class="n">segment_bounds</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">segment_offsets</span><span class="p">,</span> <span class="n">n_segs_total</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_mols</span><span class="p">):</span>
-            <span class="n">in_molecule</span> <span class="o">=</span> <span class="n">segment_molecule</span> <span class="o">==</span> <span class="n">m</span>
+            <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">segment_bounds</span><span class="p">[</span><span class="n">m</span><span class="p">],</span> <span class="n">segment_bounds</span><span class="p">[</span><span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
             <span class="n">lookup</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
                 <span class="p">[</span><span class="n">remaps</span><span class="p">[</span><span class="n">m</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">molecules_df</span><span class="p">[</span><span class="s2">"num_atoms"</span><span class="p">]</span><span class="o">.</span><span class="n">iat</span><span class="p">[</span><span class="n">m</span><span class="p">]))],</span>
                 <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">,</span>
             <span class="p">)</span>
-            <span class="n">new_atom_indices</span><span class="p">[</span><span class="n">in_molecule</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="n">lookup</span><span class="p">[</span><span class="n">old_local</span><span class="p">[</span><span class="n">in_molecule</span><span class="p">]]</span> <span class="o">+</span> <span class="n">new_atom_offsets</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
-            <span class="p">)</span>
+            <span class="n">new_atom_indices</span><span class="p">[</span><span class="n">lo</span><span class="p">:</span><span class="n">hi</span><span class="p">]</span> <span class="o">=</span> <span class="n">lookup</span><span class="p">[</span><span class="n">old_local</span><span class="p">[</span><span class="n">lo</span><span class="p">:</span><span class="n">hi</span><span class="p">]]</span> <span class="o">+</span> <span class="n">new_atom_offsets</span><span class="p">[</span><span class="n">m</span><span class="p">]</span>
 
         <span class="n">new_molecules_df</span> <span class="o">=</span> <span class="n">molecules_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="n">new_molecules_df</span><span class="p">[</span><span class="s2">"smiles"</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_smiles</span>
